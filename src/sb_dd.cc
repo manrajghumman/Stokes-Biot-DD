@@ -49,15 +49,18 @@
 namespace dd_stokes_biot
 {
   using namespace dealii;
+  using namespace mfe_stokes;
+  using namespace mfe_biot;
 
   // MixedStokesBiotProblem class constructor
   template <int dim>
   MixedStokesBiotProblem<dim>::MixedStokesBiotProblem (ParameterHandler &prm)
-    : prm(prm),
-      mpi_communicator (MPI_COMM_WORLD),
-      this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator)),
-      n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator)),
-      pcout(std::cout,
+    : prm(prm)
+    , n_domains(dim, 0)
+    , mpi_communicator (MPI_COMM_WORLD)
+    , this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator))
+    , n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator))
+    , pcout(std::cout,
         (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
   {}
 
@@ -65,124 +68,182 @@ namespace dd_stokes_biot
     template <int dim>
     void MixedStokesBiotProblem<dim>::run ()
     {
-      // TO DO: implement the run function for Stokes-Biot DD
-      pcout << "Running Mixed Stokes-Biot Domain Decomposition Problem..." << std::endl;
-    
-      unsigned int refine;
-      std::vector<std::vector<unsigned int>> reps;
-      interpret_parameters(prm, refine, reps, dd_info_matrix, this_mpi, n_processes);
+        // TO DO: implement the run function for Stokes-Biot DD
+        pcout << "Running Mixed Stokes-Biot Domain Decomposition Problem..." << std::endl;
+        
+        unsigned int refine;
+        // std::vector<std::vector<unsigned int>> reps;
+        interpret_parameters(prm, refine, dd_info_matrix, n_processes);
 
-      for (auto &r : dd_info_matrix) {
-        for (auto & c : r) {
-            if (c == 1)
-                pcout << "S ";
-            else if (c == 2)
-                pcout << "B ";
+        // Print dd_info_matrix
+        pcout << "Subdomain type matrix (S: Stokes, B: Biot):" << std::endl;
+        for (auto &r : dd_info_matrix) {
+            for (auto & c : r) {
+                if (c == 1)
+                    pcout << "S ";
+                else if (c == 2)
+                    pcout << "B ";
+            }
+            pcout << std::endl;
         }
-        pcout << std::endl;
-      }
 
-      for (unsigned int cycle = 0; cycle < refine; ++cycle)
-      {
-        gmres_iteration = 0;
+        for (unsigned int cycle = 0; cycle < refine; ++cycle)
+        {
+            gmres_iteration = 0;
 
-        if (cycle == 0)
-          {
-            // Partitioning into subdomains (simple bricks)
-            find_divisors<dim>(n_processes, n_domains);
-
-            switch (dim)
+            if (cycle == 0)
             {
-              case 2:
-                Assert(n_domains[0] == dd_info_matrix[0].size(),
-                       ExcMessage("n_domains in x (" + std::to_string(n_domains[0]) +
-                                  ") must be equal to subdomains in x (" +
-                                  std::to_string(dd_info_matrix[0].size()) + ")"));
-                Assert(n_domains[1] == dd_info_matrix.size(),
-                       ExcMessage("n_domains in y (" + std::to_string(n_domains[1]) +
-                                  ") must be equal to subdomains in y (" +
-                                  std::to_string(dd_info_matrix.size()) + ")"));
-                break;
-              case 3:
-                Assert(false, ExcMessage("Dimension = 3 not  yet supported"));
-                // Assert(n_domains[0] == dd_info_matrix[0][0].size(),
-                //        ExcMessage("n_domains in x (" + std::to_string(n_domains[0][0]) +
-                //                   ") must be equal to subdomains in x (" +
-                //                   std::to_string(dd_info_matrix[0][0].size()) + ")"));
-                // Assert(n_domains[1] == dd_info_matrix[0].size(),
-                //        ExcMessage("n_domains in y (" + std::to_string(n_domains[1]) +
-                //                   ") must be equal to subdomains in y (" +
-                //                   std::to_string(dd_info_matrix[0].size()) + ")"));
-                // Assert(n_domains[2] == dd_info_matrix.size(),
-                //        ExcMessage("n_domains in y (" + std::to_string(n_domains[2]) +
-                //                   ") must be equal to subdomains in y (" +
-                //                   std::to_string(dd_info_matrix.size()) + ")"));                  
-                break;
-              default:
-                Assert(false, ExcMessage("Dimension = " + std::to_string(dim) 
-                                                + " not supported"));
+                // Partitioning into subdomains (simple bricks)
+                find_divisors<dim>(n_processes, n_domains);
+
+                switch (dim)
+                {
+                case 2:
+                    Assert(n_domains[0] == dd_info_matrix[0].size(),
+                        ExcMessage("n_domains in x (" + std::to_string(n_domains[0]) +
+                                    ") must be equal to subdomains in x (" +
+                                    std::to_string(dd_info_matrix[0].size()) + ")"));
+                    Assert(n_domains[1] == dd_info_matrix.size(),
+                        ExcMessage("n_domains in y (" + std::to_string(n_domains[1]) +
+                                    ") must be equal to subdomains in y (" +
+                                    std::to_string(dd_info_matrix.size()) + ")"));
+                    break;
+                case 3:
+                    Assert(false, ExcMessage("Dimension = 3 not  yet supported"));
+                    // Assert(n_domains[0] == dd_info_matrix[0][0].size(),
+                    //        ExcMessage("n_domains in x (" + std::to_string(n_domains[0][0]) +
+                    //                   ") must be equal to subdomains in x (" +
+                    //                   std::to_string(dd_info_matrix[0][0].size()) + ")"));
+                    // Assert(n_domains[1] == dd_info_matrix[0].size(),
+                    //        ExcMessage("n_domains in y (" + std::to_string(n_domains[1]) +
+                    //                   ") must be equal to subdomains in y (" +
+                    //                   std::to_string(dd_info_matrix[0].size()) + ")"));
+                    // Assert(n_domains[2] == dd_info_matrix.size(),
+                    //        ExcMessage("n_domains in y (" + std::to_string(n_domains[2]) +
+                    //                   ") must be equal to subdomains in y (" +
+                    //                   std::to_string(dd_info_matrix.size()) + ")"));                  
+                    break;
+                default:
+                    Assert(false, ExcMessage("Dimension = " + std::to_string(dim) 
+                                                    + " not supported"));
+                }
+            }
+
+            
+            // construct a stokes and biot triangulation for each subdomain
+            // using the coordinates p1 and p2
+            // then store the material_id for each subdomain triangulation
+            // after looking up in dd_info_matrix
+
+            // Find subdomain position
+            switch (dim) 
+            {
+                case 2:
+                {
+                    int x, y;
+                    if (this_mpi == 0) {x = 0;}
+                    else if (this_mpi % n_domains[0] != 0) {
+                        x = this_mpi % n_domains[0];
+                    } else {
+                        x = n_domains[0];
+                    }
+
+                    if (this_mpi == 0) {y = 0;}
+                    else {y = this_mpi / n_domains[0];} 
+
+                    subdomain_type = dd_info_matrix[y][x]; // for 2D
+                    break;
+                }     
+                case 3:
+                    Assert(false, ExcMessage("Dimension = 3 not  yet supported"));
+                    // update how you input the dd_info_matrix for 3D first
+                    break;
+                default: 
+                    Assert(false, ExcMessage("Dimension = " + std::to_string(dim) 
+                                                    + " not supported"));
+            }
+
+            // MPI_Barrier(mpi_communicator);
+            for (unsigned int proc = 0; proc < n_processes; ++proc)
+            {
+                if (this_mpi == proc) {
+                    std::cout << "Process " << this_mpi 
+                            << " is subdomain type " 
+                            << (subdomain_type == 1 ? "Stokes" : "Biot") 
+                            << std::endl;
+                }
+                MPI_Barrier(mpi_communicator);
+            }
+
+            MPI_Barrier(mpi_communicator);
+
+            // Find neighbors
+            neighbors.resize(GeometryInfo<dim>::faces_per_cell, 0);
+            find_neighbors<dim>(this_mpi, n_domains, neighbors, neighbor_type);
+
+            // initialize the respective stokes and biot problem objects
+            // based on subdomain_type
+            if (subdomain_type == 1) // Stokes
+            {
+                // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
+                unsigned int degree, mortar_degree;
+                bool mortar_flag, cont_mortar_flag;
+                prm.enter_subsection("Stokes Parameters");
+                {
+                    degree   = prm.get_integer("degree");
+                    mortar_flag = prm.get("mortar") == "yes" ? 1 : 0;
+                    if (mortar_flag)
+                        {
+                            cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
+                            mortar_degree = prm.get_integer("mortar_degree");
+                        }
+                    else
+                    {
+                        cont_mortar_flag = 1; // if no mortar, continuous mortar is default
+                        mortar_degree = 0; // if no mortar, mortar degree is 0
+                    }
+                }
+                prm.leave_subsection();
+                MixedStokesProblem<dim> stokes(prm,
+                                            degree,
+                                            cycle,
+                                            subdomain_type,
+                                            neighbors,
+                                            neighbor_type,
+                                            mortar_flag,
+                                            cont_mortar_flag,
+                                            mortar_degree);
+            
             }
 
             // // Dimensions of the domain (unit hypercube)
-            // std::vector<double> subdomain_dimensions(dim);
-            // for (unsigned int d = 0; d < dim; ++d)
-            //   subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
+                // std::vector<double> subdomain_dimensions(dim);
+                // for (unsigned int d = 0; d < dim; ++d)
+                //   subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
-            // get_subdomain_coordinates<dim>(
-            //   this_mpi, n_domains, subdomain_dimensions, p1, p2);
-          }
-
-          
-          /* 
-                if you want to refine in a different way than uniform refinement,
-                uncomment and implement the following code
-          */
-        // else
-        //   {
-        //     // Partitioning into subdomains (simple bricks)
-        //     find_divisors<dim>(n_processes, n_domains);
-
-        //     // Dimensions of the domain (unit hypercube)
-        //     std::vector<double> subdomain_dimensions(dim);
-        //     for (unsigned int d = 0; d < dim; ++d)
-        //       subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
-
-        //     get_subdomain_coordinates<dim>(
-        //       this_mpi, n_domains, subdomain_dimensions, p1, p2);
-            
-        //     for (unsigned long i = 0; i < reps[this_mpi].size(); ++i)
-        //     {
-        //       reps[this_mpi][i] = reps[this_mpi][i] * 2;
-        //       reps[n_processes][i] = reps[n_processes][i] * 2;
-        //     }
-
-        //   }
-
-        
-        // construct a stokes and biot triangulation for each subdomain
-        // using the coordinates p1 and p2
-        // then store the material_id for each subdomain triangulation
-        // after looking up in dd_info_matrix
+                // get_subdomain_coordinates<dim>(
+                //   this_mpi, n_domains, subdomain_dimensions, p1, p2);
 
 
-        if (n_processes == 1)
-        {
-            // pcout << "Making grid and DOFs..."
-            //   << "\n";
-            
-            // make_grid_and_dofs(boundary_def);
+            if (n_processes == 1)
+            {
+                // pcout << "Making grid and DOFs..."
+                //   << "\n";
+                
+                // make_grid_and_dofs(boundary_def);
 
-        }
-        else
-        {
-            // pcout << "Making grid and DOFs..."
-            //   << "\n";
-            // make_grid_and_dofs(boundary_def);
+            }
+            else
+            {
+                // pcout << "Making grid and DOFs..."
+                //   << "\n";
+                // make_grid_and_dofs(boundary_def);
 
-        }
-            // computing_timer.reset();
+            }
+            MPI_Barrier(mpi_communicator);
+                // computing_timer.reset();
             pcout << "----------------------------------------------" << std::endl;
-      }
+        }
             
     }
 

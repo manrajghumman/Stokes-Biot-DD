@@ -35,13 +35,15 @@ namespace mfe_stokes
   class MixedStokesProblem
   {
   public:
-  MixedStokesProblem (const unsigned int degree,
-                      const bool ess_dir_flag                = 0,
-                      const bool mortar_flag                 = 0,
-                      const unsigned int mortar_degree       = 0,
-                      const unsigned int iter_meth_flag      = 0,
-                      const bool cont_mortar_flag            = 0,
-                      const bool print_interface_matrix_flag = 0);
+  MixedStokesProblem (ParameterHandler &prm,
+                      unsigned int &degree,
+                      unsigned int &cycle,
+                      const unsigned int &subdomain_type,
+                      std::vector<int> &neighbors,
+                      std::vector<unsigned int> &neighbor_type,
+                      const bool mortar_flag = 0,
+                      const unsigned int mortar_degree = 0,
+                      const bool cont_mortar_flag = 0);
 
     void
     run(const unsigned int                            refine,
@@ -56,9 +58,26 @@ namespace mfe_stokes
   private:
     MPI_Comm   mpi_communicator;
     MPI_Status mpi_status;
+    const unsigned int this_mpi;
+    const unsigned int n_processes;
+    ParameterHandler &prm;
+    unsigned int cycle;
+    unsigned int degree;
+    unsigned int qdegree;
+    const unsigned int subdomain_type;
+    std::vector<unsigned int> external_bdry_ids;
+    bool mortar_flag, cont_mortar_flag;
+    unsigned int mortar_degree;
+    double       tol;
+    std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
+    // std::vector<int> neighbors;
+    // std::vector<unsigned int> neighbor_type;
 
     Projector::Projector<dim> P_coarse2fine;
     Projector::Projector<dim> P_fine2coarse;
+
+    void
+    interpret_parameters();
 
     void
     setup_system(const std::vector<unsigned int> &boundary_def);
@@ -86,21 +105,22 @@ namespace mfe_stokes
 
 
     unsigned int       gmres_iteration;
+    unsigned int       maxiter;
     double             residual;
     // Number of subdomains in the computational domain
-    std::vector<unsigned int> n_domains;
+    // std::vector<unsigned int> n_domains;
 
     // FE degree and DD parameters
-    const unsigned int degree;
-    const bool ess_dir_flag;
-    const bool mortar_flag;
-    const bool cont_mortar_flag; // Flag for continuous mortar
-    const bool print_interface_matrix_flag; // Flag to print interface matrix
-    const unsigned int mortar_degree;
-    const unsigned int iter_meth_flag;
-    unsigned int       cg_iteration;
-    double             tolerance;
-    unsigned int       qdegree;
+    // const unsigned int degree;
+    // const bool ess_dir_flag;
+    // const bool mortar_flag;
+    // const bool cont_mortar_flag; // Flag for continuous mortar
+    // const bool print_interface_matrix_flag; // Flag to print interface matrix
+    // const unsigned int mortar_degree;
+    // const unsigned int iter_meth_flag;
+    // unsigned int       cg_iteration;
+    // const double       tolerance;
+    // unsigned int       qdegree;
     double h;
     double h_old;
     double u_l2_error;
@@ -115,6 +135,7 @@ namespace mfe_stokes
 
     // Neighbors and interface information
     std::vector<int>                       neighbors;
+    std::vector<unsigned int>              neighbor_type;
     std::vector<unsigned int>              faces_on_interface;
     std::vector<unsigned int>              faces_on_interface_mortar;
     std::vector<std::vector<unsigned int>> interface_dofs;
@@ -139,9 +160,9 @@ namespace mfe_stokes
     DoFHandler<dim>    dof_handler;
 
     // Mortar triangulation
-    Triangulation<dim> triangulation_mortar;
-    FESystem<dim>      fe_mortar;
-    DoFHandler<dim>    dof_handler_mortar;
+    // Triangulation<dim> triangulation_mortar;
+    // FESystem<dim>      fe_mortar;
+    // DoFHandler<dim>    dof_handler_mortar;
 
     // Star and bar problem data structures
     BlockSparsityPattern      sparsity_pattern;

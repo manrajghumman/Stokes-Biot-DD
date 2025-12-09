@@ -69,53 +69,67 @@ namespace mfe_stokes
   // MixedStokesBiotDD class constructor
   template <int dim>
   MixedStokesProblem<dim>::MixedStokesProblem(
-    const unsigned int degree,
-    const bool ess_dir_flag,
+    ParameterHandler &prm,
+    unsigned int &degree,
+    unsigned int &cycle,
+    const unsigned int &subdomain_type,
+    std::vector<int> &neighbors,
+    std::vector<unsigned int> &neighbor_type,
     const bool mortar_flag,
     const unsigned int mortar_degree,
-    const unsigned int iter_meth_flag,
-    const bool cont_mortar_flag,
-    const bool print_interface_matrix_flag)
-    : degree(degree)
-    , ess_dir_flag(ess_dir_flag)
+    const bool cont_mortar_flag)
+    : prm(prm)
+    , cycle(cycle)
+    , degree(degree)
+    // , qdegree(quad_degree)
+    , subdomain_type(subdomain_type)
+    // , external_bdry_ids(external_bdry_ids)
     , mortar_flag(mortar_flag)
     , mortar_degree(mortar_degree)
-    , iter_meth_flag(iter_meth_flag)
     , cont_mortar_flag((mortar_flag == 1 && mortar_degree == 0) ? false: cont_mortar_flag) // if mortar_degree is 0, use RT<dim> (0)
-    , print_interface_matrix_flag(print_interface_matrix_flag)
     , mpi_communicator(MPI_COMM_WORLD)
+    // , tol(tol)
+    // , reps(reps)
+    , neighbors(neighbors)
+    , neighbor_type(neighbor_type)
     , P_coarse2fine(false)
     , P_fine2coarse(false)
-    , n_domains(dim, 0)//vector of type unsigned int initialized to size dim with entries = 0
     , gmres_iteration(0)
-	  , cg_iteration(0)
     , fe(FE_Q<dim>(degree+1),//fe for velocity
          dim,
          FE_Q<dim>(degree),//fe for pressure
          1)
     , dof_handler(triangulation)
-    , dof_handler_mortar(triangulation_mortar)
-    ,fe_mortar([mortar_degree, cont_mortar_flag]() -> FESystem<dim> {
-      if (mortar_degree > 0 && cont_mortar_flag)
-        return FESystem<dim>(FE_Q<dim>(mortar_degree), dim, FE_Nothing<dim>(), 1);
-      else if (mortar_degree == 0 || !cont_mortar_flag)
-        return FESystem<dim>(FE_RaviartThomas<dim>(mortar_degree), 1, FE_Nothing<dim>(), 1);
-      else
-        return FESystem<dim>(FE_Nothing<dim>(), dim, FE_Nothing<dim>(), 1);
-    }()) // Conditional initialization using a lambda function
+    // , dof_handler_mortar(triangulation_mortar)
+    // ,fe_mortar([mortar_degree, cont_mortar_flag]() -> FESystem<dim> {
+    //   if (mortar_degree > 0 && cont_mortar_flag)
+    //     return FESystem<dim>(FE_Q<dim>(mortar_degree), dim, FE_Nothing<dim>(), 1);
+    //   else if (mortar_degree == 0 || !cont_mortar_flag)
+    //     return FESystem<dim>(FE_RaviartThomas<dim>(mortar_degree), 1, FE_Nothing<dim>(), 1);
+    //   else
+    //     return FESystem<dim>(FE_Nothing<dim>(), dim, FE_Nothing<dim>(), 1);
+    // }()) // Conditional initialization using a lambda function
+    , this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator))
+    , n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator))
     , pcout(std::cout,
             (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
     , computing_timer(mpi_communicator,
                       pcout,
                       TimerOutput::summary,
                       TimerOutput::wall_times)
-  {}
+  {
+    interpret_parameters();
+    // fe = FESystem<dim>(FE_Q<dim>(degree + 1), // fe for velocity
+    //                     dim,
+    //                     FE_Q<dim>(degree),     // fe for pressure
+    //                     1);
+  }
 
 
   // MixedStokesProblem::make_grid_and_dofs
   template <int dim>
   void
-  MixedStokesProblem<dim>::setup_system(const std::vector<unsigned int> &boundary_def)
+  MixedStokesProblem<dim>::setup_system(const std::vector<unsigned int> &external_bdry_ids)
   {
     TimerOutput::Scope t(computing_timer, "make_grid_and_dofs");
   }
@@ -193,8 +207,8 @@ namespace mfe_stokes
 
 
 
-    tolerance = tol;
-    qdegree   = quad_degree;
+    // tolerance = tol;
+    // qdegree   = quad_degree;
 
     const unsigned int this_mpi =
       Utilities::MPI::this_mpi_process(mpi_communicator);
@@ -211,134 +225,134 @@ namespace mfe_stokes
                ExcMessage("Some of the mesh parameters were not provided"));
       }
 
-    for (unsigned int cycle = 0; cycle < refine; ++cycle)
-      {
-        gmres_iteration = 0;
-        interface_dofs.clear();
-        interface_dofs_fe.clear();
-        interface_dofs_find_neumann.clear();
+    // for (unsigned int cycle = 0; cycle < refine; ++cycle)
+    //   {
+    //     gmres_iteration = 0;
+    //     interface_dofs.clear();
+    //     interface_dofs_fe.clear();
+    //     interface_dofs_find_neumann.clear();
 
-        if (Utilities::MPI::n_mpi_processes(mpi_communicator) == 1)
-          {
-            pcout << "Making grid and DOFs..."
-              << "\n";
+    //     if (Utilities::MPI::n_mpi_processes(mpi_communicator) == 1)
+    //       {
+    //         pcout << "Making grid and DOFs..."
+    //           << "\n";
             
-            setup_system(boundary_def);
+    //         setup_system(boundary_def);
 
-            pcout << "Assembling system..."
-                  << "\n";
+    //         pcout << "Assembling system..."
+    //               << "\n";
         
-            assemble_system();
-            pcout<<"assembled system!!"<<std::endl;
-            solve_bar();
-            solution = solution_bar_stokes;
+    //         assemble_system();
+    //         pcout<<"assembled system!!"<<std::endl;
+    //         solve_bar();
+    //         solution = solution_bar_stokes;
 
-            // compute_errors(cycle, reps);
+    //         // compute_errors(cycle, reps);
 
-            // computing_timer.print_summary();
-            computing_timer.reset();
+    //         // computing_timer.print_summary();
+    //         computing_timer.reset();
 
-            // output_results(cycle, refine, name);
-            // output_dof_results(cycle);
-            pcout << "dof output written" << std::endl;
-            output_results(cycle);
-            pcout << "solution data output written" << std::endl;
-            // output_interface_results(cycle);
+    //         // output_results(cycle, refine, name);
+    //         // output_dof_results(cycle);
+    //         pcout << "dof output written" << std::endl;
+    //         output_results(cycle);
+    //         pcout << "solution data output written" << std::endl;
+    //         // output_interface_results(cycle);
 
-            triangulation.clear();
-            dof_handler.clear();
-            // convergence_table.clear();
-            faces_on_interface.clear();
-            faces_on_interface_mortar.clear();
-            interface_dofs.clear();
-            interface_fe_function.clear();
-            interface_fe_function_mortar.clear();
-            if (mortar_flag)
-              {
-                triangulation_mortar.clear();
-                P_fine2coarse.reset();
-                P_coarse2fine.reset();
-              }
-            dof_handler_mortar.clear();
-          }
-        else
-          {
-            pcout << "Making grid and DOFs..."
-              << "\n";
-            setup_system(boundary_def);
+    //         triangulation.clear();
+    //         dof_handler.clear();
+    //         // convergence_table.clear();
+    //         faces_on_interface.clear();
+    //         faces_on_interface_mortar.clear();
+    //         interface_dofs.clear();
+    //         interface_fe_function.clear();
+    //         interface_fe_function_mortar.clear();
+    //         if (mortar_flag)
+    //           {
+    //             triangulation_mortar.clear();
+    //             P_fine2coarse.reset();
+    //             P_coarse2fine.reset();
+    //           }
+    //         dof_handler_mortar.clear();
+    //       }
+    //     else
+    //       {
+    //         pcout << "Making grid and DOFs..."
+    //           << "\n";
+    //         setup_system(boundary_def);
 
-            pcout << "Getting interface dofs" << std::endl;
-            get_interface_dofs();
-            pcout << "Assembling system..."
-                  << "\n";
+    //         pcout << "Getting interface dofs" << std::endl;
+    //         get_interface_dofs();
+    //         pcout << "Assembling system..."
+    //               << "\n";
         
-            assemble_system();
-            pcout<<"Assembled system!!"<<std::endl;
-            // output_dof_results(cycle);
-            pcout << "dof output written" << std::endl;
-            if (mortar_flag)
-            {
-              // output_dof_results_mortar(cycle);
-                pcout << "dof mortar output written" << std::endl;
-            }
+    //         assemble_system();
+    //         pcout<<"Assembled system!!"<<std::endl;
+    //         // output_dof_results(cycle);
+    //         pcout << "dof output written" << std::endl;
+    //         if (mortar_flag)
+    //         {
+    //           // output_dof_results_mortar(cycle);
+    //             pcout << "dof mortar output written" << std::endl;
+    //         }
 
-            if (iter_meth_flag == 0)
-            {
-              pcout << "Starting CG iterations..."
-                  << "\n";
-              // local_cg(maxiter, cycle);
-            }
-            else if (iter_meth_flag == 1)
-            {
-              pcout << "Starting GMRES iterations..."
-                  << "\n";
-              // local_gmres(maxiter, cycle);
-            }
-            else
-            {
-              AssertThrow(false, ExcMessage("Unknown iterative method!"));
-            }
-            // compute_errors(cycle, reps);
+    //         if (iter_meth_flag == 0)
+    //         {
+    //           pcout << "Starting CG iterations..."
+    //               << "\n";
+    //           // local_cg(maxiter, cycle);
+    //         }
+    //         else if (iter_meth_flag == 1)
+    //         {
+    //           pcout << "Starting GMRES iterations..."
+    //               << "\n";
+    //           // local_gmres(maxiter, cycle);
+    //         }
+    //         else
+    //         {
+    //           AssertThrow(false, ExcMessage("Unknown iterative method!"));
+    //         }
+    //         // compute_errors(cycle, reps);
 
-            MPI_Barrier(mpi_communicator);
+    //         MPI_Barrier(mpi_communicator);
 
-            output_results(cycle);
-            // computing_timer.print_summary();
-            computing_timer.reset();
-            pcout << "----------------------------------------------" << std::endl;
+    //         output_results(cycle);
+    //         // computing_timer.print_summary();
+    //         computing_timer.reset();
+    //         pcout << "----------------------------------------------" << std::endl;
             
-            triangulation.clear();
-            dof_handler.clear();
-            faces_on_interface.clear();
-            faces_on_interface_mortar.clear();
-            interface_dofs.clear();
-            interface_dofs_fe.clear();
-            interface_fe_function.clear();
-            interface_fe_function_mortar.clear();
-            if (mortar_flag)
-              {
-                triangulation_mortar.clear();
-                P_fine2coarse.reset();
-                P_coarse2fine.reset();
-              }
-            dof_handler_mortar.clear();
-          }
-      }
+    //         triangulation.clear();
+    //         dof_handler.clear();
+    //         faces_on_interface.clear();
+    //         faces_on_interface_mortar.clear();
+    //         interface_dofs.clear();
+    //         interface_dofs_fe.clear();
+    //         interface_fe_function.clear();
+    //         interface_fe_function_mortar.clear();
+    //         if (mortar_flag)
+    //           {
+    //             triangulation_mortar.clear();
+    //             P_fine2coarse.reset();
+    //             P_coarse2fine.reset();
+    //           }
+    //         dof_handler_mortar.clear();
+    //       }
+    //   }
 
-    // print_individual_table_l2<dim>(convergence_table,
-    //                                iter_meth_flag,
-    //                                this_mpi,
-    //                                n_processes,
-    //                                mpi_communicator);
-    // print_total_table_l2<dim>(convergence_table_total,
-    //                           iter_meth_flag,
-    //                           print_interface_matrix_flag,
-    //                           this_mpi);
+    // // print_individual_table_l2<dim>(convergence_table,
+    // //                                iter_meth_flag,
+    // //                                this_mpi,
+    // //                                n_processes,
+    // //                                mpi_communicator);
+    // // print_total_table_l2<dim>(convergence_table_total,
+    // //                           iter_meth_flag,
+    // //                           print_interface_matrix_flag,
+    // //                           this_mpi);
                               
-    convergence_table.clear();
-    convergence_table_total.clear();
-    faces_on_interface.clear();
-    faces_on_interface_mortar.clear();
+    // convergence_table.clear();
+    // convergence_table_total.clear();
+    // faces_on_interface.clear();
+    // faces_on_interface_mortar.clear();
   }
 
   template class MixedStokesProblem<2>;

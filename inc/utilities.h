@@ -199,7 +199,8 @@ namespace dd_stokes_biot
   void
   find_neighbors(const unsigned int &             this_mpi,
                  const std::vector<unsigned int> &n_doms,
-                 std::vector<int> &               neighbors)
+                 std::vector<int>            &neighbors,
+                 std::vector<unsigned int>   &neighbor_type)
   {
     Assert(neighbors.size() == 2.0 * dim,
            ExcDimensionMismatch(neighbors.size(), 2.0 * dim));

@@ -51,15 +51,15 @@ namespace dd_stokes_biot
   private:
     MPI_Comm   mpi_communicator;
     MPI_Status mpi_status;
+    const unsigned int this_mpi;
+    const unsigned int n_processes;
 
     // Projector::Projector<dim> P_coarse2fine;
     // Projector::Projector<dim> P_fine2coarse;
 
     void interpret_parameters(dealii::ParameterHandler &prm,
                               unsigned int &refine,
-                              std::vector<std::vector<unsigned int>> &reps,
                               std::vector<std::vector<unsigned int>> &dd_info_matrix,
-                              const unsigned int & this_mpi,
                               const unsigned int &n_processes);
 
     void
@@ -83,7 +83,12 @@ namespace dd_stokes_biot
 
     ParameterHandler &prm;
     std::vector<std::vector<unsigned int>> dd_info_matrix;
+    unsigned int subdomain_type;
+    std::vector<int> neighbors;
+    std::vector<unsigned int> neighbor_type;
     std::vector<unsigned int> external_bdry_ids;
+    bool stokes_mortar_flag, stokes_cont_mortar_flag;
+    unsigned int stokes_mortar_degree;
     unsigned int                           gmres_iteration;
     double                                 residual;
 
@@ -92,8 +97,6 @@ namespace dd_stokes_biot
     Point<dim> p2;
     // Number of subdomains in the computational domain
     std::vector<unsigned int> n_domains;
-    const unsigned int this_mpi;
-    const unsigned int n_processes;
 
     // Output extra
     ConditionalOStream pcout;
