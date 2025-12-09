@@ -17,7 +17,7 @@
 // Utilities, data, etc..
 #include "../inc/sb_dd.h"
 
-// #include "../inc/stokes_parameter_reader.h"
+#include "../inc/sb_parameter_reader.h"
 // #include "../inc/parameter_interpreter.h"
 
 // Main function is simple here
@@ -31,7 +31,34 @@ main(int argc, char *argv[])
       // using namespace dd_stokes;
       // using namespace dd_biot;
 
+      // Initialize MPI via dealii wrapper with 1 thread per MPI process
+      Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
+
       // Ask for parameters from parameter reader
+      ParameterHandler prm;
+      StokesBiotParameterReader parameter_reader(prm);
+      parameter_reader.read_parameters("../parameters_sb.prm");
+      
+      // const int dim = prm.get_integer("dim");
+
+      switch (prm.get_integer("dim"))
+      {
+        case 2:
+        {
+          MixedStokesBiotProblem<2> stokes_biot(prm);
+
+          stokes_biot.run();
+          break;
+        }
+        case 3:
+        {
+          AssertThrow(false, ExcMessage("3D implementation is not yet available."));
+          break;
+        }
+        default:
+          throw std::runtime_error("Dimension must be either 2 or 3.");
+      }
+      
 
       // make a domain decomposition structure
 

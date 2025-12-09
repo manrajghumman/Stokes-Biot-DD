@@ -1,57 +1,63 @@
-/*
-file interpreting the parameters for various problems
-*/
-#pragma once
+/* ---------------------------------------------------------------------
+ * Utilities:
+ *  - Stokes Biot - related to interpreting parameters from parameter file
+ * ---------------------------------------------------------------------
+ *
+ * Author: Manraj Singh Ghumman, University of Pittsburgh, 2025 - 2026
+ */
+
 #include <deal.II/base/parameter_handler.h>
 #include <deal.II/base/utilities.h>
 #include <deal.II/base/exceptions.h>
 #include <vector>
 #include <string>
+#include "../inc/sb_dd.h"
 
-namespace Interpreter
+namespace dd_stokes_biot
 {
-    /**
-     * @brief Struct to interpret parameters for Stokes DD problem.
-     * 
-     * This struct interprets parameters read from a parameter file 
-     * for a Stokes problem in either 2D or 3D, including boundary conditions,
-     * mortar settings, and solver options.
-     */
-    // InterpretStokesDD is a struct that interprets parameters for a Stokes DD problem.
-    // read from the parameter file parameters_stokes.prm
     using namespace dealii;
-    using namespace dd_stokes;
-
-    struct StokesDD
-    {
-        unsigned int dim;
-        unsigned int degree;
-        unsigned int refinements;
-        unsigned int qdegree;
-        std::vector<unsigned int> boundary_m2d;
-        std::vector<std::vector<unsigned int>> mesh_m2d;
-        std::vector<std::vector<unsigned int>> mesh_m3d;
-        bool ess_dir_flag;
-        bool mortar_flag;
-        bool cont_mortar_flag;
-        unsigned int mortar_degree;
-        unsigned int iter_meth_flag;
-        unsigned int max_iter;
-        double tol;
-        bool print_interface_matrix_flag;
-
-        void interpret_parameters(dealii::ParameterHandler &prm,
-                                  const unsigned int & this_mpi,
-                                  const unsigned int &n_processes)
+    
+    /*
+     * This function interprets parameters read from a parameter file 
+     * for a Stokes Biot problem in either 2D or 3D, including type of domain,
+     * initial refinement of each subdomain and external boundary conditions.
+     * Read from the parameter handler object prm given in input.
+     */
+    template <int dim>
+    void MixedStokesBiotProblem<dim>::interpret_parameters(dealii::ParameterHandler &prm,
+                                                        unsigned int &refine,
+                                                        std::vector<std::vector<unsigned int>> &reps,
+                                                        std::vector<std::vector<unsigned int>> &dd_info_matrix,
+                                                        const unsigned int & this_mpi,
+                                                        const unsigned int &n_processes)
         {
-            dim = prm.get_integer("dim");
-            degree = prm.get_integer("degree");
             AssertThrow(dim == 2 || dim == 3, ExcMessage("Dimension must be either 2 or 3."));
-            refinements = prm.get_integer("refinements");
-            qdegree = prm.get_integer("quad_degree"); // default quadrature degree, can be changed later
-            // const std::vector<unsigned int> initial_grid = prm.get_integer_list("initial_grid");
-            // AssertThrow(initial_grid.size() == dim, ExcMessage("Initial grid size must match the dimension."));
+            refine = prm.get_integer("refinements");
 
+            // make a grid matrix (dd_info_matrix) to differentiate Stokes and Biot subdomains
+            std::string dd_info = prm.get("grid");
+            auto rows = Utilities::split_string_list(dd_info, ';');
+
+            for (auto &r : rows) {
+                auto int_vec = Utilities::string_to_int(Utilities::split_string_list(r, ','));
+                for (unsigned int i = 0; i < int_vec.size(); ++i)
+                    Assert(int_vec[i] >= 0,
+                            ExcMessage("Negative value at index " + std::to_string(i) +
+                                    " in row " + std::to_string(dd_info.size()) +
+                                    ".\n Each entry in the grid must be Stokes (1) or Biot (2)."));
+                std::vector<unsigned int> uint_vec(int_vec.begin(), int_vec.end());
+                dd_info_matrix.push_back(uint_vec);
+            }
+            unsigned int total_domains = 0;
+            for (auto &r : dd_info_matrix)
+                total_domains += r.size();
+            Assert(total_domains == n_processes,
+                ExcMessage("Total number of subdomains in the grid (" +
+                        std::to_string(total_domains) +
+                        ") does not match the number of MPI processes (" +
+                        std::to_string(n_processes) + ")."));
+            
+            // make initial refinement matrix (reps) for each subdomain
             switch (dim)
                 {
                     case 2:
@@ -64,7 +70,7 @@ namespace Interpreter
                         // Initialize mesh_m2d with 2D grid sizes
                         // Uniform initial mesh for all processes
                         for (unsigned int i = 0; i < n_processes + 1; ++i)
-                            mesh_m2d.push_back({static_cast<unsigned int>(bvec[0]), static_cast<unsigned int>(bvec[1])}); 
+                            reps.push_back({static_cast<unsigned int>(bvec[0]), static_cast<unsigned int>(bvec[1])}); 
                         break;
                     }
                     case 3:
@@ -77,7 +83,7 @@ namespace Interpreter
                         // Initialize mesh_m2d with 3D grid sizes
                         // Uniform initial mesh for all processes
                         for (unsigned int i = 0; i < n_processes + 1; ++i)
-                            mesh_m3d.push_back({static_cast<unsigned int>(bvec[0]), 
+                            reps.push_back({static_cast<unsigned int>(bvec[0]), 
                                 static_cast<unsigned int>(bvec[1]), static_cast<unsigned int>(bvec[2])}); 
                         break;
                     }
@@ -85,9 +91,10 @@ namespace Interpreter
                         AssertThrow(false, ExcMessage("Dimension must be either 2 or 3."));
                 }
             
+            // Interpret external boundary conditions
             prm.enter_subsection("External Boundary Conditions");
             {
-                ess_dir_flag = prm.get("essential_dirichlet") == "yes" ? 1 : 0;
+                // ess_dir_flag = prm.get("essential_dirichlet") == "yes" ? 1 : 0;
                 switch (dim)
                 {
                     case 2:
@@ -98,14 +105,14 @@ namespace Interpreter
                         // Convert each string to a char
                         for (const std::string &s : bvec)
                             if (s[0] == 'N')
-                                boundary_m2d.push_back(1); // Neumann boundary
+                                external_bdry_ids.push_back(1); // Neumann boundary
                             else if (s[0] == 'D')
-                                boundary_m2d.push_back(0); // Dirichlet boundary
+                                external_bdry_ids.push_back(0); // Dirichlet boundary
                             else
                                 AssertThrow(false, ExcMessage("Invalid boundary condition type." 
                                     " Use 'N' for Neumann or 'D' for Dirichlet."));
                         // Ensure the boundary vector has exactly 4 elements
-                        AssertThrow(boundary_m2d.size() == 4, 
+                        AssertThrow(external_bdry_ids.size() == 4, 
                                 ExcMessage("Boundary vector must have exactly 4 elements/edges for 2D."));
                         break;
                     }
@@ -117,15 +124,15 @@ namespace Interpreter
                         // Convert each string to a char
                         for (const std::string &s : bvec)
                             if (s[0] == 'N')
-                                boundary_m2d.push_back(1); // Neumann boundary
+                                external_bdry_ids.push_back(1); // Neumann boundary
                             else if (s[0] == 'D')
-                                boundary_m2d.push_back(0); // Dirichlet boundary
+                                external_bdry_ids.push_back(0); // Dirichlet boundary
                             else
                                 AssertThrow(false, 
                                     ExcMessage("Invalid boundary condition type."
                                                 " Use 'N' for Neumann or 'D' for Dirichlet."));
                         // Ensure the boundary vector has exactly 4 elements
-                        AssertThrow(boundary_m2d.size() == 6, 
+                        AssertThrow(external_bdry_ids.size() == 6, 
                                     ExcMessage("Boundary vector must have exactly 6 elements/faces for 3D."));
                         break;
                     }
@@ -134,45 +141,10 @@ namespace Interpreter
                 }
             }
             prm.leave_subsection();
-
-            prm.enter_subsection("Mortar");
-            {
-                mortar_flag = prm.get("mortar") == "yes" ? 1 : 0;
-                if (mortar_flag)
-                    {
-                    cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
-                    mortar_degree = prm.get_integer("mortar_degree");
-                    }
-                else
-                {
-                    cont_mortar_flag = 1; // if no mortar, continuous mortar is default
-                    mortar_degree = 0; // if no mortar, mortar degree is 0
-                }
-            }
-            prm.leave_subsection();
-
-            prm.enter_subsection("Solver");
-            {
-                if (prm.get("iterative_method") == "CG")
-                    iter_meth_flag = 0; // CG
-                else if (prm.get("iterative_method") == "GMRES")
-                    iter_meth_flag = 1; // GMRES
-                else
-                    AssertThrow(false, 
-                        ExcMessage("Invalid iterative method flag. Use 'CG' or 'GMRES'."));
-                max_iter = prm.get_integer("max_iter");
-                tol = prm.get_double("tol");
-            }
-            prm.leave_subsection();
-
-            prm.enter_subsection("Print Interface Matrix");
-            {
-                print_interface_matrix_flag = prm.get("print_interface_matrix") == "yes" ? 1 : 0;
-            }
-            prm.leave_subsection();
         }
 
+  // Explicit template instantiation
+  template class MixedStokesBiotProblem<2>;
+  template class MixedStokesBiotProblem<3>;
 
-
-    };
-}   // namespace Interpreter
+} // namespace dd_stokes_biot

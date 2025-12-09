@@ -1,0 +1,57 @@
+# Listing of Parameters
+# ---------------------
+#################################################################################
+# Global Grid and Discretization 
+
+set dim          = 2
+set refinements  = 5
+
+#initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
+
+set initial_grid_2D  = 1, 1
+set initial_grid_3D  = 1, 1, 1
+
+# Enter which subdomain are for Stokes and Biot
+# 1 for Stokes and 2 for Biot
+# Note: Total subdomains should equal number of processes for mpirun
+set grid = 1, 2; 2, 1
+
+
+#################################################################################
+# Discretization Stokes Parameters
+# Enter Finite elemet and quadrature information for Stokes
+
+subsection Stokes Parameters
+    set degree           = 1
+    set quad_degree      = 11
+end
+
+#################################################################################
+# Discretization Biot Parameters
+# Enter Finite elemet and quadrature information for Biot
+
+subsection Biot Parameters
+    set degree           = 1
+    set quad_degree      = 11
+end
+
+#################################################################################
+# Boundary condition enforcement for external Boundaries
+# (D for Dirichlet and N for Neumann)
+# Faces: {bottom, right, top, left, out of plane, inside plane}
+# Example 2D: N, D, N, D represents bottom and top Neumann and other 
+# 2 sides Dirichlet
+
+subsection External Boundary Conditions
+	set essential_dirichlet = no
+	set boundary_2D         = D, N, D, N
+	set boundary_3D         = N, D, D, D, D, D
+end
+
+#################################################################################
+# Parameters for solver ('GMRES')
+
+subsection Solver
+	set max_iter         = 5000
+	set tol              = 1e-9
+end

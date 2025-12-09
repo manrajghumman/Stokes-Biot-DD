@@ -27,6 +27,7 @@
 #include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_tools.h>
+#include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_dgp.h>
 #include <deal.II/fe/fe_raviart_thomas.h>
@@ -64,18 +65,19 @@ namespace mfe_biot
     : mpi_communicator (MPI_COMM_WORLD),
       P_coarse2fine (false),
       P_fine2coarse (false),
-      n_domains(dim,0),
+      cg_iteration(0),
+      gmres_iteration(0),
       prm(bprm),
+      n_domains(dim,0),
+      grid_diameter(0),
       degree (degree),
       mortar_degree(mortar_degree),
       mortar_flag (mortar_flag),
-      cg_iteration(0),
-      gmres_iteration(0),
+      split_flag(split_flag),
+      ic_constr_flag(ic_constr_flag),
       max_cg_iteration(0),
       max_cg_iteration_darcy(0),
       qdegree(11),
-      split_flag(split_flag),
-      ic_constr_flag(ic_constr_flag),
       fe (FE_BDM<dim>(degree), dim,
           FE_DGQ<dim>(degree-1), dim,
           FE_DGQ<dim>(degree-1), 0.5*dim*(dim-1),
@@ -86,8 +88,7 @@ namespace mfe_biot
       computing_timer (mpi_communicator,
                         pcout,
                         TimerOutput::summary,
-                        TimerOutput::wall_times),
-      grid_diameter(0)
+                        TimerOutput::wall_times)
   {}
 
   // MixedBiotProblem::setup_system

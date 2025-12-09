@@ -35,13 +35,14 @@ namespace dd_stokes_biot
   class MixedStokesBiotProblem
   {
   public:
-  MixedStokesBiotProblem (const unsigned int degree,
-                        const bool ess_dir_flag                = 0,
-                        const bool mortar_flag                 = 0,
-                        const unsigned int mortar_degree       = 0,
-                        const unsigned int iter_meth_flag      = 0,
-                        const bool cont_mortar_flag            = 0,
-                        const bool print_interface_matrix_flag = 0);
+  MixedStokesBiotProblem (ParameterHandler &prm);
+  // MixedStokesBiotProblem (const unsigned int degree,
+  //                       const bool ess_dir_flag                = 0,
+  //                       const bool mortar_flag                 = 0,
+  //                       const unsigned int mortar_degree       = 0,
+  //                       const unsigned int iter_meth_flag      = 0,
+  //                       const bool cont_mortar_flag            = 0,
+  //                       const bool print_interface_matrix_flag = 0);
 
     void
     run();
@@ -51,8 +52,15 @@ namespace dd_stokes_biot
     MPI_Comm   mpi_communicator;
     MPI_Status mpi_status;
 
-    Projector::Projector<dim> P_coarse2fine;
-    Projector::Projector<dim> P_fine2coarse;
+    // Projector::Projector<dim> P_coarse2fine;
+    // Projector::Projector<dim> P_fine2coarse;
+
+    void interpret_parameters(dealii::ParameterHandler &prm,
+                              unsigned int &refine,
+                              std::vector<std::vector<unsigned int>> &reps,
+                              std::vector<std::vector<unsigned int>> &dd_info_matrix,
+                              const unsigned int & this_mpi,
+                              const unsigned int &n_processes);
 
     void
     make_grid(const std::vector<unsigned int> &boundary_def);
@@ -62,20 +70,33 @@ namespace dd_stokes_biot
 
     //For implementing GMRES
     void
-	givens_rotation(double v1, double v2, double &cs, double &sn);
+	  givens_rotation(double v1, double v2, double &cs, double &sn);
 
     void
-	apply_givens_rotation(std::vector<double> &h, std::vector<double> &cs, std::vector<double> &sn,
+	  apply_givens_rotation(std::vector<double> &h, std::vector<double> &cs, std::vector<double> &sn,
     							unsigned int k_iteration);
 
     void
-	back_solve(std::vector<std::vector<double>> H, std::vector<double> beta, std::vector<double> &y);
+	  back_solve(std::vector<std::vector<double>> H, std::vector<double> beta, std::vector<double> &y);
 
     double vect_norm(std::vector<double> v);
 
+    ParameterHandler &prm;
+    std::vector<std::vector<unsigned int>> dd_info_matrix;
+    std::vector<unsigned int> external_bdry_ids;
+    unsigned int                           gmres_iteration;
+    double                                 residual;
 
-    unsigned int       gmres_iteration;
-    double             residual;
+    // Subdomain coordinates (assuming logically rectangular blocks)
+    Point<dim> p1;
+    Point<dim> p2;
+    // Number of subdomains in the computational domain
+    std::vector<unsigned int> n_domains;
+    const unsigned int this_mpi;
+    const unsigned int n_processes;
+
+    // Output extra
+    ConditionalOStream pcout;
 
   };
 }// namespace dd_stokes_biot

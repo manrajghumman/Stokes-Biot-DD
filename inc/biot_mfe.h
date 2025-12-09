@@ -202,12 +202,12 @@ namespace mfe_biot
         unsigned long n_Elast;
 
         unsigned long n_stress_mortar;
-		unsigned long n_disp_mortar;
-		unsigned long n_rot_mortar;
-		unsigned long n_flux_mortar;
-		unsigned long n_pressure_mortar;
-		unsigned long n_Elast_mortar;
-		unsigned int n_mortar_dofs;
+        unsigned long n_disp_mortar;
+        unsigned long n_rot_mortar;
+        unsigned long n_flux_mortar;
+        unsigned long n_pressure_mortar;
+        unsigned long n_Elast_mortar;
+        unsigned int n_mortar_dofs;
 
         // Subdomain coordinates (assuming logically rectangular blocks)
         Point <dim> p1;
@@ -216,16 +216,12 @@ namespace mfe_biot
         // Fine triangulation
         Triangulation <dim> triangulation;
         FESystem <dim> fe;
-        FESystem <dim> fe_elast;
-        FESystem <dim> fe_darcy;
         DoFHandler <dim> dof_handler;
-        DoFHandler <dim> dof_handler_elast;
-        DoFHandler <dim> dof_handler_darcy;
 
         // Mortar triangulation
-        Triangulation <dim> triangulation_mortar;
-        FESystem <dim> fe_mortar;
-        DoFHandler <dim> dof_handler_mortar;
+        // Triangulation <dim> triangulation_mortar;
+        // FESystem <dim> fe_mortar;
+        // DoFHandler <dim> dof_handler_mortar;
 
         // Star and bar problem data structures
         BlockSparsityPattern sparsity_pattern;
