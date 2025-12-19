@@ -49,6 +49,7 @@
 namespace dd_stokes_biot
 {
   using namespace dealii;
+  using namespace dd_utilities;
   using namespace mfe_stokes;
   using namespace mfe_biot;
 
@@ -141,15 +142,16 @@ namespace dd_stokes_biot
                 case 2:
                 {
                     int x, y;
+                    //determine the x position
                     if (this_mpi == 0) {x = 0;}
-                    else if (this_mpi % n_domains[0] != 0) {
+                    else if ((this_mpi + 1) % n_domains[0] != 0) {
                         x = this_mpi % n_domains[0];
                     } else {
-                        x = n_domains[0];
+                        x = n_domains[0] - 1;
                     }
-
-                    if (this_mpi == 0) {y = 0;}
-                    else {y = this_mpi / n_domains[0];} 
+                    //determine the y position
+                    if (this_mpi == 0) {y = n_domains[1] - 1;}
+                    else {y = n_domains[1] - this_mpi / n_domains[0] - 1;}
 
                     subdomain_type = dd_info_matrix[y][x]; // for 2D
                     break;
@@ -176,11 +178,36 @@ namespace dd_stokes_biot
             }
 
             MPI_Barrier(mpi_communicator);
-
+            pcout << "--------------------------------------------------------" << std::endl;
+            MPI_Barrier(mpi_communicator);
             // Find neighbors
             neighbors.resize(GeometryInfo<dim>::faces_per_cell, 0);
-            find_neighbors<dim>(this_mpi, n_domains, neighbors, neighbor_type);
+            neighbor_type.resize(GeometryInfo<dim>::faces_per_cell, 0);
+            find_neighbors<dim>(this_mpi, 
+                                n_domains,
+                                dd_info_matrix,
+                                neighbors, 
+                                neighbor_type);
 
+            // MPI_Barrier(mpi_communicator);
+            for (unsigned int proc = 0; proc < n_processes; ++proc)
+            {
+                if (this_mpi == proc) {
+                    std::cout << "Process " << this_mpi 
+                            << " is subdomain type " 
+                            << (subdomain_type == 1 ? "Stokes" : "Biot") 
+                            << std::endl;
+                    std::cout << " with neighbors: ";
+                    for (unsigned int f = 0; f < neighbors.size(); ++f) {
+                        std::cout << "side : " << f << " (" << (neighbor_type[f] == 1 ? "S" : 
+                                    (neighbor_type[f] == 2 ? "B" : "None")) 
+                                << ") " ;
+                    }
+                    std::cout << std::endl;
+                }
+                MPI_Barrier(mpi_communicator);
+            }
+            MPI_Barrier(mpi_communicator);
             // initialize the respective stokes and biot problem objects
             // based on subdomain_type
             if (subdomain_type == 1) // Stokes
@@ -193,10 +220,10 @@ namespace dd_stokes_biot
                     degree   = prm.get_integer("degree");
                     mortar_flag = prm.get("mortar") == "yes" ? 1 : 0;
                     if (mortar_flag)
-                        {
-                            cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
-                            mortar_degree = prm.get_integer("mortar_degree");
-                        }
+                    {
+                        cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
+                        mortar_degree = prm.get_integer("mortar_degree");
+                    }
                     else
                     {
                         cont_mortar_flag = 1; // if no mortar, continuous mortar is default
@@ -207,12 +234,14 @@ namespace dd_stokes_biot
                 MixedStokesProblem<dim> stokes(prm,
                                             degree,
                                             cycle,
+                                            n_domains,
                                             subdomain_type,
                                             neighbors,
                                             neighbor_type,
                                             mortar_flag,
                                             cont_mortar_flag,
                                             mortar_degree);
+                stokes.run();
             
             }
 

@@ -38,6 +38,7 @@ namespace mfe_stokes
   MixedStokesProblem (ParameterHandler &prm,
                       unsigned int &degree,
                       unsigned int &cycle,
+                      std::vector<unsigned int> n_domains,
                       const unsigned int &subdomain_type,
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
@@ -46,13 +47,7 @@ namespace mfe_stokes
                       const bool cont_mortar_flag = 0);
 
     void
-    run(const unsigned int                            refine,
-        const std::vector<unsigned int>              &boundary_def,
-        std::vector<std::vector<unsigned int>> &reps,
-        double                                        tol,
-        std::string                                   name,
-        unsigned int                                  maxiter,
-        unsigned int                                  quad_degree);
+    run();
 
 
   private:
@@ -80,7 +75,7 @@ namespace mfe_stokes
     interpret_parameters();
 
     void
-    setup_system(const std::vector<unsigned int> &boundary_def);
+    setup_system();
 
     void
     assemble_system();
@@ -108,7 +103,7 @@ namespace mfe_stokes
     unsigned int       maxiter;
     double             residual;
     // Number of subdomains in the computational domain
-    // std::vector<unsigned int> n_domains;
+    std::vector<unsigned int> n_domains;
 
     // FE degree and DD parameters
     // const unsigned int degree;
@@ -201,10 +196,10 @@ namespace mfe_stokes
 
 
     // Output extra
-    ConditionalOStream pcout;
+    // ConditionalOStream pcout;
     ConvergenceTable   convergence_table;
     ConvergenceTable   convergence_table_total;
-    TimerOutput        computing_timer;
+    // TimerOutput        computing_timer;
     
 
 

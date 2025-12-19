@@ -65,6 +65,7 @@
 namespace mfe_stokes
 {
   using namespace dealii;
+  using namespace dd_utilities;
 
   // MixedStokesBiotDD class constructor
   template <int dim>
@@ -72,6 +73,7 @@ namespace mfe_stokes
     ParameterHandler &prm,
     unsigned int &degree,
     unsigned int &cycle,
+    std::vector<unsigned int> n_domains,
     const unsigned int &subdomain_type,
     std::vector<int> &neighbors,
     std::vector<unsigned int> &neighbor_type,
@@ -82,6 +84,7 @@ namespace mfe_stokes
     , cycle(cycle)
     , degree(degree)
     // , qdegree(quad_degree)
+    , n_domains(n_domains)
     , subdomain_type(subdomain_type)
     // , external_bdry_ids(external_bdry_ids)
     , mortar_flag(mortar_flag)
@@ -111,27 +114,23 @@ namespace mfe_stokes
     // }()) // Conditional initialization using a lambda function
     , this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator))
     , n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator))
-    , pcout(std::cout,
-            (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
-    , computing_timer(mpi_communicator,
-                      pcout,
-                      TimerOutput::summary,
-                      TimerOutput::wall_times)
+    // , pcout(std::cout,
+    //         (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
+    // , computing_timer(mpi_communicator,
+    //                   std::cout,
+    //                   TimerOutput::summary,
+    //                   TimerOutput::wall_times)
   {
     interpret_parameters();
-    // fe = FESystem<dim>(FE_Q<dim>(degree + 1), // fe for velocity
-    //                     dim,
-    //                     FE_Q<dim>(degree),     // fe for pressure
-    //                     1);
   }
 
 
   // MixedStokesProblem::make_grid_and_dofs
   template <int dim>
   void
-  MixedStokesProblem<dim>::setup_system(const std::vector<unsigned int> &external_bdry_ids)
+  MixedStokesProblem<dim>::setup_system()
   {
-    TimerOutput::Scope t(computing_timer, "make_grid_and_dofs");
+    // TimerOutput::Scope t(computing_timer, "make_grid_and_dofs");
   }
 
 
@@ -140,7 +139,7 @@ namespace mfe_stokes
   void
   MixedStokesProblem<dim>::assemble_system()
   {
-    TimerOutput::Scope t(computing_timer, "Assemble system");
+    // TimerOutput::Scope t(computing_timer, "Assemble system");
     
   }
 
@@ -152,7 +151,7 @@ namespace mfe_stokes
   void
   MixedStokesProblem<dim>::get_interface_dofs()
   {
-    TimerOutput::Scope t(computing_timer, "Get interface DoFs");
+    // TimerOutput::Scope t(computing_timer, "Get interface DoFs");
     
   }
 
@@ -163,7 +162,7 @@ namespace mfe_stokes
   MixedStokesProblem<dim>::assemble_rhs_star(
     FEFaceValues<dim> &fe_face_values)
   {
-    TimerOutput::Scope t(computing_timer, "Assemble RHS star stokes");
+    // TimerOutput::Scope t(computing_timer, "Assemble RHS star stokes");
   }
 
 
@@ -171,7 +170,7 @@ namespace mfe_stokes
   template <int dim>
   void MixedStokesProblem<dim>::solve_bar()
   {
-      TimerOutput::Scope t(computing_timer, "Solve bar stokes");
+      // TimerOutput::Scope t(computing_timer, "Solve bar stokes");
     
   }
 
@@ -179,7 +178,7 @@ namespace mfe_stokes
   template <int dim>
   void MixedStokesProblem<dim>::solve_star()
   {
-    TimerOutput::Scope t(computing_timer, "Solve star");
+    // TimerOutput::Scope t(computing_timer, "Solve star");
     
   }
 
@@ -193,15 +192,7 @@ namespace mfe_stokes
   // MixedStokesProblemDD::run
   template <int dim>
   void
-  MixedStokesProblem<dim>::run(
-
-    const unsigned int                            refine,
-    const std::vector<unsigned int>              &boundary_def,
-    std::vector<std::vector<unsigned int>> &reps,
-    double                                        tol,
-    std::string                                   name,
-    unsigned int                                  maxiter,
-    unsigned int                                  quad_degree)
+  MixedStokesProblem<dim>::run()
   {
 
 
@@ -224,7 +215,42 @@ namespace mfe_stokes
         Assert(reps.size() >= n_processes + 1,
                ExcMessage("Some of the mesh parameters were not provided"));
       }
+    
+    if (cycle == 0)
+    {
+      // Dimensions of the domain (unit hypercube)
+      std::vector<double> subdomain_dimensions(dim);
+      for (unsigned int d = 0; d < dim; ++d)
+        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
+      get_subdomain_coordinates<dim>(
+        this_mpi, n_domains, subdomain_dimensions, p1, p2);
+
+      if (mortar_flag)
+        GridGenerator::subdivided_hyper_rectangle(triangulation,
+                                                  reps[this_mpi],
+                                                  p1,
+                                                  p2);
+      else
+        GridGenerator::subdivided_hyper_rectangle(triangulation,
+                                                  reps[0],
+                                                  p1,
+                                                  p2);
+
+      // if (mortar_flag)
+      //   GridGenerator::subdivided_hyper_rectangle(triangulation_mortar,
+      //                                             reps[n_processes],
+      //                                             p1,
+      //                                             p2);
+    }
+    else {
+      triangulation.refine_global();
+    }
+    
+    setup_system();
+    get_interface_dofs();
+    assemble_system();
+    
     // for (unsigned int cycle = 0; cycle < refine; ++cycle)
     //   {
     //     gmres_iteration = 0;

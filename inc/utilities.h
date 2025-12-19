@@ -16,7 +16,7 @@
 #include <deal.II/numerics/fe_field_function.h>
 #include <deal.II/base/convergence_table.h>
 
-namespace dd_stokes_biot
+namespace dd_utilities
 {
   using namespace dealii;
 
@@ -199,12 +199,14 @@ namespace dd_stokes_biot
   void
   find_neighbors(const unsigned int &             this_mpi,
                  const std::vector<unsigned int> &n_doms,
+                 std::vector<std::vector<unsigned int>> & dd_info_matrix,
                  std::vector<int>            &neighbors,
                  std::vector<unsigned int>   &neighbor_type)
   {
     Assert(neighbors.size() == 2.0 * dim,
            ExcDimensionMismatch(neighbors.size(), 2.0 * dim));
-
+    Assert(neighbor_type.size() == 2.0 * dim,
+           ExcDimensionMismatch(neighbor_type.size(), 2.0 * dim));
     switch (dim)
       {
         case 2:
@@ -230,7 +232,6 @@ namespace dd_stokes_biot
               neighbors[2] = this_mpi + n_doms[0];
               neighbors[3] = this_mpi - 1;
             }
-
           break;
 
         case 3:
@@ -338,6 +339,22 @@ namespace dd_stokes_biot
                  neighbors[i] >= int(n_doms[0] * n_doms[1] * n_doms[2]))
           neighbors[i] = -1;
       }
+    if (dim == 2) {
+      if (neighbors[0] < 0) {neighbor_type[0] = -1;}
+      else
+        neighbor_type[0] = dd_info_matrix[n_doms[1] - neighbors[0] / n_doms[0] - 1][neighbors[0] % n_doms[0]];
+      if (neighbors[1] < 0) {neighbor_type[1] = -1;}
+      else
+        neighbor_type[1] = dd_info_matrix[n_doms[1] - neighbors[1] / n_doms[0] - 1][neighbors[1] % n_doms[0]];
+      if (neighbors[2] < 0) {neighbor_type[2] = -1;}
+      else
+        neighbor_type[2] = dd_info_matrix[n_doms[1] - neighbors[2] / n_doms[0] - 1][neighbors[2] % n_doms[0]];
+      if (neighbors[3] < 0) {neighbor_type[3] = -1;}
+      else
+        neighbor_type[3] = dd_info_matrix[n_doms[1] - neighbors[3] / n_doms[0] - 1][neighbors[3] % n_doms[0]];
+    } else {
+      Assert(false, ExcMessage("Dimension = 3 not  neighbors_type not yet supported"));
+    }
   }
 
   template <int dim, typename Number, int spacedim = dim>
@@ -789,6 +806,6 @@ namespace dd_stokes_biot
 
   }
 
-} // namespace dd_stokes_biot
+} // namespace dd_utilities
 
 #endif // STOKES_BIOT_DD_UTILITIES_H

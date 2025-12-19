@@ -52,7 +52,7 @@
 namespace mfe_biot
 {
   using namespace dealii;
-  using namespace dd_stokes_biot;
+  using namespace dd_utilities;
 
   // MixedBiotProblem class constructor
   template <int dim>
