@@ -23,6 +23,8 @@
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
 #include <deal.II/fe/fe_nothing.h>
+#include <deal.II/fe/fe_dgq.h>
+#include <deal.II/fe/fe_bdm.h>
 
 #include <deal.II/grid/grid_generator.h>
 #include <deal.II/grid/grid_in.h>
@@ -72,6 +74,7 @@ namespace mfe_stokes
   MixedStokesProblem<dim>::MixedStokesProblem(
     ParameterHandler &prm,
     unsigned int &degree,
+    unsigned int &degree_biot,
     unsigned int &cycle,
     std::vector<unsigned int> n_domains,
     const unsigned int &subdomain_type,
@@ -103,6 +106,12 @@ namespace mfe_stokes
          FE_Q<dim>(degree),//fe for pressure
          1)
     , dof_handler(triangulation)
+    , fe_biot(FE_BDM<dim>(degree_biot), dim,
+                FE_DGQ<dim>(degree_biot-1), dim,
+                FE_DGQ<dim>(degree_biot-1), 0.5*dim*(dim-1),
+                FE_BDM<dim>(degree_biot), 1,
+                FE_DGQ<dim>(degree_biot-1), 1)
+    , dof_handler_biot(triangulation)
     // , dof_handler_mortar(triangulation_mortar)
     // ,fe_mortar([mortar_degree, cont_mortar_flag]() -> FESystem<dim> {
     //   if (mortar_degree > 0 && cont_mortar_flag)
@@ -114,8 +123,8 @@ namespace mfe_stokes
     // }()) // Conditional initialization using a lambda function
     , this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator))
     , n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator))
-    // , pcout(std::cout,
-    //         (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
+    , pcout(std::cout,
+            (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
     // , computing_timer(mpi_communicator,
     //                   std::cout,
     //                   TimerOutput::summary,
@@ -131,6 +140,125 @@ namespace mfe_stokes
   MixedStokesProblem<dim>::setup_system()
   {
     // TimerOutput::Scope t(computing_timer, "make_grid_and_dofs");
+    system_matrix.clear();
+
+    // Make interface data structures
+    faces_on_interface.resize(GeometryInfo<dim>::faces_per_cell, 0);
+    // faces_on_interface_mortar.resize(GeometryInfo<dim>::faces_per_cell, 0);
+
+    // Label interface faces and count how many of them there are per interface
+    mark_interface_faces<dim>(triangulation, neighbors, p1, p2, faces_on_interface);
+    // if (mortar_flag)
+    //   mark_interface_faces(
+    //     triangulation_mortar, neighbors, p1, p2, faces_on_interface_mortar);
+    // //this is a function in utilities.h
+
+    pcout << "boundary condition:";
+    for (unsigned int i = 0; i < external_bdry_ids.size(); ++i)
+    {
+      if (external_bdry_ids[i] == 0)
+        external_bdry_ids[i] = 0;
+      else 
+        external_bdry_ids[i] = 7;
+      if (external_bdry_ids[i] == 7)
+        pcout << " N";
+      else if (external_bdry_ids[i] == 0)
+        pcout << " D";
+      else
+        AssertThrow(false, ExcMessage("Invalid boundary condition type. Use 0 for Dirichlet or 7 for Neumann."));
+    }
+    pcout << "" << std::endl;
+    for (const auto &cell : triangulation.active_cell_iterators()){
+      for (const auto &face : cell->face_iterators()){
+        if (face->center()[dim - 1] == 0)
+          if (external_bdry_ids[0] != 0)
+            face->set_all_boundary_ids(external_bdry_ids[0]);
+        if (face->center()[dim - 2] == 1)
+          if (external_bdry_ids[1] != 0)
+            face->set_all_boundary_ids(external_bdry_ids[1]);
+        if (face->center()[dim - 1] == 1)
+          if (external_bdry_ids[2] != 0)
+            face->set_all_boundary_ids(external_bdry_ids[2]);
+        if (face->center()[dim - 2] == 0)
+          if (external_bdry_ids[3] != 0)
+            face->set_all_boundary_ids(external_bdry_ids[3]);
+      }
+    }
+
+    dof_handler.distribute_dofs(fe);
+    DoFRenumbering::component_wise(dof_handler);
+
+    dof_handler_biot.distribute_dofs(fe_biot);
+    DoFRenumbering::component_wise(dof_handler_biot);
+
+    std::vector<types::global_dof_index> dofs_per_component =
+            DoFTools::count_dofs_per_fe_component (dof_handler);
+
+    // dofs_per_component.size() = dim x dim + dim + dim
+    unsigned int n_u = 0, n_p = 0;
+    // Enable for dim = 2, 3 right now only works for dim = 2
+    for (unsigned int i = 0; i < dim; ++i)
+      {
+        n_u += dofs_per_component[i];
+      }
+    n_p = dofs_per_component[dim];
+
+    n_velocity_interface = n_u;
+
+    /**
+     * @brief Constructs a BlockDynamicSparsityPattern object with 2x2 blocks.
+     *
+     * This object is used to store the sparsity pattern of a block matrix,
+     * where each block can have a different sparsity pattern. The constructor
+     * initializes a 2x2 block structure.
+     */
+    BlockDynamicSparsityPattern dsp(2, 2);
+
+    dsp.block(0, 0).reinit(n_u, n_u);
+    dsp.block(0, 1).reinit(n_u, n_p);
+    dsp.block(1, 0).reinit(n_p, n_u);
+    dsp.block(1, 1).reinit(n_p, n_p);
+    dsp.collect_sizes();
+
+    DoFTools::make_sparsity_pattern(dof_handler, dsp);//->this takes too much memory
+    // in moderately-sized 3d problems
+      
+      sparsity_pattern.copy_from(dsp);
+
+    // Initialize system matrix
+    system_matrix.reinit(sparsity_pattern);
+    system_matrix_star.reinit(sparsity_pattern);
+
+    // Reinit solution and RHS vectors
+    solution_bar_stokes.reinit(2);
+    solution_bar_stokes.block(0).reinit(n_u);
+    solution_bar_stokes.block(1).reinit(n_p);
+    solution_bar_stokes.collect_sizes();
+    solution_bar_stokes = 0;
+
+    // Reinit solution and RHS vectors
+    solution_star_stokes.reinit(solution_bar_stokes);
+    solution_star_stokes = 0;
+
+    system_rhs_bar_stokes.reinit(solution_bar_stokes);
+    system_rhs_bar_stokes = 0;
+
+    system_rhs_star_stokes.reinit(solution_bar_stokes);
+    system_rhs_star_stokes = 0;
+
+    pcout << "N velocity dofs: " << n_u
+    <<" | N pressure dofs: "<< n_p
+    << std::endl;
+
+  }
+
+  // MixedStokesProblemDD - initialize the interface data structure
+  template <int dim>
+  void
+  MixedStokesProblem<dim>::get_interface_dofs()
+  {
+    // TimerOutput::Scope t(computing_timer, "Get interface DoFs");
+    
   }
 
 
@@ -140,18 +268,6 @@ namespace mfe_stokes
   MixedStokesProblem<dim>::assemble_system()
   {
     // TimerOutput::Scope t(computing_timer, "Assemble system");
-    
-  }
-
-  
-  
-  
-  // MixedStokesProblemDD - initialize the interface data structure
-  template <int dim>
-  void
-  MixedStokesProblem<dim>::get_interface_dofs()
-  {
-    // TimerOutput::Scope t(computing_timer, "Get interface DoFs");
     
   }
 
@@ -249,6 +365,10 @@ namespace mfe_stokes
     
     setup_system();
     get_interface_dofs();
+
+    // setup_system_biot();
+    // get_interface_dofs_biot();
+
     assemble_system();
     
     // for (unsigned int cycle = 0; cycle < refine; ++cycle)

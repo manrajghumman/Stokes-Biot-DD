@@ -130,7 +130,7 @@ namespace mfe_stokes
                     // Convert each string to a char
                     for (const std::string &s : bvec)
                         if (s[0] == 'N')
-                            external_bdry_ids.push_back(1); // Neumann boundary
+                            external_bdry_ids.push_back(7); // Neumann boundary
                         else if (s[0] == 'D')
                             external_bdry_ids.push_back(0); // Dirichlet boundary
                         else

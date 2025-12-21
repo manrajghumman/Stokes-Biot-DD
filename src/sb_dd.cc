@@ -129,6 +129,7 @@ namespace dd_stokes_biot
                                                     + " not supported"));
                 }
             }
+            
 
             
             // construct a stokes and biot triangulation for each subdomain
@@ -230,9 +231,15 @@ namespace dd_stokes_biot
                         mortar_degree = 0; // if no mortar, mortar degree is 0
                     }
                 }
+                unsigned int degree_biot;
+                prm.enter_subsection("Biot Parameters");
+                {
+                    degree_biot = prm.get_integer("degree");
+                }
                 prm.leave_subsection();
                 MixedStokesProblem<dim> stokes(prm,
                                             degree,
+                                            degree_biot,
                                             cycle,
                                             n_domains,
                                             subdomain_type,

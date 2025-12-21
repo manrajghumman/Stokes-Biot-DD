@@ -37,6 +37,7 @@ namespace mfe_stokes
   public:
   MixedStokesProblem (ParameterHandler &prm,
                       unsigned int &degree,
+                      unsigned int &degree_biot,
                       unsigned int &cycle,
                       std::vector<unsigned int> n_domains,
                       const unsigned int &subdomain_type,
@@ -77,11 +78,17 @@ namespace mfe_stokes
     void
     setup_system();
 
+    // void
+    // setup_system_biot();
+
     void
     assemble_system();
 
     void
     get_interface_dofs();
+
+    // void
+    // get_interface_dofs_biot();
 
     void
     assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
@@ -154,6 +161,9 @@ namespace mfe_stokes
     FESystem<dim>      fe;
     DoFHandler<dim>    dof_handler;
 
+    FESystem<dim>      fe_biot;
+    DoFHandler<dim>    dof_handler_biot;
+
     // Mortar triangulation
     // Triangulation<dim> triangulation_mortar;
     // FESystem<dim>      fe_mortar;
@@ -196,7 +206,7 @@ namespace mfe_stokes
 
 
     // Output extra
-    // ConditionalOStream pcout;
+    ConditionalOStream pcout;
     ConvergenceTable   convergence_table;
     ConvergenceTable   convergence_table_total;
     // TimerOutput        computing_timer;
