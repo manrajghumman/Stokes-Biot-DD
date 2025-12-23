@@ -166,19 +166,19 @@ namespace dd_stokes_biot
                                                     + " not supported"));
             }
 
-            // MPI_Barrier(mpi_communicator);
-            for (unsigned int proc = 0; proc < n_processes; ++proc)
-            {
-                if (this_mpi == proc) {
-                    std::cout << "Process " << this_mpi 
-                            << " is subdomain type " 
-                            << (subdomain_type == 1 ? "Stokes" : "Biot") 
-                            << std::endl;
-                }
-                MPI_Barrier(mpi_communicator);
-            }
+            // // MPI_Barrier(mpi_communicator);
+            // for (unsigned int proc = 0; proc < n_processes; ++proc)
+            // {
+            //     if (this_mpi == proc) {
+            //         std::cout << "Process " << this_mpi 
+            //                 << " is subdomain type " 
+            //                 << (subdomain_type == 1 ? "Stokes" : "Biot") 
+            //                 << std::endl;
+            //     }
+            //     MPI_Barrier(mpi_communicator);
+            // }
 
-            MPI_Barrier(mpi_communicator);
+            // MPI_Barrier(mpi_communicator);
             pcout << "--------------------------------------------------------" << std::endl;
             MPI_Barrier(mpi_communicator);
             // Find neighbors
@@ -201,7 +201,9 @@ namespace dd_stokes_biot
                     std::cout << " with neighbors: ";
                     for (unsigned int f = 0; f < neighbors.size(); ++f) {
                         std::cout << "side : " << f << " (" << (neighbor_type[f] == 1 ? "S" : 
-                                    (neighbor_type[f] == 2 ? "B" : "None")) 
+                                    (neighbor_type[f] == 2 ? "B" : 
+                                    (neighbor_type[f] == 0 ? "None" : "Neighbor type error. "
+                                        "Neighbor type is " + std::to_string(neighbor_type[f])))) 
                                 << ") " ;
                     }
                     std::cout << std::endl;
@@ -209,6 +211,12 @@ namespace dd_stokes_biot
                 MPI_Barrier(mpi_communicator);
             }
             MPI_Barrier(mpi_communicator);
+            // for (unsigned int f = 0; f < neighbors.size(); ++f)
+            // {
+            //     pcout << " Subdomain " << this_mpi 
+            //         << " has neighbor type " << neighbor_type[f]
+            //         << " on side " << f << std::endl;
+            // }
             // initialize the respective stokes and biot problem objects
             // based on subdomain_type
             if (subdomain_type == 1) // Stokes
@@ -231,6 +239,7 @@ namespace dd_stokes_biot
                         mortar_degree = 0; // if no mortar, mortar degree is 0
                     }
                 }
+                prm.leave_subsection();
                 unsigned int degree_biot;
                 prm.enter_subsection("Biot Parameters");
                 {

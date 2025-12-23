@@ -330,26 +330,27 @@ namespace dd_utilities
 
 
     for (unsigned int i = 0; i < neighbors.size(); ++i)
-      {
-        if (neighbors[i] < 0)
-          neighbors[i] = -1;
-        else if (dim == 2 && neighbors[i] >= int(n_doms[0] * n_doms[1]))
-          neighbors[i] = -1;
-        else if (dim == 3 &&
-                 neighbors[i] >= int(n_doms[0] * n_doms[1] * n_doms[2]))
-          neighbors[i] = -1;
-      }
+    {
+      if (neighbors[i] < 0)
+        neighbors[i] = -1;
+      else if (dim == 2 && neighbors[i] >= int(n_doms[0] * n_doms[1]))
+        neighbors[i] = -1;
+      else if (dim == 3 &&
+                neighbors[i] >= int(n_doms[0] * n_doms[1] * n_doms[2]))
+        neighbors[i] = -1;
+    }
+    
     if (dim == 2) {
-      if (neighbors[0] < 0) {neighbor_type[0] = -1;}
+      if (neighbors[0] < 0) {neighbor_type[0] = 0;}
       else
         neighbor_type[0] = dd_info_matrix[n_doms[1] - neighbors[0] / n_doms[0] - 1][neighbors[0] % n_doms[0]];
-      if (neighbors[1] < 0) {neighbor_type[1] = -1;}
+      if (neighbors[1] < 0) {neighbor_type[1] = 0;}
       else
         neighbor_type[1] = dd_info_matrix[n_doms[1] - neighbors[1] / n_doms[0] - 1][neighbors[1] % n_doms[0]];
-      if (neighbors[2] < 0) {neighbor_type[2] = -1;}
+      if (neighbors[2] < 0) {neighbor_type[2] = 0;}
       else
         neighbor_type[2] = dd_info_matrix[n_doms[1] - neighbors[2] / n_doms[0] - 1][neighbors[2] % n_doms[0]];
-      if (neighbors[3] < 0) {neighbor_type[3] = -1;}
+      if (neighbors[3] < 0) {neighbor_type[3] = 0;}
       else
         neighbor_type[3] = dd_info_matrix[n_doms[1] - neighbors[3] / n_doms[0] - 1][neighbors[3] % n_doms[0]];
     } else {

@@ -61,6 +61,8 @@ namespace mfe_stokes
     unsigned int degree;
     unsigned int qdegree;
     const unsigned int subdomain_type;
+    bool stokes_neighbor;
+    bool biot_neighbor;
     std::vector<unsigned int> external_bdry_ids;
     bool mortar_flag, cont_mortar_flag;
     unsigned int mortar_degree;
@@ -78,8 +80,8 @@ namespace mfe_stokes
     void
     setup_system();
 
-    // void
-    // setup_system_biot();
+    void
+    setup_system_biot();
 
     void
     assemble_system();
@@ -150,6 +152,8 @@ namespace mfe_stokes
 
     unsigned long n_velocity_interface;
     unsigned long n_velocity_interface_fe;
+    unsigned long n_biot_stress;
+    unsigned long n_darcy_vel;
     int           interface_dofs_size;
 
     // Subdomain coordinates (assuming logically rectangular blocks)
@@ -161,8 +165,13 @@ namespace mfe_stokes
     FESystem<dim>      fe;
     DoFHandler<dim>    dof_handler;
 
-    FESystem<dim>      fe_biot;
-    DoFHandler<dim>    dof_handler_biot;
+    // The fe space of Biot stress in the meaning of displacement
+    FESystem<dim>      fe_biot_stress;
+    DoFHandler<dim>    dof_handler_biot_stress;
+
+    // The fe space of Biot velocity in the meaning of pressure
+    FESystem<dim>      fe_darcy_vel;
+    DoFHandler<dim>    dof_handler_darcy_vel;
 
     // Mortar triangulation
     // Triangulation<dim> triangulation_mortar;
@@ -188,6 +197,8 @@ namespace mfe_stokes
     BlockVector<double> solution_star_stokes;
     BlockVector<double> solution;
     BlockVector<double> exact_solution_at_nodes;
+    BlockVector<double> biot_stress_vec;
+    BlockVector<double> darcy_velocity_vec;
     std::vector<BlockVector<double>> exact_normal_stress_at_nodes_fe;
     std::vector<BlockVector<double>> exact_normal_stress_at_nodes_mortar;
     BlockVector<double> system_rhs_bar_stokes;

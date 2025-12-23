@@ -14,7 +14,7 @@ set initial_grid_3D  = 1, 1, 1
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
 # Note: Total subdomains should equal number of processes for mpirun
-set grid = 1, 1, 2; 1, 2, 1
+set grid = 1, 2
 
 
 #################################################################################
