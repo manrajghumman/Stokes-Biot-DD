@@ -260,6 +260,34 @@ namespace dd_stokes_biot
                 stokes.run();
             
             }
+            else if (subdomain_type == 2) // Biot
+            {
+                // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
+                unsigned int degree, mortar_degree;
+                bool mortar_flag;
+                prm.enter_subsection("Biot Parameters");
+                {
+                    degree   = prm.get_integer("degree");
+                    mortar_flag = prm.get("mortar") == "yes" ? 1 : 0;
+                    if (mortar_flag)
+                        mortar_degree = prm.get_integer("mortar_degree");
+                    else
+                        mortar_degree = 0; // if no mortar, mortar degree is 0
+                }
+                prm.leave_subsection();
+
+                MixedBiotProblem<dim> biot(prm,
+                                            degree,
+                                            cycle,
+                                            n_domains,
+                                            subdomain_type,
+                                            neighbors,
+                                            neighbor_type,
+                                            mortar_flag,
+                                            mortar_degree);
+                biot.run();
+            
+            }
 
             // // Dimensions of the domain (unit hypercube)
                 // std::vector<double> subdomain_dimensions(dim);

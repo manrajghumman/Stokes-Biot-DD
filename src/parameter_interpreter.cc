@@ -70,7 +70,7 @@ namespace mfe_stokes
     
     /*
      * This function interprets parameters read from a parameter file 
-     * for a Stokes Biot problem in either 2D or 3D, including type of domain,
+     * for the Stokes part of Stokes Biot problem in either 2D or 3D, including type of domain,
      * initial refinement of each subdomain and external boundary conditions.
      * Read from the parameter handler object prm given in input.
      */
@@ -177,3 +177,118 @@ namespace mfe_stokes
   template class MixedStokesProblem<2>;
   template class MixedStokesProblem<3>;
 } // namespace mfe_stokes
+
+namespace mfe_biot
+{
+    using namespace dealii;
+    
+    /*
+     * This function interprets parameters read from a parameter file 
+     * for the Biot part of Stokes Biot problem in either 2D or 3D, including 
+     * type of domain, initial refinement of each subdomain and external 
+     * boundary conditions. Read from the parameter handler object prm given 
+     * in input.
+     */
+    template <int dim>
+    void MixedBiotProblem<dim>::interpret_parameters()
+    {
+        prm.enter_subsection("Biot Parameters");
+        {
+            qdegree  = prm.get_integer("quad_degree");  
+        }
+        prm.leave_subsection();
+        // make initial refinement matrix (reps) for each subdomain
+        switch (dim)
+        {   
+            case 2:
+            {
+                // Get the string and split into a vector of strings
+                std::vector<int> bvec = Utilities::string_to_int(
+                                Utilities::split_string_list(prm.get("initial_grid_2D"))); 
+                AssertThrow(bvec.size() == dim, 
+                            ExcMessage("Initial grid size must match the dimension."));
+                // Initialize mesh_m2d with 2D grid sizes
+                // Uniform initial mesh for all processes
+                for (unsigned int i = 0; i < n_processes + 1; ++i)
+                    reps.push_back({static_cast<unsigned int>(bvec[0]), static_cast<unsigned int>(bvec[1])}); 
+                break;
+            }
+            case 3:
+            {
+                // Get the string and split into a vector of strings
+                std::vector<int> bvec = Utilities::string_to_int(
+                                Utilities::split_string_list(prm.get("initial_grid_3D"))); 
+                AssertThrow(bvec.size() == dim, 
+                            ExcMessage("Initial grid size must match the dimension."));
+                // Initialize mesh_m2d with 3D grid sizes
+                // Uniform initial mesh for all processes
+                for (unsigned int i = 0; i < n_processes + 1; ++i)
+                    reps.push_back({static_cast<unsigned int>(bvec[0]), 
+                        static_cast<unsigned int>(bvec[1]), static_cast<unsigned int>(bvec[2])}); 
+                break;
+            }
+            default:
+                AssertThrow(false, ExcMessage("Dimension must be either 2 or 3."));
+        }
+        
+        // Interpret external boundary conditions
+        prm.enter_subsection("External Boundary Conditions");
+        {
+            // ess_dir_flag = prm.get("essential_dirichlet") == "yes" ? 1 : 0;
+            switch (dim)
+            {
+                case 2:
+                {
+                    // Get the string and split into a vector of strings
+                    std::vector<std::string> bvec 
+                                = Utilities::split_string_list(prm.get("boundary_2D")); 
+                    // Convert each string to a char
+                    for (const std::string &s : bvec)
+                        if (s[0] == 'N')
+                            external_bdry_ids.push_back(7); // Neumann boundary
+                        else if (s[0] == 'D')
+                            external_bdry_ids.push_back(0); // Dirichlet boundary
+                        else
+                            AssertThrow(false, ExcMessage("Invalid boundary condition type." 
+                                " Use 'N' for Neumann or 'D' for Dirichlet."));
+                    // Ensure the boundary vector has exactly 4 elements
+                    AssertThrow(external_bdry_ids.size() == 4, 
+                            ExcMessage("Boundary vector must have exactly 4 elements/edges for 2D."));
+                    break;
+                }
+                case 3:
+                {
+                    // Get the string and split into a vector of strings
+                    std::vector<std::string> bvec 
+                                = Utilities::split_string_list(prm.get("boundary_3D")); 
+                    // Convert each string to a char
+                    for (const std::string &s : bvec)
+                        if (s[0] == 'N')
+                            external_bdry_ids.push_back(1); // Neumann boundary
+                        else if (s[0] == 'D')
+                            external_bdry_ids.push_back(0); // Dirichlet boundary
+                        else
+                            AssertThrow(false, 
+                                ExcMessage("Invalid boundary condition type."
+                                            " Use 'N' for Neumann or 'D' for Dirichlet."));
+                    // Ensure the boundary vector has exactly 4 elements
+                    AssertThrow(external_bdry_ids.size() == 6, 
+                                ExcMessage("Boundary vector must have exactly 6 elements/faces for 3D."));
+                    break;
+                }
+                default:
+                    AssertThrow(false, ExcMessage("Dimension must be either 2 or 3."));
+            }
+        }
+        prm.leave_subsection();
+
+        prm.enter_subsection("Solver");
+        {
+            maxiter = prm.get_integer("max_iter");
+            tol = prm.get_double("tol");
+        }
+    }
+    // Explicit template instantiation
+  template class MixedBiotProblem<2>;
+  template class MixedBiotProblem<3>;
+} // namespace mfe_biot

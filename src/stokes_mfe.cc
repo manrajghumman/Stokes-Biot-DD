@@ -108,11 +108,6 @@ namespace mfe_stokes
          FE_Q<dim>(degree),//fe for pressure
          1)
     , dof_handler(triangulation)
-    // , fe_biot(FE_BDM<dim>(degree_biot), dim,
-    //             FE_DGQ<dim>(degree_biot-1), dim,
-    //             FE_DGQ<dim>(degree_biot-1), 0.5*dim*(dim-1),
-    //             FE_BDM<dim>(degree_biot), 1,
-    //             FE_DGQ<dim>(degree_biot-1), 1)
     , fe_biot_stress(FE_BDM<dim>(degree_biot), dim,
               FE_Nothing<dim>(), 1)
     , fe_darcy_vel(FE_BDM<dim>(degree_biot), 1,
@@ -160,7 +155,7 @@ namespace mfe_stokes
     //     triangulation_mortar, neighbors, p1, p2, faces_on_interface_mortar);
     // //this is a function in utilities.h
 
-    pcout << "boundary condition:";
+    pcout << "Stokes Part:\n boundary condition:";
     for (unsigned int i = 0; i < external_bdry_ids.size(); ++i)
     {
       if (external_bdry_ids[i] == 0)
@@ -250,7 +245,7 @@ namespace mfe_stokes
     system_rhs_star_stokes.reinit(solution_bar_stokes);
     system_rhs_star_stokes = 0;
 
-    pcout << "N velocity dofs: " << n_u
+    pcout << "Stokes part:\n N velocity dofs: " << n_u
     <<" | N pressure dofs: "<< n_p
     << std::endl;
 
@@ -274,7 +269,7 @@ namespace mfe_stokes
     for (unsigned int i = 0; i < dim; ++i)
       n_biot_stress += dofs_per_component_stress[i*dim];
 
-    pcout << "N stress dofs: " << n_biot_stress << std::endl;
+    pcout << " N stress dofs: " << n_biot_stress << std::endl;
     
     // write the dof count for velocity in biot side!!
     dof_handler_darcy_vel.distribute_dofs(fe_darcy_vel);
@@ -288,7 +283,7 @@ namespace mfe_stokes
     n_darcy_vel = dofs_per_component_darcy_vel[0];
     n_darcy_vel_extra = dofs_per_component_darcy_vel[dim];
 
-    pcout << "N darcy velocity dofs: " << n_darcy_vel << std::endl;
+    pcout << " N darcy velocity dofs: " << n_darcy_vel << std::endl;
 
     // Reinit Biot stress vector 
     biot_stress_vec.reinit(2);
@@ -400,7 +395,7 @@ namespace mfe_stokes
     for (unsigned int i = 0; i < n_faces_per_cell; ++i)
       if (neighbors[i] >= 0)
       {
-        std::cout << "Number of interface dofs on face " << i
+        std::cout << "Stokes Part:\n Number of interface dofs on face " << i
               << " : " << interface_dofs[i].size() << std::endl;
       }
 
@@ -647,10 +642,10 @@ namespace mfe_stokes
     // tolerance = tol;
     // qdegree   = quad_degree;
 
-    const unsigned int this_mpi =
-      Utilities::MPI::this_mpi_process(mpi_communicator);
-    const unsigned int n_processes =
-      Utilities::MPI::n_mpi_processes(mpi_communicator);
+    // const unsigned int this_mpi =
+    //   Utilities::MPI::this_mpi_process(mpi_communicator);
+    // const unsigned int n_processes =
+    //   Utilities::MPI::n_mpi_processes(mpi_communicator);
 
     Assert(reps[0].size() == dim, ExcDimensionMismatch(reps[0].size(), dim));
 
@@ -700,7 +695,7 @@ namespace mfe_stokes
     //   }
     for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
       {
-        if (neighbor_type[side] == subdomain_type)
+        if (neighbor_type[side] == 1)
           stokes_neighbor = true; // Stokes-Stokes interface
         else if (neighbor_type[side] == 2) 
           biot_neighbor = true; // Stokes-Biot interface
