@@ -35,7 +35,6 @@ namespace mfe_biot
     public:
         MixedBiotProblem(ParameterHandler &prm,
                           unsigned int &degree,
-                          unsigned int &cycle,
                           std::vector<unsigned int> n_domains,
                           const unsigned int &subdomain_type,
                           std::vector<int> &neighbors,
@@ -43,7 +42,7 @@ namespace mfe_biot
                           const bool mortar_flag,
                           const unsigned int mortar_degree);
 
-        void run();
+        void run(unsigned int cycle);
 
     private:
         MPI_Comm mpi_communicator;
@@ -127,7 +126,6 @@ namespace mfe_biot
         std::vector<unsigned int> n_domains;
 
         // FE degree and DD parameters
-        unsigned int cycle;
         const unsigned int degree;
         const unsigned int mortar_degree;
         const unsigned int mortar_flag;
@@ -146,6 +144,7 @@ namespace mfe_biot
         std::vector<unsigned int> faces_on_interface;
         std::vector<unsigned int> faces_on_interface_mortar;
         std::vector <std::vector<unsigned int>> interface_dofs;
+        std::vector <unsigned int> interface_dofs_total;
 
 
         unsigned long n_stress;

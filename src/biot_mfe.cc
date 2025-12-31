@@ -58,7 +58,6 @@ namespace mfe_biot
   template <int dim>
   MixedBiotProblem<dim>::MixedBiotProblem (ParameterHandler &prm,
                                             unsigned int &degree,
-                                            unsigned int &cycle,
                                             std::vector<unsigned int> n_domains,
                                             const unsigned int &subdomain_type,
                                             std::vector<int> &neighbors,
@@ -67,7 +66,6 @@ namespace mfe_biot
                                             const unsigned int mortar_degree)
     : prm(prm),
       degree(degree),
-      cycle(cycle),
       n_domains(n_domains),
       subdomain_type(subdomain_type),
       neighbors(neighbors),
@@ -137,10 +135,10 @@ namespace mfe_biot
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 1)
+        if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 1)
+        if (face->center()[dim - 1] == 2)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -265,7 +263,47 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::get_interface_dofs ()
   {
+    interface_dofs.resize(GeometryInfo<dim>::faces_per_cell, std::vector<unsigned int> ());
+    std::vector<types::global_dof_index> local_face_dof_indices;
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
 
+    typename DoFHandler<dim>::active_cell_iterator cell, endc;
+    unsigned int side = 0;
+
+    cell = dof_handler.begin_active(), endc = dof_handler.end();
+    local_face_dof_indices.resize(fe.dofs_per_face);
+
+    for (; cell != endc; ++cell)
+      for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
+        if (cell->at_boundary(face_n) &&
+              (cell->face(face_n)->boundary_id() != 0 && 
+                cell->face(face_n)->boundary_id() !=7))
+        {
+          cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
+          side = cell->face(face_n)->boundary_id() - 1;
+          // if (neighbor_type[side] == subdomain_type) // Stokes-Stokes interface -> don't have to do this for Biot subdomains
+          for (auto el : local_face_dof_indices)
+          {
+            if (el < n_stress){
+              interface_dofs[side].push_back(el);
+              interface_dofs_total.push_back(el);                                                    
+            }
+            else if(el >= n_stress+n_disp+n_rot && el < n_stress+n_disp+n_rot+n_flux)
+            {
+              interface_dofs[side].push_back(el);
+              interface_dofs_total.push_back(el);        
+            }
+          }
+        }
+
+    for (unsigned int i = 0; i < n_faces_per_cell; ++i)
+    {
+      if (neighbors[i] >= 0)
+      {
+        std::cout << "Biot Part:\n Number of interface dofs on face " << i
+              << " : " << interface_dofs[i].size() << std::endl;
+      }
+    }
   }
 
   // MixedBiotProblem - assemble_system
@@ -273,6 +311,55 @@ namespace mfe_biot
   void MixedBiotProblem<dim>::assemble_system ()
   {
     // TimerOutput::Scope t(computing_timer, "Assemble system");          
+    system_matrix = 0;
+    //system_rhs_bar = 0;
+
+    QGauss<dim>   quadrature_formula(degree+3);
+    //QGauss<dim-1> face_quadrature_formula(qdegree);
+
+    FEValues<dim> fe_values (fe, quadrature_formula,
+                              update_values    | update_gradients |
+                              update_quadrature_points  | update_JxW_values);
+
+    const unsigned int   dofs_per_cell   = fe.dofs_per_cell;
+    const unsigned int   n_q_points      = quadrature_formula.size();
+    //const unsigned int   n_face_q_points = face_quadrature_formula.size();
+
+    FullMatrix<double>   local_matrix (dofs_per_cell, dofs_per_cell);
+
+    std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
+
+    const LameParameters<dim> lame_function;
+    const KInverse<dim> k_inverse;
+
+    std::vector<Vector<double>> lame_parameters_values(n_q_points, Vector<double>(2));
+    std::vector<Tensor<2,dim>>  k_inverse_values(n_q_points);
+
+    // Rotation variable is either a scalar(2d) or a vector(3d)
+    const unsigned int rotation_dim = 0.5*dim*(dim-1);
+    // Stress DoFs vectors
+    std::vector<FEValuesExtractors::Vector> stresses(dim, FEValuesExtractors::Vector());
+    std::vector<FEValuesExtractors::Scalar> rotations(rotation_dim, FEValuesExtractors::Scalar());
+    // Displacement DoFs
+    const FEValuesExtractors::Vector displacement (dim*dim);
+    // Velocity and Pressure DoFs
+    const FEValuesExtractors::Vector velocity (dim*dim + dim + 0.5*dim*(dim-1));
+    const FEValuesExtractors::Scalar pressure (dim*dim + dim + 0.5*dim*(dim-1) + dim);
+
+    for (unsigned int i=0; i<dim; ++i)
+    {
+        const FEValuesExtractors::Vector tmp_stress(i*dim);
+        stresses[i].first_vector_component = tmp_stress.first_vector_component;
+        if (dim == 2 && i == 0)
+        {
+            const FEValuesExtractors::Scalar tmp_rotation(dim*dim + dim);
+            rotations[i].component = tmp_rotation.component;
+        } else if (dim == 3) {
+            const FEValuesExtractors::Scalar tmp_rotation(dim*dim + dim + i);
+            rotations[i].component = tmp_rotation.component;
+        }
+    }
+
   }
 
 
@@ -308,7 +395,7 @@ namespace mfe_biot
 
   // MixedBiotProblem::run
   template <int dim>
-  void MixedBiotProblem<dim>::run ()
+  void MixedBiotProblem<dim>::run (unsigned int cycle)
   {
     Assert(reps[0].size() == dim, ExcDimensionMismatch(reps[0].size(), dim));
 
@@ -324,9 +411,11 @@ namespace mfe_biot
     {
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
-      for (unsigned int d = 0; d < dim; ++d)
+      for (unsigned int d = 1; d < dim; ++d)
         subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
+      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
+      
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
 
@@ -346,17 +435,7 @@ namespace mfe_biot
       //                                             reps[n_processes],
       //                                             p1,
       //                                             p2);
-    }
-    else {
-      triangulation.refine_global();
-    }
-
-    // for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
-    //   {
-    //     std::cout << "Neighbor type on side " << side
-    //           << " : " << neighbor_type[side] << std::endl;
-    //   }
-    for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
+      for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
       {
         if (neighbor_type[side] == 1)
           stokes_neighbor = true; // Stokes-Stokes interface
@@ -369,6 +448,16 @@ namespace mfe_biot
             + std::to_string(subdomain_type) + " on side " 
             + std::to_string(side) + "."));
       }
+    }
+    else {
+      triangulation.refine_global();
+    }
+
+    // for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
+    //   {
+    //     std::cout << "Neighbor type on side " << side
+    //           << " : " << neighbor_type[side] << std::endl;
+    //   }
     
     setup_system();
       

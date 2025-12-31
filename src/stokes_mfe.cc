@@ -75,7 +75,6 @@ namespace mfe_stokes
     ParameterHandler &prm,
     unsigned int &degree,
     unsigned int &degree_biot,
-    unsigned int &cycle,
     std::vector<unsigned int> n_domains,
     const unsigned int &subdomain_type,
     std::vector<int> &neighbors,
@@ -84,7 +83,6 @@ namespace mfe_stokes
     const unsigned int mortar_degree,
     const bool cont_mortar_flag)
     : prm(prm)
-    , cycle(cycle)
     , degree(degree)
     // , qdegree(quad_degree)
     , n_domains(n_domains)
@@ -175,10 +173,10 @@ namespace mfe_stokes
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 1)
+        if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 1)
+        if (face->center()[dim - 1] == 2)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -393,11 +391,13 @@ namespace mfe_stokes
           }
     }
     for (unsigned int i = 0; i < n_faces_per_cell; ++i)
+    {
       if (neighbors[i] >= 0)
       {
         std::cout << "Stokes Part:\n Number of interface dofs on face " << i
               << " : " << interface_dofs[i].size() << std::endl;
       }
+    }
 
   }
 
@@ -633,19 +633,10 @@ namespace mfe_stokes
   // MixedStokesProblemDD::run
   template <int dim>
   void
-  MixedStokesProblem<dim>::run()
+  MixedStokesProblem<dim>::run(unsigned int cycle)
   {
-
-
-
-
     // tolerance = tol;
     // qdegree   = quad_degree;
-
-    // const unsigned int this_mpi =
-    //   Utilities::MPI::this_mpi_process(mpi_communicator);
-    // const unsigned int n_processes =
-    //   Utilities::MPI::n_mpi_processes(mpi_communicator);
 
     Assert(reps[0].size() == dim, ExcDimensionMismatch(reps[0].size(), dim));
 
@@ -661,8 +652,10 @@ namespace mfe_stokes
     {
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
-      for (unsigned int d = 0; d < dim; ++d)
+      for (unsigned int d = 1; d < dim; ++d)
         subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
+
+      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
 
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
@@ -683,9 +676,23 @@ namespace mfe_stokes
       //                                             reps[n_processes],
       //                                             p1,
       //                                             p2);
+      for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
+        {
+          if (neighbor_type[side] == 1)
+            stokes_neighbor = true; // Stokes-Stokes interface
+          else if (neighbor_type[side] == 2) 
+            biot_neighbor = true; // Stokes-Biot interface
+          else if (neighbor_type[side] != 0)
+            Assert(false, ExcMessage("Unknown neighbor type! The type must "
+              "be 1 for Stokes or 2 for Biot. But got " + std::to_string(neighbor_type[side])
+              + " for the subdomain " + std::to_string(this_mpi) + " of type " 
+              + std::to_string(subdomain_type) + " on side " 
+              + std::to_string(side) + "."));
+        }
     }
     else {
       triangulation.refine_global();
+
     }
 
     // for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
@@ -693,156 +700,19 @@ namespace mfe_stokes
     //     std::cout << "Neighbor type on side " << side
     //           << " : " << neighbor_type[side] << std::endl;
     //   }
-    for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
-      {
-        if (neighbor_type[side] == 1)
-          stokes_neighbor = true; // Stokes-Stokes interface
-        else if (neighbor_type[side] == 2) 
-          biot_neighbor = true; // Stokes-Biot interface
-        else if (neighbor_type[side] != 0)
-          Assert(false, ExcMessage("Unknown neighbor type! The type must "
-            "be 1 for Stokes or 2 for Biot. But got " + std::to_string(neighbor_type[side])
-            + " for the subdomain " + std::to_string(this_mpi) + " of type " 
-            + std::to_string(subdomain_type) + " on side " 
-            + std::to_string(side) + "."));
-      }
+    
     
     setup_system();
     if(biot_neighbor)
       setup_system_biot();
+
+    // std::cout << "Stokes Part: \nBiot neighbor: " << biot_neighbor << std::endl;
       
     get_interface_dofs();
 
     assemble_system();
     
-    // for (unsigned int cycle = 0; cycle < refine; ++cycle)
-    //   {
-    //     gmres_iteration = 0;
-    //     interface_dofs.clear();
-    //     interface_dofs_fe.clear();
-    //     interface_dofs_find_neumann.clear();
-
-    //     if (Utilities::MPI::n_mpi_processes(mpi_communicator) == 1)
-    //       {
-    //         pcout << "Making grid and DOFs..."
-    //           << "\n";
-            
-    //         setup_system(boundary_def);
-
-    //         pcout << "Assembling system..."
-    //               << "\n";
-        
-    //         assemble_system();
-    //         pcout<<"assembled system!!"<<std::endl;
-    //         solve_bar();
-    //         solution = solution_bar_stokes;
-
-    //         // compute_errors(cycle, reps);
-
-    //         // computing_timer.print_summary();
-    //         computing_timer.reset();
-
-    //         // output_results(cycle, refine, name);
-    //         // output_dof_results(cycle);
-    //         pcout << "dof output written" << std::endl;
-    //         output_results(cycle);
-    //         pcout << "solution data output written" << std::endl;
-    //         // output_interface_results(cycle);
-
-    //         triangulation.clear();
-    //         dof_handler.clear();
-    //         // convergence_table.clear();
-    //         faces_on_interface.clear();
-    //         faces_on_interface_mortar.clear();
-    //         interface_dofs.clear();
-    //         interface_fe_function.clear();
-    //         interface_fe_function_mortar.clear();
-    //         if (mortar_flag)
-    //           {
-    //             triangulation_mortar.clear();
-    //             P_fine2coarse.reset();
-    //             P_coarse2fine.reset();
-    //           }
-    //         dof_handler_mortar.clear();
-    //       }
-    //     else
-    //       {
-    //         pcout << "Making grid and DOFs..."
-    //           << "\n";
-    //         setup_system(boundary_def);
-
-    //         pcout << "Getting interface dofs" << std::endl;
-    //         get_interface_dofs();
-    //         pcout << "Assembling system..."
-    //               << "\n";
-        
-    //         assemble_system();
-    //         pcout<<"Assembled system!!"<<std::endl;
-    //         // output_dof_results(cycle);
-    //         pcout << "dof output written" << std::endl;
-    //         if (mortar_flag)
-    //         {
-    //           // output_dof_results_mortar(cycle);
-    //             pcout << "dof mortar output written" << std::endl;
-    //         }
-
-    //         if (iter_meth_flag == 0)
-    //         {
-    //           pcout << "Starting CG iterations..."
-    //               << "\n";
-    //           // local_cg(maxiter, cycle);
-    //         }
-    //         else if (iter_meth_flag == 1)
-    //         {
-    //           pcout << "Starting GMRES iterations..."
-    //               << "\n";
-    //           // local_gmres(maxiter, cycle);
-    //         }
-    //         else
-    //         {
-    //           AssertThrow(false, ExcMessage("Unknown iterative method!"));
-    //         }
-    //         // compute_errors(cycle, reps);
-
-    //         MPI_Barrier(mpi_communicator);
-
-    //         output_results(cycle);
-    //         // computing_timer.print_summary();
-    //         computing_timer.reset();
-    //         pcout << "----------------------------------------------" << std::endl;
-            
-    //         triangulation.clear();
-    //         dof_handler.clear();
-    //         faces_on_interface.clear();
-    //         faces_on_interface_mortar.clear();
-    //         interface_dofs.clear();
-    //         interface_dofs_fe.clear();
-    //         interface_fe_function.clear();
-    //         interface_fe_function_mortar.clear();
-    //         if (mortar_flag)
-    //           {
-    //             triangulation_mortar.clear();
-    //             P_fine2coarse.reset();
-    //             P_coarse2fine.reset();
-    //           }
-    //         dof_handler_mortar.clear();
-    //       }
-    //   }
-
-    // // print_individual_table_l2<dim>(convergence_table,
-    // //                                iter_meth_flag,
-    // //                                this_mpi,
-    // //                                n_processes,
-    // //                                mpi_communicator);
-    // // print_total_table_l2<dim>(convergence_table_total,
-    // //                           iter_meth_flag,
-    // //                           print_interface_matrix_flag,
-    // //                           this_mpi);
-                              
-    // convergence_table.clear();
-    // convergence_table_total.clear();
-    // faces_on_interface.clear();
-    // faces_on_interface_mortar.clear();
+    
   }
 
   template class MixedStokesProblem<2>;

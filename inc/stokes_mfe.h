@@ -38,7 +38,6 @@ namespace mfe_stokes
   MixedStokesProblem (ParameterHandler &prm,
                       unsigned int &degree,
                       unsigned int &degree_biot,
-                      unsigned int &cycle,
                       std::vector<unsigned int> n_domains,
                       const unsigned int &subdomain_type,
                       std::vector<int> &neighbors,
@@ -48,7 +47,7 @@ namespace mfe_stokes
                       const bool cont_mortar_flag = 0);
 
     void
-    run();
+    run(unsigned int cycle);
 
 
   private:
@@ -57,7 +56,6 @@ namespace mfe_stokes
     const unsigned int this_mpi;
     const unsigned int n_processes;
     ParameterHandler &prm;
-    unsigned int cycle;
     unsigned int degree;
     unsigned int qdegree;
     const unsigned int subdomain_type;

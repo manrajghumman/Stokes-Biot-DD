@@ -25,10 +25,14 @@
 #include <iostream>
 // #include "utilities.h"
 #include "projector.h"
+#include "stokes_mfe.h"
+#include "biot_mfe.h"
 
 namespace dd_stokes_biot
 {
   using namespace dealii;
+  using namespace mfe_stokes;
+  using namespace mfe_biot;
 
   // Mixed Stokes Domain Decomposition class template
   template <int dim>
@@ -53,6 +57,9 @@ namespace dd_stokes_biot
     MPI_Status mpi_status;
     const unsigned int this_mpi;
     const unsigned int n_processes;
+
+    MixedStokesProblem<dim> *stokes;
+    MixedBiotProblem<dim> *biot;
 
     // Projector::Projector<dim> P_coarse2fine;
     // Projector::Projector<dim> P_fine2coarse;
