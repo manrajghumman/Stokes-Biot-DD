@@ -309,15 +309,12 @@ namespace mfe_stokes
     std::vector<types::global_dof_index> local_face_dof_indices;
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
 
-    typename DoFHandler<dim>::active_cell_iterator cell, endc;
     unsigned int side = 0;
 
-    cell = dof_handler.begin_active(), endc = dof_handler.end();
     local_face_dof_indices.resize(fe.dofs_per_face);
 
-    for (; cell != endc; ++cell)
-      for (unsigned int face_n = 0; face_n < n_faces_per_cell;
-             ++face_n)
+    for (const auto &cell : dof_handler.active_cell_iterators())
+      for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
         if (cell->at_boundary(face_n) &&
               (cell->face(face_n)->boundary_id() != 0 && 
                 cell->face(face_n)->boundary_id() !=7))

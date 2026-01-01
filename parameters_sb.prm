@@ -39,6 +39,10 @@ subsection Biot Parameters
 	set mortar            = no
 	set continuous_mortar = yes
 	set mortar_degree     = 1
+	set s_0               = 1.0
+	set alpha_BJS         = 1.0
+	set lame_mu           = 100.0
+	set lame_lambda       = 100.0
 end
 
 #################################################################################

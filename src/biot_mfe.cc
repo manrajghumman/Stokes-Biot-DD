@@ -267,13 +267,11 @@ namespace mfe_biot
     std::vector<types::global_dof_index> local_face_dof_indices;
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
 
-    typename DoFHandler<dim>::active_cell_iterator cell, endc;
     unsigned int side = 0;
 
-    cell = dof_handler.begin_active(), endc = dof_handler.end();
     local_face_dof_indices.resize(fe.dofs_per_face);
 
-    for (; cell != endc; ++cell)
+    for (const auto &cell : dof_handler.active_cell_iterators())
       for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
         if (cell->at_boundary(face_n) &&
               (cell->face(face_n)->boundary_id() != 0 && 
@@ -310,24 +308,43 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::assemble_system ()
   {
-    // TimerOutput::Scope t(computing_timer, "Assemble system");          
+    // TimerOutput::Scope t(computing_timer, "Assemble system"); 
+    double s0 = 1.0;
+    double alpha = 1.0;         
     system_matrix = 0;
-    //system_rhs_bar = 0;
+    system_rhs_bar = 0;
 
     QGauss<dim>   quadrature_formula(degree+3);
-    //QGauss<dim-1> face_quadrature_formula(qdegree);
+    QGauss<dim-1> face_quadrature_formula(qdegree);
 
     FEValues<dim> fe_values (fe, quadrature_formula,
                               update_values    | update_gradients |
                               update_quadrature_points  | update_JxW_values);
+    FEFaceValues<dim> fe_face_values (fe, face_quadrature_formula,
+                                            update_values    | update_normal_vectors |
+                                            update_quadrature_points  | update_JxW_values);
 
     const unsigned int   dofs_per_cell   = fe.dofs_per_cell;
     const unsigned int   n_q_points      = quadrature_formula.size();
-    //const unsigned int   n_face_q_points = face_quadrature_formula.size();
+    const unsigned int   n_face_q_points = face_quadrature_formula.size();
 
     FullMatrix<double>   local_matrix (dofs_per_cell, dofs_per_cell);
-
+    Vector<double>       local_rhs (dofs_per_cell);
     std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
+
+    DisplacementBoundaryValues<dim> displacement_boundary_values;
+    PressureBoundaryValues<dim>     pressure_boundary_values;
+    // displacement_boundary_values.set_time(prm.time);
+    // pressure_boundary_values.set_time(prm.time);
+    std::vector<Vector<double>> boundary_values_elast (n_face_q_points, Vector<double>(dim));
+    std::vector<double>         boundary_values_flow (n_face_q_points);
+
+    RightHandSideElasticity<dim>    right_hand_side_elasticity;
+    RightHandSidePressure<dim>      right_hand_side_pressure(s0,alpha);
+    // right_hand_side_elasticity.set_time(prm.time);
+    // right_hand_side_pressure.set_time(prm.time);
+    std::vector<Vector<double>> rhs_values_elast (n_q_points, Vector<double>(dim));
+    std::vector<double>         rhs_values_flow (n_q_points);
 
     const LameParameters<dim> lame_function;
     const KInverse<dim> k_inverse;
@@ -358,6 +375,87 @@ namespace mfe_biot
             const FEValuesExtractors::Scalar tmp_rotation(dim*dim + dim + i);
             rotations[i].component = tmp_rotation.component;
         }
+    }
+    
+    for(const auto &cell : dof_handler.active_cell_iterators())
+    {
+      fe_values.reinit (cell);
+      local_matrix = 0;
+      local_rhs = 0;
+
+      lame_function.vector_value_list (fe_values.get_quadrature_points(), lame_parameters_values);
+      k_inverse.value_list (fe_values.get_quadrature_points(), k_inverse_values);
+
+      // Velocity and pressure
+      std::vector<Tensor<1,dim>>                phi_u(dofs_per_cell);
+      std::vector <double>                      div_phi_u(dofs_per_cell);
+      std::vector <double>                      phi_p(dofs_per_cell);
+
+      // Stress, displacement and rotation
+      std::vector<std::vector<Tensor<1,dim>>> phi_s(dofs_per_cell, std::vector<Tensor<1,dim> > (dim));
+      std::vector<Tensor<1,dim>> div_phi_s(dofs_per_cell);
+      std::vector<Tensor<1,dim>> phi_d(dofs_per_cell);
+      std::vector<Tensor<1,rotation_dim>> phi_r(dofs_per_cell);
+
+      Tensor<2,dim> sigma_i, asigma_j, apId_j;
+      Tensor<1,rotation_dim> asym_i, asym_j;
+
+      for (unsigned int q=0; q<n_q_points; ++q)
+      {
+        for (unsigned int k=0; k<dofs_per_cell; ++k)
+        {
+          // Evaluate test functions
+          phi_u[k] = fe_values[velocity].value (k, q);
+          phi_p[k] = fe_values[pressure].value (k, q);
+
+          div_phi_u[k] = fe_values[velocity].divergence (k, q);
+
+          for (unsigned int s_i=0; s_i<dim; ++s_i)
+          {
+            phi_s[k][s_i] = fe_values[stresses[s_i]].value (k, q);
+            div_phi_s[k][s_i] = fe_values[stresses[s_i]].divergence (k, q);
+          }
+          phi_d[k] = fe_values[displacement].value (k, q);
+
+          for (unsigned int r_i=0; r_i<rotation_dim; ++r_i)
+            phi_r[k][r_i] = fe_values[rotations[r_i]].value (k, q);
+        }
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+        {
+          const double mu = lame_parameters_values[q][1];
+          const double lambda = lame_parameters_values[q][0];
+
+          // compliance_tensor(phi_s[j], mu, lambda, asigma);
+          // compliance_tensor_pressure(phi_p[j], mu, lambda, apId);
+          make_asymmetry_tensor(phi_s[i], asym_i);
+          make_tensor(phi_s[i], sigma_i);
+
+
+
+          for (unsigned int j=0; j<dofs_per_cell; ++j)// i is the test function, multiplied from left
+          {
+            // make_tensor(phi_s[j], sigma);
+            make_asymmetry_tensor(phi_s[j], asym_j);
+            compliance_tensor(phi_s[j], mu, lambda, asigma_j);
+            compliance_tensor_pressure(phi_p[j], mu, lambda, apId_j);
+
+            local_matrix(i, j) += (phi_u[i] * k_inverse_values[q] * phi_u[j] - phi_p[j] * div_phi_u[i]                                     // Darcy law
+                                    + div_phi_u[j] * phi_p[i] + s0*phi_p[i]*phi_p[j] + alpha*trace(asigma_j)*phi_p[i]  // Momentum
+                                    + alpha * alpha * trace(apId_j)*phi_p[i]
+                                    + scalar_product(asigma_j, sigma_i) + alpha*scalar_product(apId_j, sigma_i)                                 // Mixed elasticity eq-ns
+                                    + scalar_product(phi_d[j], div_phi_s[i])  + scalar_product(phi_d[i], div_phi_s[j])
+                                    + scalar_product<1, rotation_dim>(phi_r[i], asym_j)
+                                    + scalar_product<1, rotation_dim>(phi_r[j], asym_i) )
+                                  * fe_values.JxW(q);
+          }
+        }
+      }
+      cell->get_dof_indices (local_dof_indices);
+      for (unsigned int i=0; i<dofs_per_cell; ++i)
+        for (unsigned int j=0; j<dofs_per_cell; ++j)
+          system_matrix.add (local_dof_indices[i],
+                            local_dof_indices[j],
+                            local_matrix(i,j));
     }
 
   }
