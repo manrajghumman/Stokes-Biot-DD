@@ -41,8 +41,8 @@ subsection Biot Parameters
 	set mortar_degree     = 1
 	set s_0               = 1.0
 	set alpha_BJS         = 1.0
-	set lame_mu           = 100.0
-	set lame_lambda       = 100.0
+	set lame_mu           = 1.0
+	set lame_lambda       = 1.0
 end
 
 #################################################################################

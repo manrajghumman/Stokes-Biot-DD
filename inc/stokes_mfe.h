@@ -13,6 +13,7 @@
 #include <deal.II/base/conditional_ostream.h>
 #include <deal.II/base/convergence_table.h>
 #include <deal.II/base/function.h>
+#include <deal.II/base/parameter_handler.h>
 #include <deal.II/base/timer.h>
 #include <deal.II/lac/precondition.h>
 #include <deal.II/base/smartpointer.h>
@@ -56,6 +57,7 @@ namespace mfe_stokes
     const unsigned int this_mpi;
     const unsigned int n_processes;
     ParameterHandler &prm;
+    ParameterHandler prm_fxn;
     unsigned int degree;
     unsigned int qdegree;
     const unsigned int subdomain_type;

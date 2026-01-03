@@ -59,8 +59,9 @@
 #include <algorithm>
 #include <cmath>
 // Utilities, data, etc.
-#include "../inc/data_stokes.h"
 #include "../inc/stokes_mfe.h"
+#include "../inc/data_stokes.h"
+#include "../inc/stokes_parameter_reader.h"
 #include "../inc/utilities.h"
 
 
@@ -131,6 +132,8 @@ namespace mfe_stokes
     //                   TimerOutput::wall_times)
   {
     interpret_parameters();
+    StokesParameterReader param(prm_fxn);
+    param.read_parameters("../test function/stokes.prm");
   }
 
 

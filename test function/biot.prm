@@ -1,0 +1,6 @@
+# Listing of Manufactured solution for Biot subdomain (only 2D)
+# Assumes Stokes-Biot partition along x = 1 for domain (0, 2) x (0, 1)
+# The Biot region is (1, 2) x (0, 1)
+# ---------------------
+#################################################################################
+# Right hand side and Boundary Conditions
