@@ -65,8 +65,8 @@ namespace mfe_stokes
 
     prm.enter_subsection("Exact gradient");
     {
-      Functions::ParsedFunction<2>::declare_parameters(prm,4);
-      prm.set("Function expression", "0; 0; 0; 0");
+      Functions::ParsedFunction<2>::declare_parameters(prm,6);
+      prm.set("Function expression", "0; 0; 0; 0; 0; 0");
     }
     prm.leave_subsection();
   }

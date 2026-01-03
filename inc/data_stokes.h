@@ -22,10 +22,12 @@ namespace mfe_stokes
   template <int dim>
     class ExactSolution : public Function<dim>
   {
-  public:
-    ExactSolution()
-      : Function<dim>(dim + 1)
-    {}
+    // private:
+    // ParameterHandler &prm;
+    public:
+      Functions::ParsedFunction<dim> exact_solution_val_data;
+      Functions::ParsedFunction<dim> exact_solution_grad_val_data;
+      ExactSolution(ParameterHandler &);
 
       virtual void vector_value(const Point<dim> &p,
                                 Vector<double> &  value) const override;
@@ -33,6 +35,13 @@ namespace mfe_stokes
                     std::vector< Tensor< 1, dim> > & 	gradients)	const override;
   };
 
+  template <int dim>
+  ExactSolution<dim>::ExactSolution(ParameterHandler &) : 
+    Function<dim>(dim + 1),
+    // prm(param),
+    exact_solution_val_data(dim + 1),
+    exact_solution_grad_val_data((dim + 1) * dim)
+  {}
 
 
   template <int dim>
@@ -41,9 +50,9 @@ namespace mfe_stokes
     {
       AssertDimension(values.size(), dim + 1);
 
-      values(0) = std::sin(p[0]);
-      values(1) = std::sin(p[1]);
-      values(2) = std::cos (p[0]*p[1]);
+      values(0) = exact_solution_val_data.value(p, 0);
+      values(1) = exact_solution_val_data.value(p, 1);
+      values(2) = exact_solution_val_data.value(p, 2);
     }
   
   template <int dim>
@@ -73,19 +82,18 @@ namespace mfe_stokes
 
   template <int dim>
   StressTensor_Exact<dim>::StressTensor_Exact(ParameterHandler &)
-  : TensorFunction<2, dim>(),
-    stress_function(dim*dim)
+  : TensorFunction<2, dim>(), stress_function(dim*dim)
   {}
 
   template <int dim>
-    Tensor<2,dim> StressTensor_Exact<dim>::value(const Point<dim> &p) const
-  { Tensor<2, dim> return_value;
-    {
-      return_value [0][0] = stress_function.value(p, 0);
-      return_value [0][1] = stress_function.value(p, 1);
-      return_value [1][0] = stress_function.value(p, 2);
-      return_value [1][1] = stress_function.value(p, 3);
-    }
+  Tensor<2,dim> StressTensor_Exact<dim>::value(const Point<dim> &p) const
+  { 
+    Tensor<2, dim> return_value;
+
+    return_value [0][0] = stress_function.value(p, 0);
+    return_value [0][1] = stress_function.value(p, 1);
+    return_value [1][0] = stress_function.value(p, 2);
+    return_value [1][1] = stress_function.value(p, 3);
 
     return return_value;
   }

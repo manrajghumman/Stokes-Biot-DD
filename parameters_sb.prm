@@ -4,11 +4,11 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 1
+set refinements  = 5
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
-set initial_grid_2D  = 2, 2
+set initial_grid_2D  = 1, 1
 set initial_grid_3D  = 1, 1, 1
 
 # Enter which subdomain are for Stokes and Biot

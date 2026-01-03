@@ -292,9 +292,10 @@ namespace dd_stokes_biot
       {
         if (subdomain_type == 1)
         {
-          stokes->solve_bar();
           stokes->output_results(cycle);
+          stokes->output_dof_results(cycle);
           stokes->compute_errors(cycle);
+          stokes->print_individual_convg_table_l2();
         }
       }
 

@@ -9,27 +9,26 @@
 # different places in this and biot.prm file
 subsection RHS vector
     set Function constants = mu=1.0
-    set Function expression = pi*cos(pi*x)*cos(2*pi*y)+pi*pi*cos(pi*y);4*pi*pi*sin(2*pi*x)-2*pi*sin(pi*x)*sin(2*pi*y)
+    set Function expression = 2*sin(x)-y*sin(x*y);2*sin(y)-x*sin(x*y)
     set Variable names = x, y
 end
 subsection RHS scalar 
-    set Function expression = -2.0 
+    set Function expression = cos(x)+cos(y)
     set Variable names      = x, y
 end
 subsection BC Dirichlet 
-    set Function expression = -3*x+cos(pi*y);y+sin(2*pi*x)
+    set Function expression = sin(x);sin(y)
     set Variable names      = x, y
 end
 # Give values of Stress, normal stress will be calculated from it
 subsection BC Neumann
-    set Function expression = -sin(pi*x)*cos(2*pi*y)-6; pi*(2*cos(2*pi*x)-sin(pi*y));pi*(2*cos(2*pi*x)-sin(pi*y));-sin(pi*x)*cos(2*pi*y)+2
-    set Variable names      = x, y
+    set Function expression = -cos(x*y)+2*cos(x);0;0;-cos(x*y)+2*cos(y)
 end
 #################################################################################
 # Exact solution values
 subsection Exact solution 
   # Order: velocity, pressure
-  set Function expression = -3*x+cos(pi*y);y+sin(2*pi*x);sin(pi*x)*cos(2*pi*y)
+  set Function expression = sin(x);sin(y);cos(x*y)
   set Variable names      = x, y
 end
 #################################################################################
@@ -38,6 +37,6 @@ end
 # will be used to compute the Neumann BC
 subsection Exact gradient
   # Order: velocity
-  set Function expression = -3;-pi*sin(pi*y);2*pi*cos(2*pi*x);1
+  set Function expression = cos(x);0;0;cos(y);-y*sin(x*y);-x*sin(x*y)
   set Variable names      = x,y
 end

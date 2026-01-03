@@ -597,20 +597,20 @@ namespace mfe_stokes
 
 
       //Matrix is symmetric copying from other half
+      cell->get_dof_indices(local_dof_indices);
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
         for (unsigned int j = i + 1; j < dofs_per_cell; ++j)
             local_matrix(i, j) = local_matrix(j, i);
-
-      // Add local contributions to global system
+      
+            // Add local contributions to global system
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
-          for (unsigned int j = 0; j < dofs_per_cell; ++j)
-            system_matrix.add(local_dof_indices[i],
-                              local_dof_indices[j],
-                              local_matrix(i, j));
+        for (unsigned int j = 0; j < dofs_per_cell; ++j)
+          system_matrix.add(local_dof_indices[i],
+                            local_dof_indices[j],
+                            local_matrix(i, j));
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
         system_rhs_bar_stokes(local_dof_indices[i]) += local_rhs(i);
     }
-    
   }
 
 
@@ -650,6 +650,17 @@ namespace mfe_stokes
 
   template <int dim>
   void
+  MixedStokesProblem<dim>::output_dof_results(const unsigned int cycle) const
+  {
+    std::ofstream mesh_file("../output/gnuplot_data/mesh-"
+      +Utilities::int_to_string(this_mpi)
+        +Utilities::int_to_string(cycle)
+          +".gnuplot");
+    GridOut().write_gnuplot(triangulation, mesh_file);
+  }
+
+  template <int dim>
+  void
   MixedStokesProblem<dim>::output_results(const unsigned int cycle) const
   {
     std::vector<std::string> solution_names(dim, "velocity");
@@ -663,10 +674,11 @@ namespace mfe_stokes
 
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
+    
     data_out.add_data_vector(solution,
-                             solution_names,
-                             DataOut<dim>::type_dof_data,
-                             data_component_interpretation);
+                            solution_names,
+                            DataOut<dim>::type_dof_data,
+                            data_component_interpretation);
     data_out.build_patches();
 
     std::ofstream output(
@@ -679,13 +691,196 @@ namespace mfe_stokes
   template <int dim>
   void MixedStokesProblem<dim>::compute_errors(const unsigned int &cycle) 
   {
+    const ComponentSelectFunction<dim> pressure_mask(dim, dim + 1);
+    const ComponentSelectFunction<dim> velocity_mask(std::make_pair(0, dim),
+                                                     dim + 1);
+    const ComponentSelectFunction<dim> v_x_mask(0, dim + 1);
+    const ComponentSelectFunction<dim> v_y_mask(1, dim + 1);
 
+    ExactSolution<dim> exact_solution(prm_fxn);
+    prm_fxn.enter_subsection("Exact solution");
+    exact_solution.exact_solution_val_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
+    prm_fxn.enter_subsection("Exact gradient");
+    exact_solution.exact_solution_grad_val_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
+    Vector<double> cellwise_errors(triangulation.n_active_cells());
+
+    QTrapezoid<1>  q_trapez;
+    QIterated<dim> quadrature(q_trapez, degree + 2);
+
+    VectorTools::integrate_difference(dof_handler,
+                                      solution,
+                                      exact_solution,
+                                      cellwise_errors,
+                                      quadrature,
+                                      VectorTools::L2_norm,
+                                      &pressure_mask);
+    p_l2_error =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_errors,
+                                        VectorTools::L2_norm);
+
+    VectorTools::integrate_difference(dof_handler,
+                                      solution,
+                                      exact_solution,
+                                      cellwise_errors,
+                                      quadrature,
+                                      VectorTools::L2_norm,
+                                      &velocity_mask);
+    u_l2_error =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_errors,
+                                        VectorTools::L2_norm);
+
+    VectorTools::integrate_difference(dof_handler,
+                                      solution,
+                                      exact_solution,
+                                      cellwise_errors,
+                                      quadrature,
+                                      VectorTools::H1_seminorm,
+                                      &v_x_mask);
+    
+    const double u_H1_error =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_errors,
+                                        VectorTools::H1_seminorm);
+    VectorTools::integrate_difference(dof_handler,
+                                      solution,
+                                      exact_solution,
+                                      cellwise_errors,
+                                      quadrature,
+                                      VectorTools::H1_seminorm,
+                                      &velocity_mask);
+    const double ux_H1_error =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_errors,
+                                        VectorTools::H1_seminorm);
+    VectorTools::integrate_difference(dof_handler,
+                                      solution,
+                                      exact_solution,
+                                      cellwise_errors,
+                                      quadrature,
+                                      VectorTools::H1_seminorm,
+                                      &v_y_mask);
+    const double uy_H1_error =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_errors,
+                                        VectorTools::H1_seminorm);
+    VectorTools::integrate_difference(dof_handler,
+                                      solution,
+                                      exact_solution,
+                                      cellwise_errors,
+                                      quadrature,
+                                      VectorTools::H1_seminorm,
+                                      &pressure_mask);
+    const double p_H1_error =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_errors,
+                                        VectorTools::H1_seminorm);
+    
+    const unsigned int n_active_cells = triangulation.n_active_cells();
+    const unsigned int n_dofs = dof_handler.n_dofs();
+    convergence_table.add_value("cells", n_active_cells);
+    convergence_table.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table.add_value("dofs", n_dofs);
+    convergence_table.add_value("u_L2", u_l2_error);
+    // convergence_table.add_value("u_order", order_u);
+    convergence_table.add_value("p_L2", p_l2_error);
+    convergence_table.add_value("residual", residual);
+    // convergence_table.add_value("p_order", order_p);
+  }
+
+  template <int dim>
+  void MixedStokesProblem<dim>::print_individual_convg_table_l2()
+  {
+    convergence_table.set_precision("residual", 3);
+    convergence_table.set_precision("u_L2", 3);
+    convergence_table.set_precision("p_L2", 3);
+    convergence_table.set_scientific("residual", true);
+    convergence_table.set_scientific("u_L2", true);
+    convergence_table.set_scientific("p_L2", true);
+
+    convergence_table.set_tex_caption("cells", "\\ cells");
+    convergence_table.set_tex_caption("dofs", "\\# dofs");
+    // convergence_table.set_tex_caption("u_order", "u order");
+    // convergence_table.set_tex_caption("p_order", "p order");
+    convergence_table.set_tex_caption("residual", "residual");
+    convergence_table.set_tex_caption("u_L2", "$L^2$-error (u)");
+    convergence_table.set_tex_caption("p_L2", "$L^2$-error (p)");
+
+    // convergence_table.evaluate_convergence_rates(
+    //       "u_L2", ConvergenceTable::reduction_rate);
+    convergence_table.evaluate_convergence_rates(
+          "u_L2", ConvergenceTable::reduction_rate_log2);
+    // convergence_table.evaluate_convergence_rates(
+    //       "p_L2", ConvergenceTable::reduction_rate);
+    convergence_table.evaluate_convergence_rates(
+          "p_L2", ConvergenceTable::reduction_rate_log2);
+    // convergence_table.evaluate_convergence_rates(
+    //       "u_H1", ConvergenceTable::reduction_rate);
+    // convergence_table.evaluate_convergence_rates(
+    //       "u_H1", ConvergenceTable::reduction_rate_log2);
+    // convergence_table.evaluate_convergence_rates(
+    //       "p_H1", ConvergenceTable::reduction_rate);
+    // convergence_table.evaluate_convergence_rates(
+    //       "p_H1", ConvergenceTable::reduction_rate_log2);
+    // convergence_table.evaluate_convergence_rates(
+    //       "ux_H1", ConvergenceTable::reduction_rate);
+    // convergence_table.evaluate_convergence_rates(
+    //       "ux_H1", ConvergenceTable::reduction_rate_log2);
+    // convergence_table.evaluate_convergence_rates(
+    //       "uy_H1", ConvergenceTable::reduction_rate);
+    // convergence_table.evaluate_convergence_rates(
+    //       "uy_H1", ConvergenceTable::reduction_rate_log2);
+
+    // convergence_table.set_precision("u_L2-rate", 3);
+    // convergence_table.set_precision("p_L2-rate", 3);
+    // convergence_table.set_precision("u_H1-rate", 3);
+    // convergence_table.set_precision("p_H1-rate", 3);
+    // convergence_table.set_precision("ux_H1-rate", 3);
+    // convergence_table.set_precision("uy_H1-rate", 3);
+
+    std::string conv_filename = "../output/convg_tables/table_individual_l2" + std::string(".tex");
+
+    if (this_mpi == 0) // latex header
+    {
+        std::ofstream table_file(conv_filename, std::ios::out);
+        table_file << "\\documentclass[10pt]{report}\n"
+                   << "\\usepackage{float}\n"
+                   << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                   << "\\begin{document}\n\n";
+        table_file.close();
+    }
+    for (unsigned int i = 0; i<n_processes; ++i)
+    {
+      // MPI_Barrier(mpi_communicator);
+      if (this_mpi == i)
+      { 
+        // Print to screen if you like, but messy for many processes
+        // convergence_table.write_text(std::cout);
+
+        std::ofstream table_file(conv_filename, std::ios::app);
+        // Write a LaTeX comment and a section header before the table:
+        table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
+        table_file << "\\section*{MPI Process " << this_mpi << "}\n";
+        convergence_table.write_tex(table_file, false);
+        table_file << "\n"; // Optional: extra space after each table
+      }
+    }
+    // MPI_Barrier(mpi_communicator);
+    if (this_mpi == 0)
+    {
+        std::ofstream table_file(conv_filename, std::ios::app);
+        table_file << "\n\\end{document}\n";
+    }
   }
 
   // MixedStokesProblemDD::run
   template <int dim>
-  void
-  MixedStokesProblem<dim>::run(unsigned int cycle)
+  void MixedStokesProblem<dim>::run(unsigned int cycle)
   {
     // tolerance = tol;
     // qdegree   = quad_degree;
@@ -763,7 +958,9 @@ namespace mfe_stokes
     get_interface_dofs();
 
     assemble_system();
-    
+    solve_bar();
+    if(n_processes == 1)
+      solution = solution_bar_stokes;
     
   }
 

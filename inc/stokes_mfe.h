@@ -60,10 +60,16 @@ namespace mfe_stokes
     solve_star();
 
     void
+    output_dof_results(const unsigned int cycle) const;
+
+    void
     output_results(const unsigned int cycle) const;
 
     void 
     compute_errors(const unsigned int &cycle);
+
+    void
+    print_individual_convg_table_l2();
 
 
   private:
