@@ -1,6 +1,8 @@
 /* ---------------------------------------------------------------------
- * Functions representing RHS, physical parameters, boundary conditions and
- * the true solution.
+ * Function representing true solution. (read from parameter file
+ *                           and stored for use in error computation)
+ * RHS, physical parameters, boundary conditions are directly read from 
+ * parameter file and used.
  * ---------------------------------------------------------------------
  *
  * Author: Manraj Singh Ghumman, University of Pittsburgh, 2023 - 2024
@@ -10,153 +12,12 @@
 #define STOKES_MFE_DATA_H
 
 #include <deal.II/base/function.h>
+#include <deal.II/base/parsed_function.h>
 #include <deal.II/base/tensor_function.h>
 
 namespace mfe_stokes
 {
   using namespace dealii;
-
-  template <int dim>
-  class BoundaryValues : public Function<dim>
-  {
-  public:
-    BoundaryValues()
-      : Function<dim>(dim + 1)
-    {}
-
-    virtual double value(const Point<dim> & p,
-                         const unsigned int component = 0) const override;
-
-    virtual void vector_value(const Point<dim> &p,
-                              Vector<double> &  value) const override;
-  };
-
-
-  template <int dim>
-  double BoundaryValues<dim>::value(const Point<dim> & p,
-                                    const unsigned int component) const
-  {
-    Assert(component < this->n_components,
-           ExcIndexRange(component, 0, this->n_components));
-
-    if (component == 0)//i.e. velocity in x direction u_x
-      {
-        return std::sin(p[0]);
-      }
-    if (component == 1)//i.e. velocity in y direction u_y
-      {
-        return std::sin(p[1]);
-      }
-
-    return 0;
-  }
-
-
-  template <int dim>
-  void BoundaryValues<dim>::vector_value(const Point<dim> &p,
-                                         Vector<double> &  values) const
-  {
-    for (unsigned int c = 0; c < this->n_components-1; ++c)
-      values(c) = BoundaryValues<dim>::value(p, c);
-  }
-
-
-  template <int dim>
-    class StressTensor_Exact : public TensorFunction<2, dim>
-  {
-  public:
-    StressTensor_Exact()
-      : TensorFunction<2, dim>()
-    {}
-    //for F
-    //function to explain the relation y = f(x)
-    virtual Tensor<2, dim> value(const Point<dim> &p) const override;
-  };
-
-  template <int dim>
-    Tensor<2,dim> StressTensor_Exact<dim>::value(const Point<dim> &p) const
-  { Tensor<2, dim> return_value;
-    {
-    return_value [0][0] = -std::cos(p[0]*p[1])+2*std::cos(p[0]);
-    return_value [0][1] = 0;
-    return_value [1][0] = 0;
-    return_value [1][1] = -std::cos(p[0]*p[1])+2*std::cos(p[1]);
-    }
-
-    return return_value;
-  }
-
-
-  template <int dim>
-  class RightHandSide : public TensorFunction<1, dim>
-  {
-  public:
-    RightHandSide()
-      : TensorFunction<1, dim>()
-    {}
-    //for F
-    //function to explain the relation y = f(x)
-    virtual Tensor<1, dim> value(const Point<dim> &p) const override;
-    //an array of x and y where y = f(x)
-    virtual void value_list(const std::vector<Point<dim>> &p,
-                            std::vector<Tensor<1, dim>> &value) const override;
-  };
-
-
-  template <int dim>
-  Tensor<1, dim> RightHandSide<dim>::value(const Point<dim> & p) const
-  {
-    Tensor<1, dim> rhs_value;
-
-    // Compute the right-hand side values based on the given point 'p'
-    
-        // Example: Compute the right-hand side values as the value of some function f,
-        // value = f(x) at x = 'p'
-        rhs_value[0] = 2*std::sin (p[0])-p[1]*std::sin (p[0]*p[1]);
-        rhs_value[1] = 2*std::sin (p[1])-p[0]*std::sin (p[0]*p[1]);
-    
-
-    return rhs_value;
-  }
-
-
-//the list of values for y=f(x) for an array of input x using function
-// value defined above
-  template <int dim>
-  void RightHandSide<dim>::value_list(const std::vector<Point<dim>> &vp,
-                                      std::vector<Tensor<1, dim>> &values) const
-  {
-    for (unsigned int c = 0; c < vp.size(); ++c)
-      {
-        values[c] = RightHandSide<dim>::value(vp[c]);
-      }
-  }
-
-template <int dim>
-  class RightHandSideG : public Function<dim>
-    {
-    public:
-      RightHandSideG()
-        : Function<dim>(1)
-      {}
-
-      virtual double value(const Point<dim> & p,
-                           const unsigned int component = 0) const override;
-};
-
-template <int dim>
-    double RightHandSideG<dim>::value(const Point<dim> & p,
-                                     const unsigned int /*component*/) const
-    // Compute the right-hand side values based on the given point 'p'
-    
-        // Example: Compute the right-hand side values as the value of some function f,
-        // value = f(x) at x = 'p'
-    {
-      double rhs_value;
-      rhs_value = (std::cos (p[0])+std::cos (p[1]));
-      return rhs_value;
-    }
-
 
   template <int dim>
     class ExactSolution : public Function<dim>
@@ -197,30 +58,37 @@ template <int dim>
       gradients[2][1] = -p[0]*std::sin(p[0]*p[1]);
     }
 
-  // template <int dim>
-  //   class StressTensor_Exact : public TensorFunction<2, dim>
-  // {
-  // public:
-  //   StressTensor_Exact()
-  //     : TensorFunction<2, dim>()
-  //   {}
-  //   //for F
-  //   //function to explain the relation y = f(x)
-  //   virtual Tensor<2, dim> value(const Point<dim> &p) const override;
-  // };
+  // There is no easy way to take dot product of ParsedFunction with normal vector
+  // So we define a TensorFunction for stress tensor
+  template <int dim>
+  class StressTensor_Exact : public TensorFunction<2, dim>
+  {
+  public:
+    Functions::ParsedFunction<dim> stress_function;
+    StressTensor_Exact(ParameterHandler &);
+    //for F
+    //function to explain the relation y = f(x)
+    virtual Tensor<2, dim> value(const Point<dim> &p) const override;
+  };
 
-  // template <int dim>
-  //   Tensor<2,dim> StressTensor_Exact<dim>::value(const Point<dim> &p) const
-  // { Tensor<2, dim> return_value;
-  //   {
-  //   return_value [0][0] = -std::cos(p[0]*p[1])+2*std::cos(p[0]);
-  //   return_value [0][1] = 0;
-  //   return_value [1][0] = 0;
-  //   return_value [1][1] = -std::cos(p[0]*p[1])+2*std::cos(p[1]);
-  //   }
+  template <int dim>
+  StressTensor_Exact<dim>::StressTensor_Exact(ParameterHandler &)
+  : TensorFunction<2, dim>(),
+    stress_function(dim*dim)
+  {}
 
-  //   return return_value;
-  // }
+  template <int dim>
+    Tensor<2,dim> StressTensor_Exact<dim>::value(const Point<dim> &p) const
+  { Tensor<2, dim> return_value;
+    {
+      return_value [0][0] = stress_function.value(p, 0);
+      return_value [0][1] = stress_function.value(p, 1);
+      return_value [1][0] = stress_function.value(p, 2);
+      return_value [1][1] = stress_function.value(p, 3);
+    }
+
+    return return_value;
+  }
 } // namespace mfe_stokes
 
 #endif // STOKES_MFE_DATA_H

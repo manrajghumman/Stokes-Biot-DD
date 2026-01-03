@@ -77,13 +77,23 @@ class StokesBiotParameterReader : public Subscriptor
                       Patterns::Selection("yes|no"));
         prm.declare_entry("mortar_degree", "2",
                       Patterns::Integer());
+        prm.declare_entry("s_0", "1.0",
+                      Patterns::Double(),
+                      "Storativity coefficient");
+        prm.declare_entry("alpha_BJS", "1.0",
+                      Patterns::Double(),
+                      "Biot-Willis coefficient");
+        prm.declare_entry("lame_mu", "1.0",
+                      Patterns::Double(),
+                      "Lame's first parameter - mu");
+        prm.declare_entry("lame_lambda", "1.0",
+                      Patterns::Double(),
+                      "Lame's second parameter - lambda");
     }
     prm.leave_subsection();
 
     prm.enter_subsection("External Boundary Conditions");
     {
-        prm.declare_entry("essential_dirichlet", "no",
-                      Patterns::Selection("yes|no"));
         prm.declare_entry("boundary_2D", "N, D, D, D",
                       Patterns::Anything(),
                     "Boundary types (N=Neumann, D=Dirichlet)");

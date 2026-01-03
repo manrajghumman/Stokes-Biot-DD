@@ -49,6 +49,13 @@ namespace mfe_stokes
     }
     prm.leave_subsection();
 
+    prm.enter_subsection("BC Neumann");
+    {
+      Functions::ParsedFunction<2>::declare_parameters(prm,4);
+      prm.set("Function expression", "0; 0; 0; 0");
+    }
+    prm.leave_subsection();
+
     prm.enter_subsection("Exact solution");
     {
       Functions::ParsedFunction<2>::declare_parameters(prm,3);

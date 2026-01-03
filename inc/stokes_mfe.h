@@ -50,6 +50,21 @@ namespace mfe_stokes
     void
     run(unsigned int cycle);
 
+    void
+    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
+
+    void
+    solve_bar();
+
+    void
+    solve_star();
+
+    void
+    output_results(const unsigned int cycle) const;
+
+    void 
+    compute_errors(const unsigned int &cycle);
+
 
   private:
     MPI_Comm   mpi_communicator;
@@ -91,21 +106,6 @@ namespace mfe_stokes
 
     // void
     // get_interface_dofs_biot();
-
-    void
-    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
-
-    void
-    solve_bar();
-
-    void
-    solve_star();
-
-    // void
-    // compute_multiscale_basis();
-
-    void
-    output_results(const unsigned int cycle) const;
 
 
     unsigned int       gmres_iteration;

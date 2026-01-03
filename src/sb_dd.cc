@@ -45,6 +45,7 @@
 #include "../inc/stokes_mfe.h"
 #include "../inc/biot_mfe.h"
 #include "../inc/utilities.h"
+#include "../inc/files.h"
 
 namespace dd_stokes_biot
 {
@@ -73,7 +74,7 @@ namespace dd_stokes_biot
   {
     // TO DO: implement the run function for Stokes-Biot DD
     pcout << "Running Mixed Stokes-Biot Domain Decomposition Problem..." << std::endl;
-    
+    clean_files<dim>();
     unsigned int refine;
     // interpret information for refinement, dd structure and other parameters
     interpret_parameters(prm, refine, dd_info_matrix, n_processes);
@@ -282,6 +283,18 @@ namespace dd_stokes_biot
         {
           // biot->reset_system();
           biot->run(cycle);
+        }
+      }
+
+      // Now we must call the solve, output, 
+      // compute error and convegence table functions
+      if (n_processes == 1)
+      {
+        if (subdomain_type == 1)
+        {
+          stokes->solve_bar();
+          stokes->output_results(cycle);
+          stokes->compute_errors(cycle);
         }
       }
 

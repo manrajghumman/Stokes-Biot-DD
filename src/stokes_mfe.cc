@@ -440,13 +440,32 @@ namespace mfe_stokes
     std::vector<types::global_dof_index> local_face_dof_indices;
     local_face_dof_indices.resize(fe.dofs_per_face);
 
-    const RightHandSide<dim>    right_hand_side;
-    const RightHandSideG<dim>    right_hand_side_g;
-    std::vector<Tensor<1, dim>> rhs_f_values(n_q_points, Tensor<1, dim>());
-    StressTensor_Exact<dim> stress_tensor;
-    BoundaryValues<dim> boundary_values;
+    //for Dirichlet BC from velocity u = u_0
+    Functions::ParsedFunction<dim> boundary_values_dir(dim);
+    prm_fxn.enter_subsection("BC Dirichlet");
+    boundary_values_dir.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
 
-    std::vector<double> rhs_g_values(n_q_points);
+    //for F = -div sigma
+    Functions::ParsedFunction<dim> rhs_vec(dim);
+    prm_fxn.enter_subsection("RHS vector");
+    rhs_vec.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    Tensor<1, dim> rhs_vec_val;
+
+    //for G = -div u
+    Functions::ParsedFunction<dim> rhs_scalar(1);
+    prm_fxn.enter_subsection("RHS scalar");
+    rhs_scalar.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
+    //for Neumann BC from stress tensor sigma 
+    StressTensor_Exact<dim> stress_tensor(prm_fxn);
+    // Functions::ParsedFunction<dim> stress_tensor_fxn(dim*dim);
+    prm_fxn.enter_subsection("BC Neumann");
+    stress_tensor.stress_function.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    
     std::vector<Tensor<2,dim>> stress_tensor_values(n_face_q_points, Tensor<2,dim>());
 
     const FEValuesExtractors::Vector velocities(0);
@@ -464,15 +483,13 @@ namespace mfe_stokes
       fe_values.reinit(cell);
       local_matrix                = 0;
       local_rhs                   = 0;
-      double h_K                  = cell->diameter(); // std::pow(2, 0.5);      
-
-      right_hand_side.value_list(fe_values.get_quadrature_points(),
-                                  rhs_f_values);
-      right_hand_side_g.value_list(fe_values.get_quadrature_points(),
-                                  rhs_g_values);                                       
+      double h_K                  = cell->diameter(); // std::pow(2, 0.5);                                          
 
       for (unsigned int q = 0; q < n_q_points; ++q)
       {
+        for (unsigned int i = 0; i < dim; ++i)
+          rhs_vec_val[i] = rhs_vec.value(fe_values.quadrature_point(q), i);
+
         for (unsigned int k = 0; k < dofs_per_cell; ++k)
           { //compute at one place decrease computations
             symgrad_phi_u[k] =
@@ -493,10 +510,10 @@ namespace mfe_stokes
                   * fe_values.JxW(q);                        // dx
               }
             local_rhs(i) += phi_u[i]            
-                            * rhs_f_values[q]     // (F, v)
+                            * rhs_vec_val     // (f_f, v)
                             * fe_values.JxW(q)
                             -phi_p[i]            
-                            * rhs_g_values[q]     // -(G, w)
+                            * rhs_scalar.value(fe_values.quadrature_point(q))     // -(q, w)
                             * fe_values.JxW(q); // dx
           }
       }
@@ -514,7 +531,7 @@ namespace mfe_stokes
             for (unsigned int q_point = 0; q_point < n_face_q_points;
                   ++q_point)
               {
-                for (int k = 0; k < dofs_per_cell; ++k)
+                for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 {
                   phi_u[k]     = fe_face_values[velocities].value(k, q_point);
                 }
@@ -522,7 +539,7 @@ namespace mfe_stokes
                   (stress_tensor_values[q_point] *
                     fe_face_values.normal_vector(q_point));
 
-                for (int i = 0; i < dofs_per_cell; ++i)
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
                   local_rhs(i) +=
                     (phi_u[i] *                      
                       neumann_value) *                // + (gn, v)
@@ -535,10 +552,10 @@ namespace mfe_stokes
             {
               Tensor<1,dim> gd; 
               Vector<double> tmp(dim);
-              boundary_values.vector_value(fe_face_values.get_quadrature_points()[q], tmp);
+              // boundary_values_dir.vector_value(fe_face_values.get_quadrature_points()[q], tmp);
               for (unsigned int i = 0; i < dim; ++i)
-                  gd[i] = tmp[i];
-              for (int k = 0; k < dofs_per_cell; ++k)
+                gd[i] = boundary_values_dir.value(fe_face_values.get_quadrature_points()[q], i);
+              for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
                 symgrad_phi_u[k] =
                   fe_face_values[velocities].symmetric_gradient(k, q);
@@ -546,9 +563,9 @@ namespace mfe_stokes
                 grad_phi_u[k]     = fe_face_values[velocities].gradient(k, q);
                 phi_p[k]     = fe_face_values[pressure].value(k, q);
               }
-              for (int i = 0; i < dofs_per_cell; ++i)
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                for (int j = 0; j <= i; ++j)
+                for (unsigned int j = 0; j <= i; ++j)
                 {
                   local_matrix(i,j) += (-2 * (symgrad_phi_u[j] 
                                       * fe_face_values.normal_vector(q))
@@ -612,7 +629,8 @@ namespace mfe_stokes
   void MixedStokesProblem<dim>::solve_bar()
   {
       // TimerOutput::Scope t(computing_timer, "Solve bar stokes");
-    
+    A_direct.initialize (system_matrix);
+    A_direct.vmult(solution_bar_stokes, system_rhs_bar_stokes);
   }
 
 
@@ -623,11 +641,45 @@ namespace mfe_stokes
     
   }
 
+  // template <int dim>
+  // void
+  // MixedStokesProblem<dim>::output_results(const unsigned int cycle) const
+  // {
+  //   // TimerOutput::Scope t(computing_timer, "Output results");
+  // }
+
   template <int dim>
   void
   MixedStokesProblem<dim>::output_results(const unsigned int cycle) const
   {
-    // TimerOutput::Scope t(computing_timer, "Output results");
+    std::vector<std::string> solution_names(dim, "velocity");
+    solution_names.emplace_back("pressure");
+
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+      data_component_interpretation(
+        dim, DataComponentInterpretation::component_is_part_of_vector);
+    data_component_interpretation.push_back(
+      DataComponentInterpretation::component_is_scalar);
+
+    DataOut<dim> data_out;
+    data_out.attach_dof_handler(dof_handler);
+    data_out.add_data_vector(solution,
+                             solution_names,
+                             DataOut<dim>::type_dof_data,
+                             data_component_interpretation);
+    data_out.build_patches();
+
+    std::ofstream output(
+      "../output/paraview_data/sol_dd-" + Utilities::int_to_string(this_mpi)
+      + "_" + Utilities::int_to_string(cycle, 2) 
+      + ".vtk");
+    data_out.write_vtk(output);
+  }
+
+  template <int dim>
+  void MixedStokesProblem<dim>::compute_errors(const unsigned int &cycle) 
+  {
+
   }
 
   // MixedStokesProblemDD::run

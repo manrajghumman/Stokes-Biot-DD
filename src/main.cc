@@ -16,9 +16,7 @@
 
 // Utilities, data, etc..
 #include "../inc/sb_dd.h"
-
 #include "../inc/sb_parameter_reader.h"
-// #include "../inc/parameter_interpreter.h"
 
 // Main function is simple here
 int
@@ -28,8 +26,6 @@ main(int argc, char *argv[])
     {
       using namespace dealii;
       using namespace dd_stokes_biot;
-      // using namespace dd_stokes;
-      // using namespace dd_biot;
 
       // Initialize MPI via dealii wrapper with 1 thread per MPI process
       Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
@@ -38,8 +34,6 @@ main(int argc, char *argv[])
       ParameterHandler prm;
       StokesBiotParameterReader parameter_reader(prm);
       parameter_reader.read_parameters("../parameters_sb.prm");
-      
-      // const int dim = prm.get_integer("dim");
 
       switch (prm.get_integer("dim"))
       {
@@ -58,15 +52,6 @@ main(int argc, char *argv[])
         default:
           throw std::runtime_error("Dimension must be either 2 or 3.");
       }
-      
-
-      // make a domain decomposition structure
-
-      // are you a Stokes or Biot domain??
-
-      // run the corresponding Stokes.run or Biot.run 
-
-
 
     } 
 
