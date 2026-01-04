@@ -207,6 +207,7 @@ namespace dd_stokes_biot
         if (subdomain_type == 1) // Stokes
         {
           // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
+          MPI_Comm_split(mpi_communicator, 1, this_mpi, &mpi_communicator_stokes);
           unsigned int degree, mortar_degree;
           bool mortar_flag, cont_mortar_flag;
           prm.enter_subsection("Stokes Parameters");
@@ -238,6 +239,7 @@ namespace dd_stokes_biot
                                               subdomain_type,
                                               neighbors,
                                               neighbor_type,
+                                              mpi_communicator_stokes,
                                               mortar_flag,
                                               cont_mortar_flag,
                                               mortar_degree);
@@ -247,6 +249,7 @@ namespace dd_stokes_biot
         else if (subdomain_type == 2) // Biot
         {
           // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
+          MPI_Comm_split(mpi_communicator, 2, this_mpi, &mpi_communicator_biot);
           unsigned int degree, mortar_degree;
           bool mortar_flag;
           prm.enter_subsection("Biot Parameters");
@@ -266,6 +269,7 @@ namespace dd_stokes_biot
                                           subdomain_type,
                                           neighbors,
                                           neighbor_type,
+                                          mpi_communicator_biot,
                                           mortar_flag,
                                           mortar_degree);
           biot->run(cycle);
@@ -296,6 +300,15 @@ namespace dd_stokes_biot
           stokes->output_dof_results(cycle);
           stokes->compute_errors(cycle);
           stokes->print_individual_convg_table_l2();
+          stokes->print_individual_convg_table_h1();
+        }
+        else if (subdomain_type == 2)
+        {
+          // biot->output_results(cycle);
+          // biot->output_dof_results(cycle);
+          // biot->compute_errors(cycle);
+          // biot->print_individual_convg_table_l2();
+          // biot->print_individual_convg_table_h1();
         }
       }
 

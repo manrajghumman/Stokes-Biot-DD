@@ -4,11 +4,11 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 5
+set refinements  = 6
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
-set initial_grid_2D  = 1, 1
+set initial_grid_2D  = 2, 1
 set initial_grid_3D  = 1, 1, 1
 
 # Enter which subdomain are for Stokes and Biot
@@ -27,6 +27,7 @@ subsection Stokes Parameters
 	set mortar            = no
 	set continuous_mortar = yes
 	set mortar_degree     = 1
+	set gamma             = 100.0
 end
 
 #################################################################################
@@ -41,8 +42,6 @@ subsection Biot Parameters
 	set mortar_degree     = 1
 	set s_0               = 1.0
 	set alpha_BJS         = 1.0
-	set lame_mu           = 1.0
-	set lame_lambda       = 1.0
 end
 
 #################################################################################
@@ -53,7 +52,7 @@ end
 # 2 sides Dirichlet
 
 subsection External Boundary Conditions
-	set boundary_2D         = D, N, D, N
+	set boundary_2D         = D, D, D, D
 	set boundary_3D         = N, D, D, D, D, D
 end
 

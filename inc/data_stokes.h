@@ -59,12 +59,12 @@ namespace mfe_stokes
     void ExactSolution<dim>::vector_gradient(const Point< dim > & 	p,
                                       std::vector< Tensor< 1, dim> > & 	gradients) const
     {
-      gradients[0][0] = std::cos(p[0]);
-      gradients[0][1] = 0;
-      gradients[1][0] = 0;
-      gradients[1][1] = std::cos(p[1]);
-      gradients[2][0] = -p[1]*std::sin(p[0]*p[1]);
-      gradients[2][1] = -p[0]*std::sin(p[0]*p[1]);
+      gradients[0][0] = exact_solution_grad_val_data.value(p, 0);
+      gradients[0][1] = exact_solution_grad_val_data.value(p, 1);
+      gradients[1][0] = exact_solution_grad_val_data.value(p, 2);
+      gradients[1][1] = exact_solution_grad_val_data.value(p, 3);
+      gradients[2][0] = exact_solution_grad_val_data.value(p, 4);
+      gradients[2][1] = exact_solution_grad_val_data.value(p, 5);
     }
 
   // There is no easy way to take dot product of ParsedFunction with normal vector

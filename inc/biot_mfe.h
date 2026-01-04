@@ -39,6 +39,7 @@ namespace mfe_biot
                           const unsigned int &subdomain_type,
                           std::vector<int> &neighbors,
                           std::vector<unsigned int> &neighbor_type,
+                          MPI_Comm mpi_communicator_biot,
                           const bool mortar_flag,
                           const unsigned int mortar_degree);
 
@@ -46,6 +47,7 @@ namespace mfe_biot
 
     private:
         MPI_Comm mpi_communicator;
+        MPI_Comm mpi_communicator_biot;
         MPI_Status mpi_status;
         const unsigned int this_mpi;
         const unsigned int n_processes;

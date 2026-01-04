@@ -56,15 +56,19 @@ namespace mfe_biot
 
   // MixedBiotProblem class constructor
   template <int dim>
-  MixedBiotProblem<dim>::MixedBiotProblem (ParameterHandler &prm,
-                                            unsigned int &degree,
-                                            std::vector<unsigned int> n_domains,
-                                            const unsigned int &subdomain_type,
-                                            std::vector<int> &neighbors,
-                                            std::vector<unsigned int> &neighbor_type,
-                                            const bool mortar_flag,
-                                            const unsigned int mortar_degree)
-    : prm(prm),
+  MixedBiotProblem<dim>::MixedBiotProblem(
+    ParameterHandler &prm,
+    unsigned int &degree,
+    std::vector<unsigned int> n_domains,
+    const unsigned int &subdomain_type,
+    std::vector<int> &neighbors,
+    std::vector<unsigned int> &neighbor_type,
+    MPI_Comm mpi_communicator_biot,
+    const bool mortar_flag,
+    const unsigned int mortar_degree)
+    : mpi_communicator (MPI_COMM_WORLD),
+      mpi_communicator_biot(mpi_communicator_biot),
+      prm(prm),
       degree(degree),
       n_domains(n_domains),
       subdomain_type(subdomain_type),
@@ -74,7 +78,6 @@ namespace mfe_biot
       biot_neighbor(false),
       mortar_flag(mortar_flag),
       mortar_degree(mortar_degree),
-      mpi_communicator (MPI_COMM_WORLD),
       P_coarse2fine (false),
       P_fine2coarse (false),
       gmres_iteration(0),
@@ -562,6 +565,10 @@ namespace mfe_biot
     get_interface_dofs();
 
     assemble_system();
+
+    solve_bar();
+    if(n_processes == 1)
+      solution = solution_bar;
   }
     template class MixedBiotProblem<2>;
     // template class MixedBiotProblem<3>;

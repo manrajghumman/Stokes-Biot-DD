@@ -60,6 +60,9 @@ class StokesBiotParameterReader : public Subscriptor
                       Patterns::Selection("yes|no"));
         prm.declare_entry("mortar_degree", "2",
                       Patterns::Integer());
+        prm.declare_entry("gamma", "100.0",
+                      Patterns::Double(),
+                      "Nitsche's penalty parameter for Stokes");
     }
     prm.leave_subsection();
 

@@ -54,6 +54,8 @@ namespace dd_stokes_biot
 
   private:
     MPI_Comm   mpi_communicator;
+    MPI_Comm   mpi_communicator_stokes;
+    MPI_Comm   mpi_communicator_biot;
     MPI_Status mpi_status;
     const unsigned int this_mpi;
     const unsigned int n_processes;

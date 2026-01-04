@@ -80,6 +80,7 @@ namespace mfe_stokes
         prm.enter_subsection("Stokes Parameters");
         {
             qdegree  = prm.get_integer("quad_degree");  
+            gamma    = prm.get_double("gamma");
         }
         prm.leave_subsection();
         // make initial refinement matrix (reps) for each subdomain

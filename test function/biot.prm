@@ -3,4 +3,69 @@
 # The Biot region is (1, 2) x (0, 1)
 # ---------------------
 #################################################################################
-# Right hand side and Boundary Conditions
+# Right hand side and Boundary Conditions Right hand side and Boundary Conditions
+# function constant to indicate assumptions
+# to change them is hard will need to change at various
+# different places in this and biot.prm file
+subsection RHS vector
+    set Function constants = mu=1.0, lambda=1.0
+    set Function expression = 
+    set Variable names = x, y
+end
+subsection RHS scalar 
+    set Function expression =  
+    set Variable names      = x, y
+end
+subsection BC Dirichlet Displacement
+    set Function expression = 
+    set Variable names      = x, y
+end
+subsection BC Dirichlet Pressure
+    set Function expression = 
+    set Variable names      = x, y
+end
+# Also need to put something for Neumann condition later
+#################################################################################
+# Exact solution values Darcy
+# Functions: velocity, pressure
+subsection Exact solution 
+  set Function expression = 
+  set Variable names      = x, y
+end
+#################################################################################
+# Exact solution, gradient values Darcy
+# Functions: velocity, pressure
+subsection Exact gradient
+  set Function expression = 
+  set Variable names      = x,y
+end
+#################################################################################
+# Exact solution values Elast 
+# Functions: stress, displacement, rotation
+subsection Exact solution stress
+  set Function expression = 
+  set Variable names      = x, y
+end
+subsection Exact solution displacement
+  set Function expression = 
+  set Variable names      = x, y
+end
+subsection Exact solution rotation
+  set Function expression = 
+  set Variable names      = x, y
+end
+#################################################################################
+# Exact solution, gradient values  Elast
+# Functions: stress, displacement, rotation, velocity, pressure
+subsection Exact gradient stress
+  set Function expression = 
+  set Variable names      = x,y
+end
+subsection Exact gradient displacement
+  set Function expression = 
+  set Variable names      = x,y
+end
+subsection Exact gradient rotation
+  set Function expression = 
+  set Variable names      = x,y
+end

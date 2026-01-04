@@ -80,21 +80,25 @@ namespace mfe_stokes
     const unsigned int &subdomain_type,
     std::vector<int> &neighbors,
     std::vector<unsigned int> &neighbor_type,
+    MPI_Comm mpi_communicator_stokes,
     const bool mortar_flag,
     const unsigned int mortar_degree,
     const bool cont_mortar_flag)
-    : prm(prm)
+    : mpi_communicator(MPI_COMM_WORLD)
+    , mpi_communicator_stokes(mpi_communicator_stokes)
+    , this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator))
+    , n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator))
+    , this_mpi_stokes (Utilities::MPI::this_mpi_process(mpi_communicator_stokes))
+    , n_processes_stokes (Utilities::MPI::n_mpi_processes(mpi_communicator_stokes))
+    , prm(prm)
     , degree(degree)
-    // , qdegree(quad_degree)
-    , n_domains(n_domains)
     , subdomain_type(subdomain_type)
+    , n_domains(n_domains)
     , stokes_neighbor(false)
     , biot_neighbor(false)
-    // , external_bdry_ids(external_bdry_ids)
     , mortar_flag(mortar_flag)
     , mortar_degree(mortar_degree)
     , cont_mortar_flag((mortar_flag == 1 && mortar_degree == 0) ? false: cont_mortar_flag) // if mortar_degree is 0, use RT<dim> (0)
-    , mpi_communicator(MPI_COMM_WORLD)
     // , tol(tol)
     // , reps(reps)
     , neighbors(neighbors)
@@ -122,10 +126,8 @@ namespace mfe_stokes
     //   else
     //     return FESystem<dim>(FE_Nothing<dim>(), dim, FE_Nothing<dim>(), 1);
     // }()) // Conditional initialization using a lambda function
-    , this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator))
-    , n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator))
     , pcout(std::cout,
-            (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
+            (Utilities::MPI::this_mpi_process(mpi_communicator_stokes) == 0))
     // , computing_timer(mpi_communicator,
     //                   std::cout,
     //                   TimerOutput::summary,
@@ -230,20 +232,20 @@ namespace mfe_stokes
     system_matrix_star.reinit(sparsity_pattern);
 
     // Reinit solution and RHS vectors
-    solution_bar_stokes.reinit(2);
-    solution_bar_stokes.block(0).reinit(n_u);
-    solution_bar_stokes.block(1).reinit(n_p);
-    solution_bar_stokes.collect_sizes();
-    solution_bar_stokes = 0;
+    solution_bar.reinit(2);
+    solution_bar.block(0).reinit(n_u);
+    solution_bar.block(1).reinit(n_p);
+    solution_bar.collect_sizes();
+    solution_bar = 0;
 
     // Reinit solution and RHS vectors
-    solution_star_stokes.reinit(solution_bar_stokes);
+    solution_star_stokes.reinit(solution_bar);
     solution_star_stokes = 0;
 
-    system_rhs_bar_stokes.reinit(solution_bar_stokes);
-    system_rhs_bar_stokes = 0;
+    system_rhs_bar.reinit(solution_bar);
+    system_rhs_bar = 0;
 
-    system_rhs_star_stokes.reinit(solution_bar_stokes);
+    system_rhs_star_stokes.reinit(solution_bar);
     system_rhs_star_stokes = 0;
 
     pcout << "Stokes part:\n N velocity dofs: " << n_u
@@ -409,8 +411,7 @@ namespace mfe_stokes
   {
     // TimerOutput::Scope t(computing_timer, "Assemble system");
     system_matrix         = 0;
-    system_rhs_bar_stokes = 0;
-    const double gamma    = 100;
+    system_rhs_bar        = 0;
 
     QGauss<dim> quadrature_formula(degree+2);
     QGauss<dim - 1> face_quadrature_formula(degree+2);
@@ -609,7 +610,7 @@ namespace mfe_stokes
                             local_dof_indices[j],
                             local_matrix(i, j));
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
-        system_rhs_bar_stokes(local_dof_indices[i]) += local_rhs(i);
+        system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
     }
   }
 
@@ -630,7 +631,7 @@ namespace mfe_stokes
   {
       // TimerOutput::Scope t(computing_timer, "Solve bar stokes");
     A_direct.initialize (system_matrix);
-    A_direct.vmult(solution_bar_stokes, system_rhs_bar_stokes);
+    A_direct.vmult(solution_bar, system_rhs_bar);
   }
 
 
@@ -783,65 +784,44 @@ namespace mfe_stokes
     
     const unsigned int n_active_cells = triangulation.n_active_cells();
     const unsigned int n_dofs = dof_handler.n_dofs();
-    convergence_table.add_value("cells", n_active_cells);
-    convergence_table.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
-    convergence_table.add_value("dofs", n_dofs);
-    convergence_table.add_value("u_L2", u_l2_error);
-    // convergence_table.add_value("u_order", order_u);
-    convergence_table.add_value("p_L2", p_l2_error);
-    convergence_table.add_value("residual", residual);
-    // convergence_table.add_value("p_order", order_p);
+    convergence_table_l2.add_value("cells", n_active_cells);
+    convergence_table_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_l2.add_value("dofs", n_dofs);
+    convergence_table_l2.add_value("u_L2", u_l2_error);
+    convergence_table_l2.add_value("p_L2", p_l2_error);
+    convergence_table_l2.add_value("residual", residual);
+
+    convergence_table_h1.add_value("cells", n_active_cells);
+    convergence_table_h1.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_h1.add_value("dofs", n_dofs);
+    convergence_table_h1.add_value("u_H1", u_H1_error);
+    convergence_table_h1.add_value("p_H1", p_H1_error);
+    convergence_table_h1.add_value("ux_H1", ux_H1_error);
+    convergence_table_h1.add_value("uy_H1", uy_H1_error);
+    // convergence_table_h1.add_value("gmres_iter", gmres_iteration);
   }
 
   template <int dim>
   void MixedStokesProblem<dim>::print_individual_convg_table_l2()
   {
-    convergence_table.set_precision("residual", 3);
-    convergence_table.set_precision("u_L2", 3);
-    convergence_table.set_precision("p_L2", 3);
-    convergence_table.set_scientific("residual", true);
-    convergence_table.set_scientific("u_L2", true);
-    convergence_table.set_scientific("p_L2", true);
+    convergence_table_l2.set_precision("residual", 3);
+    convergence_table_l2.set_precision("u_L2", 3);
+    convergence_table_l2.set_precision("p_L2", 3);
 
-    convergence_table.set_tex_caption("cells", "\\ cells");
-    convergence_table.set_tex_caption("dofs", "\\# dofs");
-    // convergence_table.set_tex_caption("u_order", "u order");
-    // convergence_table.set_tex_caption("p_order", "p order");
-    convergence_table.set_tex_caption("residual", "residual");
-    convergence_table.set_tex_caption("u_L2", "$L^2$-error (u)");
-    convergence_table.set_tex_caption("p_L2", "$L^2$-error (p)");
+    convergence_table_l2.set_scientific("residual", true);
+    convergence_table_l2.set_scientific("u_L2", true);
+    convergence_table_l2.set_scientific("p_L2", true);
 
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_L2", ConvergenceTable::reduction_rate);
-    convergence_table.evaluate_convergence_rates(
+    convergence_table_l2.set_tex_caption("cells", "\\ cells");
+    convergence_table_l2.set_tex_caption("dofs", "\\# dofs");
+    convergence_table_l2.set_tex_caption("residual", "residual");
+    convergence_table_l2.set_tex_caption("u_L2", "$L^2$-error (u)");
+    convergence_table_l2.set_tex_caption("p_L2", "$L^2$-error (p)");
+
+    convergence_table_l2.evaluate_convergence_rates(
           "u_L2", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_L2", ConvergenceTable::reduction_rate);
-    convergence_table.evaluate_convergence_rates(
+    convergence_table_l2.evaluate_convergence_rates(
           "p_L2", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "ux_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "ux_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "uy_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "uy_H1", ConvergenceTable::reduction_rate_log2);
-
-    // convergence_table.set_precision("u_L2-rate", 3);
-    // convergence_table.set_precision("p_L2-rate", 3);
-    // convergence_table.set_precision("u_H1-rate", 3);
-    // convergence_table.set_precision("p_H1-rate", 3);
-    // convergence_table.set_precision("ux_H1-rate", 3);
-    // convergence_table.set_precision("uy_H1-rate", 3);
 
     std::string conv_filename = "../output/convg_tables/table_individual_l2" + std::string(".tex");
 
@@ -854,27 +834,97 @@ namespace mfe_stokes
                    << "\\begin{document}\n\n";
         table_file.close();
     }
-    for (unsigned int i = 0; i<n_processes; ++i)
+    for (unsigned int i = 0; i<n_processes_stokes; ++i)
     {
-      // MPI_Barrier(mpi_communicator);
-      if (this_mpi == i)
+      MPI_Barrier(mpi_communicator_stokes);
+      if (this_mpi_stokes == i)
       { 
         // Print to screen if you like, but messy for many processes
-        // convergence_table.write_text(std::cout);
+        // convergence_table_l2.write_text(std::cout);
 
         std::ofstream table_file(conv_filename, std::ios::app);
         // Write a LaTeX comment and a section header before the table:
         table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
         table_file << "\\section*{MPI Process " << this_mpi << "}\n";
-        convergence_table.write_tex(table_file, false);
+        convergence_table_l2.write_tex(table_file, false);
+        table_file << "\n"; // Optional: extra space after each table
+      }
+    }
+    MPI_Barrier(mpi_communicator_stokes);
+    if (this_mpi_stokes == 0)
+    {
+        std::ofstream table_file(conv_filename, std::ios::app);
+        table_file << "\n\\end{document}\n";
+    }
+  }
+
+  template <int dim>
+  void
+  MixedStokesProblem<dim>::print_individual_convg_table_h1()
+  {
+    // convergence_table_h1.set_precision("residual", 3);
+    convergence_table_h1.set_precision("u_H1", 3);
+    convergence_table_h1.set_precision("p_H1", 3);
+    convergence_table_h1.set_precision("ux_H1", 3);
+    convergence_table_h1.set_precision("uy_H1", 3);
+
+    // convergence_table_h1.set_scientific("residual", true);
+    convergence_table_h1.set_scientific("h", true);
+    convergence_table_h1.set_scientific("u_H1", true);
+    convergence_table_h1.set_scientific("p_H1", true);
+    convergence_table_h1.set_scientific("ux_H1", true);
+    convergence_table_h1.set_scientific("uy_H1", true);
+
+    convergence_table_h1.set_tex_caption("cells", "\\ cells");
+    convergence_table_h1.set_tex_caption("dofs", "\\# dofs");
+    // convergence_table_h1.set_tex_caption("residual", "residual");
+    convergence_table_h1.set_tex_caption("u_H1", "$H^1$-error (u)");
+    convergence_table_h1.set_tex_caption("p_H1", "$H^1$-error (p)");
+    convergence_table_h1.set_tex_caption("ux_H1", "$H^1$-error (ux)");
+    convergence_table_h1.set_tex_caption("uy_H1", "$H^1$-error (uy)");
+    // convergence_table_h1.set_tex_caption("gmres_iter", "gmres iter");
+
+    convergence_table_h1.evaluate_convergence_rates(
+          "u_H1", ConvergenceTable::reduction_rate_log2);
+    convergence_table_h1.evaluate_convergence_rates(
+          "p_H1", ConvergenceTable::reduction_rate_log2);
+    convergence_table_h1.evaluate_convergence_rates(
+          "ux_H1", ConvergenceTable::reduction_rate_log2);
+    convergence_table_h1.evaluate_convergence_rates(
+          "uy_H1", ConvergenceTable::reduction_rate_log2);
+
+    std::string conv_filename = "../output/convg_tables/table_individual_h1" + std::string(".tex");
+
+    if (this_mpi == 0) // latex header
+    {
+        std::ofstream table_file(conv_filename, std::ios::out);
+        table_file << "\\documentclass[10pt]{report}\n"
+                   << "\\usepackage{float}\n"
+                   << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                   << "\\begin{document}\n\n";
+        table_file.close();
+    }
+    for (unsigned int i = 0; i<n_processes_stokes; ++i)
+    {
+      MPI_Barrier(mpi_communicator_stokes);
+      if (this_mpi_stokes == i)
+      { 
+        // Print to screen if you like, but messy for many processes
+        // convergence_table_l2.write_text(std::cout);
+
+        std::ofstream table_file(conv_filename, std::ios::app);
+        // Write a LaTeX comment and a section header before the table:
+        table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
+        table_file << "\\section*{MPI Process " << this_mpi << "}\n";
+        convergence_table_h1.write_tex(table_file, false);
         table_file << "\n"; // Optional: extra space after each table
       }
     }
     // MPI_Barrier(mpi_communicator);
-    if (this_mpi == 0)
+    if (this_mpi_stokes == 0)
     {
-        std::ofstream table_file(conv_filename, std::ios::app);
-        table_file << "\n\\end{document}\n";
+      std::ofstream table_file(conv_filename, std::ios::app);
+      table_file << "\n\\end{document}\n";
     }
   }
 
@@ -960,7 +1010,7 @@ namespace mfe_stokes
     assemble_system();
     solve_bar();
     if(n_processes == 1)
-      solution = solution_bar_stokes;
+      solution = solution_bar;
     
   }
 

@@ -43,6 +43,7 @@ namespace mfe_stokes
                       const unsigned int &subdomain_type,
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
+                      MPI_Comm mpi_communicator_stokes,
                       const bool mortar_flag = 0,
                       const unsigned int mortar_degree = 0,
                       const bool cont_mortar_flag = 0);
@@ -71,16 +72,23 @@ namespace mfe_stokes
     void
     print_individual_convg_table_l2();
 
+    void
+    print_individual_convg_table_h1();
+
 
   private:
     MPI_Comm   mpi_communicator;
+    MPI_Comm   mpi_communicator_stokes;
     MPI_Status mpi_status;
     const unsigned int this_mpi;
     const unsigned int n_processes;
+    const unsigned int this_mpi_stokes;
+    const unsigned int n_processes_stokes;
     ParameterHandler &prm;
     ParameterHandler prm_fxn;
     unsigned int degree;
     unsigned int qdegree;
+    double gamma;
     const unsigned int subdomain_type;
     bool stokes_neighbor;
     bool biot_neighbor;
@@ -109,9 +117,6 @@ namespace mfe_stokes
 
     void
     get_interface_dofs();
-
-    // void
-    // get_interface_dofs_biot();
 
 
     unsigned int       gmres_iteration;
@@ -199,7 +204,7 @@ namespace mfe_stokes
     FullMatrix<double>        interface_matrix;
 
 
-    BlockVector<double> solution_bar_stokes;
+    BlockVector<double> solution_bar;
     BlockVector<double> solution_star_stokes;
     BlockVector<double> solution;
     BlockVector<double> exact_solution_at_nodes;
@@ -207,7 +212,7 @@ namespace mfe_stokes
     BlockVector<double> darcy_velocity_vec;
     std::vector<BlockVector<double>> exact_normal_stress_at_nodes_fe;
     std::vector<BlockVector<double>> exact_normal_stress_at_nodes_mortar;
-    BlockVector<double> system_rhs_bar_stokes;
+    BlockVector<double> system_rhs_bar;
     BlockVector<double> system_rhs_star_stokes;
     std::vector<BlockVector<double>> interface_fe_function;
     std::vector<BlockVector<double>> interface_fe_function_fe;
@@ -224,7 +229,8 @@ namespace mfe_stokes
 
     // Output extra
     ConditionalOStream pcout;
-    ConvergenceTable   convergence_table;
+    ConvergenceTable   convergence_table_l2;
+    ConvergenceTable   convergence_table_h1;
     ConvergenceTable   convergence_table_total;
     // TimerOutput        computing_timer;
     
