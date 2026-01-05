@@ -552,7 +552,7 @@ namespace mfe_stokes
             for (unsigned int q = 0; q < n_face_q_points; ++q)
             {
               Tensor<1,dim> gd; 
-              Vector<double> tmp(dim);
+              // Vector<double> tmp(dim);
               // boundary_values_dir.vector_value(fe_face_values.get_quadrature_points()[q], tmp);
               for (unsigned int i = 0; i < dim; ++i)
                 gd[i] = boundary_values_dir.value(fe_face_values.get_quadrature_points()[q], i);

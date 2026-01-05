@@ -92,6 +92,9 @@ class StokesBiotParameterReader : public Subscriptor
         prm.declare_entry("lame_lambda", "1.0",
                       Patterns::Double(),
                       "Lame's second parameter - lambda");
+        prm.declare_entry("Kinv", "1, 0; 0, 1",
+                      Patterns::Anything(),
+                      "Inverse of Permeability tensor");
     }
     prm.leave_subsection();
 

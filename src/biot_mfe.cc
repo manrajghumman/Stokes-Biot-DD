@@ -23,6 +23,7 @@
 #include <deal.II/grid/tria_iterator.h>
 #include <deal.II/grid/grid_in.h>
 #include <deal.II/grid/grid_tools.h>
+#include <deal.II/grid/grid_out.h>
 #include <deal.II/dofs/dof_handler.h>
 #include <deal.II/dofs/dof_renumbering.h>
 #include <deal.II/dofs/dof_accessor.h>
@@ -47,6 +48,7 @@
 #include "../inc/biot_mfe.h"
 #include "../inc/utilities.h"
 #include "../inc/data_biot.h"
+#include "../inc/biot_parameter_reader.h"
 
 
 namespace mfe_biot
@@ -98,6 +100,8 @@ namespace mfe_biot
       //                   TimerOutput::wall_times)
   {
     interpret_parameters();
+    BiotParameterReader param(prm_fxn);
+    param.read_parameters("../test function/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -335,19 +339,44 @@ namespace mfe_biot
     Vector<double>       local_rhs (dofs_per_cell);
     std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
-    DisplacementBoundaryValues<dim> displacement_boundary_values;
-    PressureBoundaryValues<dim>     pressure_boundary_values;
-    // displacement_boundary_values.set_time(prm.time);
-    // pressure_boundary_values.set_time(prm.time);
-    std::vector<Vector<double>> boundary_values_elast (n_face_q_points, Vector<double>(dim));
-    std::vector<double>         boundary_values_flow (n_face_q_points);
+    //for Dirichlet BC from displacement eta = eta_0
+    Functions::ParsedFunction<dim> boundary_values_dir_disp(dim);
+    prm_fxn.enter_subsection("BC Dirichlet Displacement");
+    boundary_values_dir_disp.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
 
-    RightHandSideElasticity<dim>    right_hand_side_elasticity;
-    RightHandSidePressure<dim>      right_hand_side_pressure(s0,alpha);
-    // right_hand_side_elasticity.set_time(prm.time);
-    // right_hand_side_pressure.set_time(prm.time);
-    std::vector<Vector<double>> rhs_values_elast (n_q_points, Vector<double>(dim));
-    std::vector<double>         rhs_values_flow (n_q_points);
+    //for Dirichlet BC from pressure p = p_0
+    Functions::ParsedFunction<dim> boundary_values_dir_press(1);
+    prm_fxn.enter_subsection("BC Dirichlet Pressure");
+    boundary_values_dir_press.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
+    //for F = -div sigma
+    Functions::ParsedFunction<dim> rhs_vec(dim);
+    prm_fxn.enter_subsection("RHS vector");
+    rhs_vec.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    Tensor<1, dim> rhs_vec_val;
+
+    //for G = -div u
+    Functions::ParsedFunction<dim> rhs_scalar(1);
+    prm_fxn.enter_subsection("RHS scalar");
+    rhs_scalar.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
+    // DisplacementBoundaryValues<dim> displacement_boundary_values;
+    // PressureBoundaryValues<dim>     pressure_boundary_values;
+    // // displacement_boundary_values.set_time(prm.time);
+    // // pressure_boundary_values.set_time(prm.time);
+    // std::vector<Vector<double>> boundary_values_elast (n_face_q_points, Vector<double>(dim));
+    // std::vector<double>         boundary_values_flow (n_face_q_points);
+
+    // RightHandSideElasticity<dim>    right_hand_side_elasticity;
+    // RightHandSidePressure<dim>      right_hand_side_pressure(s0,alpha);
+    // // right_hand_side_elasticity.set_time(prm.time);
+    // // right_hand_side_pressure.set_time(prm.time);
+    // std::vector<Vector<double>> rhs_values_elast (n_q_points, Vector<double>(dim));
+    // std::vector<double>         rhs_values_flow (n_q_points);
 
     const LameParameters<dim> lame_function;
     const KInverse<dim> k_inverse;
@@ -405,9 +434,12 @@ namespace mfe_biot
 
       for (unsigned int q=0; q<n_q_points; ++q)
       {
+        for (unsigned int i = 0; i < dim; ++i)
+            rhs_vec_val[i] = rhs_vec.value(fe_values.quadrature_point(q), i);
+
+        // Evaluate test functions 
         for (unsigned int k=0; k<dofs_per_cell; ++k)
         {
-          // Evaluate test functions
           phi_u[k] = fe_values[velocity].value (k, q);
           phi_p[k] = fe_values[pressure].value (k, q);
 
@@ -442,17 +474,59 @@ namespace mfe_biot
             compliance_tensor(phi_s[j], mu, lambda, asigma_j);
             compliance_tensor_pressure(phi_p[j], mu, lambda, apId_j);
 
-            local_matrix(i, j) += (phi_u[i] * k_inverse_values[q] * phi_u[j] - phi_p[j] * div_phi_u[i]                                     // Darcy law
+            local_matrix(i, j) += (phi_u[i] * k_inverse_values[q] * phi_u[j] - phi_p[j] * div_phi_u[i]                 // Darcy law
                                     + div_phi_u[j] * phi_p[i] + s0*phi_p[i]*phi_p[j] + alpha*trace(asigma_j)*phi_p[i]  // Momentum
                                     + alpha * alpha * trace(apId_j)*phi_p[i]
-                                    + scalar_product(asigma_j, sigma_i) + alpha*scalar_product(apId_j, sigma_i)                                 // Mixed elasticity eq-ns
+                                    + scalar_product(asigma_j, sigma_i) + alpha*scalar_product(apId_j, sigma_i)        // Mixed elasticity eq-ns
                                     + scalar_product(phi_d[j], div_phi_s[i])  + scalar_product(phi_d[i], div_phi_s[j])
                                     + scalar_product<1, rotation_dim>(phi_r[i], asym_j)
                                     + scalar_product<1, rotation_dim>(phi_r[j], asym_i) )
                                   * fe_values.JxW(q);
           }
+          local_rhs(i) += phi_d[i] * rhs_vec_val // (f_p, v_s)
+                          + phi_p[i] * rhs_scalar.value(fe_values.quadrature_point(q)) // (q, w_p)
+                          * fe_values.JxW(q);
         }
       }
+
+      //Entering boundary integrals
+      for (const auto &face : cell->face_iterators())
+      {
+        if (face->at_boundary())
+        { 
+          fe_face_values.reinit(cell, face);
+          if (face->boundary_id() == 0)//Entering Dirichlet Condition
+          {
+            for (unsigned int q = 0; q < n_face_q_points; ++q)
+            {
+              // Get boundary values displacement
+              Tensor<1,dim> gd_disp; 
+              std::vector<Tensor<1,dim>> tau_n_i(dofs_per_cell);
+              for (unsigned int i = 0; i < dim; ++i)
+                gd_disp[i] = boundary_values_dir_disp.value(fe_face_values.quadrature_point(q), i);
+              
+              // Evaluate test functions  
+              for (unsigned int k=0; k<dofs_per_cell; ++k)
+              {
+                phi_u[k] = fe_values[velocity].value (k, q);
+                for (unsigned int s_i=0; s_i<dim; ++s_i)
+                  tau_n_i[k][s_i] = fe_values[stresses[s_i]].value (k, q)
+                                    * fe_face_values.normal_vector(q);
+              }
+          
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                local_rhs(i) += (- phi_u[i] * fe_face_values.normal_vector(q) // -<u.n, g_p^D_p>
+                                  * boundary_values_dir_press.value(fe_face_values.quadrature_point(q))
+                                  + tau_n_i[i] * gd_disp )     // <tau.n, g_p^D_d>
+                                  * fe_face_values.JxW(q); 
+                                
+              }
+            }
+          }
+        }
+      }
+
       cell->get_dof_indices (local_dof_indices);
       for (unsigned int i=0; i<dofs_per_cell; ++i)
         for (unsigned int j=0; j<dofs_per_cell; ++j)
@@ -460,7 +534,6 @@ namespace mfe_biot
                             local_dof_indices[j],
                             local_matrix(i,j));
     }
-
   }
 
 
@@ -486,12 +559,61 @@ namespace mfe_biot
   void MixedBiotProblem<dim>::solve_bar ()
   {
     // TimerOutput::Scope t(computing_timer, "Solve bar");
+    A_direct.initialize (system_matrix);
+    A_direct.vmult(solution_bar, system_rhs_bar);
   }
 
   template <int dim>
   void MixedBiotProblem<dim>::solve_star ()
   {
-      // TimerOutput::Scope t(computing_timer, "Solve star");
+    // TimerOutput::Scope t(computing_timer, "Solve star");
+  }
+
+  template <int dim>
+  void
+  MixedBiotProblem<dim>::output_dof_results(const unsigned int cycle) const
+  {
+    std::ofstream mesh_file("../output/gnuplot_data/mesh-"
+      +Utilities::int_to_string(this_mpi)
+        +Utilities::int_to_string(cycle)
+          +".gnuplot");
+    GridOut().write_gnuplot(triangulation, mesh_file);
+  }
+
+  template <int dim>
+  void
+  MixedBiotProblem<dim>::output_results(const unsigned int cycle) const
+  {
+    std::vector<std::string> solution_names(dim, "velocity");
+    solution_names.emplace_back("pressure");
+
+    std::vector<DataComponentInterpretation::DataComponentInterpretation>
+      data_component_interpretation(
+        dim, DataComponentInterpretation::component_is_part_of_vector);
+    data_component_interpretation.push_back(
+      DataComponentInterpretation::component_is_scalar);
+
+    DataOut<dim> data_out;
+    data_out.attach_dof_handler(dof_handler);
+    
+    data_out.add_data_vector(solution,
+                            solution_names,
+                            DataOut<dim>::type_dof_data,
+                            data_component_interpretation);
+    data_out.build_patches();
+
+    std::ofstream output(
+      "../output/paraview_data/sol_dd-" + Utilities::int_to_string(this_mpi)
+      + "_" + Utilities::int_to_string(cycle, 2) 
+      + ".vtk");
+    data_out.write_vtk(output);
+  }
+
+
+  template <int dim>
+  void MixedBiotProblem<dim>::compute_errors(const unsigned int &cycle) 
+  {
+
   }
 
   // MixedBiotProblem::run
