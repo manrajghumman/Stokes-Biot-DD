@@ -52,7 +52,16 @@ namespace mfe_biot
     output_results(const unsigned int cycle) const;
 
     void 
-    compute_errors(const unsigned int &cycle) 
+    compute_errors(const unsigned int &cycle); 
+
+    void 
+    print_individual_convg_table_l2();
+
+    void
+    print_individual_convg_table_h1();
+    
+    void 
+    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
 
     private:
     MPI_Comm mpi_communicator;
@@ -60,6 +69,8 @@ namespace mfe_biot
     MPI_Status mpi_status;
     const unsigned int this_mpi;
     const unsigned int n_processes;
+    const unsigned int this_mpi_biot;
+    const unsigned int n_processes_biot;
 
     Projector::Projector <dim> P_coarse2fine;
     Projector::Projector <dim> P_fine2coarse;
@@ -67,38 +78,10 @@ namespace mfe_biot
     void interpret_parameters();
     void setup_system();
     void assemble_system();
-    // void assemble_system_non_diff(); //assembing system matrix for non-differentiated elasticity
-    // void assemble_system_elast();
-    // void assemble_system_darcy();
     void get_interface_dofs();
-    // void get_interface_dofs_elast();
-    // void get_interface_dofs_darcy();
-    void assemble_rhs_bar();
-    // void assemble_rhs_bar_elast();
-    // void assemble_rhs_bar_darcy();
-    void assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
-    // void assemble_rhs_star_elast(FEFaceValues<dim> &fe_face_values);
-    // void assemble_rhs_star_darcy(FEFaceValues<dim> &fe_face_values);
-
     void solve_bar();
-    // void solve_bar_elast();
-    // void solve_bar_darcy();
-
     void solve_star();
-    // void solve_star_elast();
-    // void solve_star_darcy();
-
-    // void solve_timestep(unsigned int maxiter);
-    // void Find_IC(unsigned int maxiter);
-
     void compute_multiscale_basis();
-
-    // std::vector<double> compute_interface_error(); //return_vector[0] gives interface_error for elast part and return_vector[1] gives that of flow part.
-    // std::vector<double> compute_interface_error_l2();
-    void compute_errors(const unsigned int cycle);
-    void output_results(const unsigned int cycle, const unsigned int refine);
-
-    // void set_current_errors_to_zero();
     void reset_mortars();
     // //For implementing GMRES
     // void
@@ -223,7 +206,8 @@ namespace mfe_biot
 
     // Output extra
     ConditionalOStream pcout;
-    ConvergenceTable convergence_table;
+    ConvergenceTable   convergence_table_l2;
+    ConvergenceTable   convergence_table_h1;
     // TimerOutput computing_timer;
   };
 }// namespace mfe_biot

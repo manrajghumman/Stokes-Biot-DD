@@ -4,7 +4,7 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 3
+set refinements  = 8
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
@@ -61,6 +61,6 @@ end
 # Parameters for solver ('GMRES')
 
 subsection Solver
-	set max_iter         = 5000
-	set tol              = 1e-9
+	set max_iter = 5000
+	set tol      = 1e-9
 end

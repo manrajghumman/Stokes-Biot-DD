@@ -603,12 +603,17 @@ namespace mfe_stokes
         for (unsigned int j = i + 1; j < dofs_per_cell; ++j)
             local_matrix(i, j) = local_matrix(j, i);
       
-            // Add local contributions to global system
+      // Add local contributions to global system
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
+      {
+        system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
+        
         for (unsigned int j = 0; j < dofs_per_cell; ++j)
           system_matrix.add(local_dof_indices[i],
                             local_dof_indices[j],
                             local_matrix(i, j));
+      }
+        
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
         system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
     }
@@ -698,7 +703,7 @@ namespace mfe_stokes
     const ComponentSelectFunction<dim> v_x_mask(0, dim + 1);
     const ComponentSelectFunction<dim> v_y_mask(1, dim + 1);
 
-    ExactSolution<dim> exact_solution(prm_fxn);
+    ExactSolution<dim> exact_solution;
     prm_fxn.enter_subsection("Exact solution");
     exact_solution.exact_solution_val_data.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
@@ -823,9 +828,9 @@ namespace mfe_stokes
     convergence_table_l2.evaluate_convergence_rates(
           "p_L2", ConvergenceTable::reduction_rate_log2);
 
-    std::string conv_filename = "../output/convg_tables/table_individual_l2" + std::string(".tex");
+    std::string conv_filename = "../output/convg_tables/stokes_table_individual_l2" + std::string(".tex");
 
-    if (this_mpi == 0) // latex header
+    if (this_mpi_stokes == 0) // latex header
     {
         std::ofstream table_file(conv_filename, std::ios::out);
         table_file << "\\documentclass[10pt]{report}\n"

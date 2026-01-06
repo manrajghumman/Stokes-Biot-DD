@@ -27,7 +27,7 @@ namespace mfe_stokes
     public:
       Functions::ParsedFunction<dim> exact_solution_val_data;
       Functions::ParsedFunction<dim> exact_solution_grad_val_data;
-      ExactSolution(ParameterHandler &);
+      ExactSolution();
 
       virtual void vector_value(const Point<dim> &p,
                                 Vector<double> &  value) const override;
@@ -36,7 +36,7 @@ namespace mfe_stokes
   };
 
   template <int dim>
-  ExactSolution<dim>::ExactSolution(ParameterHandler &) : 
+  ExactSolution<dim>::ExactSolution() : 
     Function<dim>(dim + 1),
     // prm(param),
     exact_solution_val_data(dim + 1),
@@ -45,27 +45,27 @@ namespace mfe_stokes
 
 
   template <int dim>
-    void ExactSolution<dim>::vector_value(const Point<dim> &p,
-                                          Vector<double> &  values) const
-    {
-      AssertDimension(values.size(), dim + 1);
+  void ExactSolution<dim>::vector_value(const Point<dim> &p,
+                                        Vector<double> &  values) const
+  {
+    AssertDimension(values.size(), dim + 1);
 
-      values(0) = exact_solution_val_data.value(p, 0);
-      values(1) = exact_solution_val_data.value(p, 1);
-      values(2) = exact_solution_val_data.value(p, 2);
-    }
+    values(0) = exact_solution_val_data.value(p, 0);
+    values(1) = exact_solution_val_data.value(p, 1);
+    values(2) = exact_solution_val_data.value(p, 2);
+  }
   
   template <int dim>
-    void ExactSolution<dim>::vector_gradient(const Point< dim > & 	p,
-                                      std::vector< Tensor< 1, dim> > & 	gradients) const
-    {
-      gradients[0][0] = exact_solution_grad_val_data.value(p, 0);
-      gradients[0][1] = exact_solution_grad_val_data.value(p, 1);
-      gradients[1][0] = exact_solution_grad_val_data.value(p, 2);
-      gradients[1][1] = exact_solution_grad_val_data.value(p, 3);
-      gradients[2][0] = exact_solution_grad_val_data.value(p, 4);
-      gradients[2][1] = exact_solution_grad_val_data.value(p, 5);
-    }
+  void ExactSolution<dim>::vector_gradient(const Point< dim > & 	p,
+                                    std::vector< Tensor< 1, dim> > & 	gradients) const
+  {
+    gradients[0][0] = exact_solution_grad_val_data.value(p, 0);
+    gradients[0][1] = exact_solution_grad_val_data.value(p, 1);
+    gradients[1][0] = exact_solution_grad_val_data.value(p, 2);
+    gradients[1][1] = exact_solution_grad_val_data.value(p, 3);
+    gradients[2][0] = exact_solution_grad_val_data.value(p, 4);
+    gradients[2][1] = exact_solution_grad_val_data.value(p, 5);
+  }
 
   // There is no easy way to take dot product of ParsedFunction with normal vector
   // So we define a TensorFunction for stress tensor

@@ -70,6 +70,10 @@ namespace mfe_biot
     const unsigned int mortar_degree)
     : mpi_communicator (MPI_COMM_WORLD),
       mpi_communicator_biot(mpi_communicator_biot),
+      this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator)),
+      n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator)),
+      this_mpi_biot (Utilities::MPI::this_mpi_process(mpi_communicator_biot)),
+      n_processes_biot (Utilities::MPI::n_mpi_processes(mpi_communicator_biot)),
       prm(prm),
       degree(degree),
       n_domains(n_domains),
@@ -90,10 +94,8 @@ namespace mfe_biot
           FE_BDM<dim>(degree), 1,
           FE_DGQ<dim>(degree-1), 1),
       dof_handler (triangulation),
-      this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator)),
-      n_processes (Utilities::MPI::n_mpi_processes(mpi_communicator)),
       pcout (std::cout,
-              (Utilities::MPI::this_mpi_process(mpi_communicator) == 0))
+              (Utilities::MPI::this_mpi_process(mpi_communicator_biot) == 0))
       // computing_timer (mpi_communicator,
       //                   pcout,
       //                   TimerOutput::summary,
@@ -364,20 +366,6 @@ namespace mfe_biot
     rhs_scalar.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
 
-    // DisplacementBoundaryValues<dim> displacement_boundary_values;
-    // PressureBoundaryValues<dim>     pressure_boundary_values;
-    // // displacement_boundary_values.set_time(prm.time);
-    // // pressure_boundary_values.set_time(prm.time);
-    // std::vector<Vector<double>> boundary_values_elast (n_face_q_points, Vector<double>(dim));
-    // std::vector<double>         boundary_values_flow (n_face_q_points);
-
-    // RightHandSideElasticity<dim>    right_hand_side_elasticity;
-    // RightHandSidePressure<dim>      right_hand_side_pressure(s0,alpha);
-    // // right_hand_side_elasticity.set_time(prm.time);
-    // // right_hand_side_pressure.set_time(prm.time);
-    // std::vector<Vector<double>> rhs_values_elast (n_q_points, Vector<double>(dim));
-    // std::vector<double>         rhs_values_flow (n_q_points);
-
     const LameParameters<dim> lame_function;
     const KInverse<dim> k_inverse;
 
@@ -465,8 +453,6 @@ namespace mfe_biot
           make_asymmetry_tensor(phi_s[i], asym_i);
           make_tensor(phi_s[i], sigma_i);
 
-
-
           for (unsigned int j=0; j<dofs_per_cell; ++j)// i is the test function, multiplied from left
           {
             // make_tensor(phi_s[j], sigma);
@@ -528,20 +514,16 @@ namespace mfe_biot
       }
 
       cell->get_dof_indices (local_dof_indices);
+      // Add local contributions to global system
       for (unsigned int i=0; i<dofs_per_cell; ++i)
+      {
+        system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
         for (unsigned int j=0; j<dofs_per_cell; ++j)
           system_matrix.add (local_dof_indices[i],
                             local_dof_indices[j],
                             local_matrix(i,j));
+      }
     }
-  }
-
-
-  // MixedBiotProblem - assemble RHS of star problems
-  template <int dim>
-  void MixedBiotProblem<dim>::assemble_rhs_bar ()
-  {
-    // TimerOutput::Scope t(computing_timer, "Assemble RHS bar");  
   }
 
 
@@ -584,14 +566,69 @@ namespace mfe_biot
   void
   MixedBiotProblem<dim>::output_results(const unsigned int cycle) const
   {
-    std::vector<std::string> solution_names(dim, "velocity");
-    solution_names.emplace_back("pressure");
+    std::vector<std::string> solution_names;
+    switch(dim)
+    {
+      case 2:
+        solution_names.push_back ("s11");
+        solution_names.push_back ("s12");
+        solution_names.push_back ("s21");
+        solution_names.push_back ("s22");
+        solution_names.push_back ("d1");
+        solution_names.push_back ("d2");
+        solution_names.push_back ("r");
+        solution_names.push_back ("u1");
+        solution_names.push_back ("u2");
+        solution_names.push_back ("p");
+        break;
 
-    std::vector<DataComponentInterpretation::DataComponentInterpretation>
-      data_component_interpretation(
-        dim, DataComponentInterpretation::component_is_part_of_vector);
-    data_component_interpretation.push_back(
-      DataComponentInterpretation::component_is_scalar);
+      case 3:
+        solution_names.push_back ("s11");
+        solution_names.push_back ("s12");
+        solution_names.push_back ("s13");
+        solution_names.push_back ("s21");
+        solution_names.push_back ("s22");
+        solution_names.push_back ("s23");
+        solution_names.push_back ("s31");
+        solution_names.push_back ("s32");
+        solution_names.push_back ("s33");
+        solution_names.push_back ("d1");
+        solution_names.push_back ("d2");
+        solution_names.push_back ("d3");
+        solution_names.push_back ("r1");
+        solution_names.push_back ("r2");
+        solution_names.push_back ("r3");
+        solution_names.push_back ("u1");
+        solution_names.push_back ("u2");
+        solution_names.push_back ("u3");
+        solution_names.push_back ("p");
+        break;
+
+      default:
+      Assert(false, ExcNotImplemented());
+    }
+
+    // Components interpretation of the mechanics solution (vector^dim - vector - rotation)
+    std::vector<DataComponentInterpretation::DataComponentInterpretation> data_component_interpretation(dim*dim+dim, DataComponentInterpretation::component_is_part_of_vector);
+    switch (dim)
+    {
+      case 2:
+        data_component_interpretation.push_back (DataComponentInterpretation::component_is_scalar);
+        break;
+
+      case 3:
+        data_component_interpretation.push_back (DataComponentInterpretation::component_is_part_of_vector);
+        break;
+
+      default:
+        Assert(false, ExcNotImplemented());
+        break;
+    }
+    
+    // Components interpretation of the flow solution (vector - scalar)
+    data_component_interpretation.push_back (DataComponentInterpretation::component_is_part_of_vector);
+    data_component_interpretation.push_back (DataComponentInterpretation::component_is_part_of_vector);
+    data_component_interpretation.push_back(DataComponentInterpretation::component_is_scalar);
 
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
@@ -613,7 +650,167 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::compute_errors(const unsigned int &cycle) 
   {
+    const unsigned int total_dim = static_cast<unsigned int>(dim*dim + dim + 0.5*dim*(dim-1) + dim + 1);
 
+    const ComponentSelectFunction<dim> stress_mask(std::make_pair(0,dim*dim), total_dim);
+    const ComponentSelectFunction<dim> displacement_mask(std::make_pair(dim*dim,dim*dim+dim), total_dim);
+    const ComponentSelectFunction<dim> rotation_mask(std::make_pair(dim*dim+dim,dim*dim+dim+0.5*dim*(dim-1)), total_dim);
+
+    const ComponentSelectFunction<dim> velocity_mask(std::make_pair(dim*dim+dim+0.5*dim*(dim-1), dim*dim+dim+0.5*dim*(dim-1)+dim), total_dim);
+    const ComponentSelectFunction<dim> pressure_mask(static_cast<unsigned int>(dim*dim+dim+0.5*dim*(dim-1)+dim), total_dim);
+  
+    ExactSolution<dim> exact_solution;
+    prm_fxn.enter_subsection("Exact solution Darcy");
+    exact_solution.exact_solution_darcy_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    // prm_fxn.enter_subsection("Exact solution stress");
+    // exact_solution.exact_solution_stress_data.parse_parameters(prm_fxn);
+    // prm_fxn.leave_subsection();
+    prm_fxn.enter_subsection("Exact solution displacement");
+    exact_solution.exact_solution_displacement_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    // prm_fxn.enter_subsection("Exact solution rotation");
+    // exact_solution.exact_solution_rotation_data.parse_parameters(prm_fxn);
+    // prm_fxn.leave_subsection();
+
+    // Vectors to temporarily store cellwise errros
+    Vector<double> cellwise_errors (triangulation.n_active_cells());
+    Vector<double> cellwise_norms (triangulation.n_active_cells());
+
+    QTrapezoid<1>      q_trapez;
+    QIterated<dim>  quadrature(q_trapez,degree+2);
+
+    // Since we want to compute the relative norm
+    BlockVector<double> zerozeros(1, solution.size());
+
+    // Pressure error and norm
+    VectorTools::integrate_difference (dof_handler, solution, exact_solution,
+                                        cellwise_errors, quadrature,
+                                        VectorTools::L2_norm,
+                                        &pressure_mask);
+    const double 
+    p_l2_error = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_errors,
+                                                  VectorTools::L2_norm);
+
+    VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
+                                        cellwise_norms, quadrature,
+                                        VectorTools::L2_norm,
+                                        &pressure_mask);
+    const double 
+    p_l2_norm = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_norms,
+                                                  VectorTools::L2_norm);
+
+    // Velocity L2 error and norm
+    VectorTools::integrate_difference (dof_handler, solution, exact_solution,
+                                        cellwise_errors, quadrature,
+                                        VectorTools::L2_norm,
+                                        &velocity_mask);
+    const double 
+    u_l2_error = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_errors,
+                                                  VectorTools::L2_norm);
+
+    VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
+                                        cellwise_norms, quadrature,
+                                        VectorTools::L2_norm,
+                                        &velocity_mask);
+    const double 
+    u_l2_norm = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_norms,
+                                                  VectorTools::L2_norm);
+
+    // Displacement error and norm
+    VectorTools::integrate_difference (dof_handler, solution, exact_solution,
+                                        cellwise_errors, quadrature,
+                                        VectorTools::L2_norm,
+                                        &displacement_mask);
+    const double 
+    d_l2_error = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_errors,
+                                                  VectorTools::L2_norm);
+
+    VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
+                                        cellwise_norms, quadrature,
+                                        VectorTools::L2_norm,
+                                        &displacement_mask);
+    const double 
+    d_l2_norm = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_norms,
+                                                  VectorTools::L2_norm);
+
+    const unsigned int n_active_cells = triangulation.n_active_cells();
+    const unsigned int n_dofs = dof_handler.n_dofs();
+    convergence_table_l2.add_value("cells", n_active_cells);
+    convergence_table_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_l2.add_value("dofs", n_dofs);
+    convergence_table_l2.add_value("||u-u_h||_L2", u_l2_error/u_l2_norm);
+    convergence_table_l2.add_value("||p-p_h||_L2", p_l2_error/p_l2_norm);
+    convergence_table_l2.add_value("||d-d_h||_L2", d_l2_error/d_l2_norm);
+    convergence_table_l2.add_value("residual", residual);
+  }
+
+  template <int dim>
+  void MixedBiotProblem<dim>::print_individual_convg_table_l2()
+  {
+    convergence_table_l2.set_precision("residual", 3);
+    convergence_table_l2.set_precision("||u-u_h||_L2", 3);
+    convergence_table_l2.set_precision("||p-p_h||_L2", 3);
+    convergence_table_l2.set_precision("||d-d_h||_L2", 3);
+
+    convergence_table_l2.set_scientific("residual", true);
+    convergence_table_l2.set_scientific("||u-u_h||_L2", true);
+    convergence_table_l2.set_scientific("||p-p_h||_L2", true);
+    convergence_table_l2.set_scientific("||d-d_h||_L2", true);
+
+    convergence_table_l2.set_tex_caption("cells", "\\ cells");
+    convergence_table_l2.set_tex_caption("dofs", "\\# dofs");
+    convergence_table_l2.set_tex_caption("residual", "residual");
+    convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
+    convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
+    convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||u_s-u_{sh}||_{L^2}$");
+
+    convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
+                                              ConvergenceTable::reduction_rate_log2);
+    convergence_table_l2.evaluate_convergence_rates("||p-p_h||_L2",
+                                              ConvergenceTable::reduction_rate_log2);
+    convergence_table_l2.evaluate_convergence_rates("||d-d_h||_L2",
+                                              ConvergenceTable::reduction_rate_log2);
+
+    std::string conv_filename = "../output/convg_tables/biot_table_individual_l2" + std::string(".tex");
+
+    if (this_mpi_biot == 0) // latex header
+    {
+        std::ofstream table_file(conv_filename, std::ios::out);
+        table_file << "\\documentclass[10pt]{report}\n"
+                   << "\\usepackage{float}\n"
+                   << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                   << "\\begin{document}\n\n";
+        table_file.close();
+    }
+    for (unsigned int i = 0; i<n_processes_biot; ++i)
+    {
+      MPI_Barrier(mpi_communicator_biot);
+      if (this_mpi_biot == i)
+      { 
+        // Print to screen if you like, but messy for many processes
+        convergence_table_l2.write_text(std::cout);
+
+        std::ofstream table_file(conv_filename, std::ios::app);
+        // Write a LaTeX comment and a section header before the table:
+        table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
+        table_file << "\\section*{MPI Process " << this_mpi << "}\n";
+        convergence_table_l2.write_tex(table_file, false);
+        table_file << "\n"; // Optional: extra space after each table
+      }
+    }
+    MPI_Barrier(mpi_communicator_biot);
+    if (this_mpi_biot == 0)
+    {
+        std::ofstream table_file(conv_filename, std::ios::app);
+        table_file << "\n\\end{document}\n";
+    }
   }
 
   // MixedBiotProblem::run
@@ -692,6 +889,6 @@ namespace mfe_biot
     if(n_processes == 1)
       solution = solution_bar;
   }
-    template class MixedBiotProblem<2>;
-    // template class MixedBiotProblem<3>;
+  template class MixedBiotProblem<2>;
+  // template class MixedBiotProblem<3>;
 }
