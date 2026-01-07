@@ -134,7 +134,7 @@ namespace mfe_biot
   ExactSolution<dim>::ExactSolution() :
     Function<dim>(static_cast<unsigned int>(dim*dim + dim + 0.5*dim*(dim-1) + dim + 1)),
     exact_solution_darcy_data(dim+1),
-    exact_solution_stress_data(dim*dim),
+    exact_solution_stress_data(dim*dim - 1),
     exact_solution_displacement_data(dim),
     exact_solution_rotation_data(0.5*dim*(dim-1))
   {}
@@ -161,10 +161,10 @@ namespace mfe_biot
     switch (dim)
     {
       case 2:
-        values(0) = 0.0;
-        values(1) = 0.0;
-        values(2) = 0.0;
-        values(3) = 0.0;
+        values(0) = exact_solution_stress_data.value(p, 0);
+        values(1) = exact_solution_stress_data.value(p, 1);
+        values(2) = exact_solution_stress_data.value(p, 1);
+        values(3) = exact_solution_stress_data.value(p, 2);
         values(4) = exact_solution_displacement_data.value(p, 0);
         values(5) = exact_solution_displacement_data.value(p, 1);
         values(6) = 0.0;

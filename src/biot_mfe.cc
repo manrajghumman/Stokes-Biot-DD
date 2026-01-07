@@ -88,11 +88,11 @@ namespace mfe_biot
       P_fine2coarse (false),
       gmres_iteration(0),
       grid_diameter(0),
-      fe (FE_BDM<dim>(degree), dim,
-          FE_DGQ<dim>(degree-1), dim,
-          FE_DGQ<dim>(degree-1), 0.5*dim*(dim-1),
-          FE_BDM<dim>(degree), 1,
-          FE_DGQ<dim>(degree-1), 1),
+      fe (FE_BDM<dim>(degree), dim,                // stress
+          FE_DGQ<dim>(degree-1), dim,              // displacement
+          FE_DGQ<dim>(degree-1), 0.5*dim*(dim-1),  // rotation
+          FE_BDM<dim>(degree), 1,                  // flux
+          FE_DGQ<dim>(degree-1), 1),               // pressure
       dof_handler (triangulation),
       pcout (std::cout,
               (Utilities::MPI::this_mpi_process(mpi_communicator_biot) == 0))
@@ -412,13 +412,16 @@ namespace mfe_biot
       std::vector <double>                      phi_p(dofs_per_cell);
 
       // Stress, displacement and rotation
-      std::vector<std::vector<Tensor<1,dim>>> phi_s(dofs_per_cell, std::vector<Tensor<1,dim> > (dim));
+      std::vector<std::vector<Tensor<1,dim>>> phi_s(dofs_per_cell, std::vector<Tensor<1,dim>> (dim));
       std::vector<Tensor<1,dim>> div_phi_s(dofs_per_cell);
       std::vector<Tensor<1,dim>> phi_d(dofs_per_cell);
       std::vector<Tensor<1,rotation_dim>> phi_r(dofs_per_cell);
 
       Tensor<2,dim> sigma_i, asigma_j, apId_j;
       Tensor<1,rotation_dim> asym_i, asym_j;
+      // to get boundary values for displacement and tau.n_p
+      Tensor<1,dim> gd_disp; 
+      std::vector<Tensor<1,dim>> tau_n_i(dofs_per_cell);
 
       for (unsigned int q=0; q<n_q_points; ++q)
       {
@@ -460,17 +463,20 @@ namespace mfe_biot
             compliance_tensor(phi_s[j], mu, lambda, asigma_j);
             compliance_tensor_pressure(phi_p[j], mu, lambda, apId_j);
 
-            local_matrix(i, j) += (phi_u[i] * k_inverse_values[q] * phi_u[j] - phi_p[j] * div_phi_u[i]                 // Darcy law
-                                    + div_phi_u[j] * phi_p[i] + s0*phi_p[i]*phi_p[j] + alpha*trace(asigma_j)*phi_p[i]  // Momentum
-                                    + alpha * alpha * trace(apId_j)*phi_p[i]
-                                    + scalar_product(asigma_j, sigma_i) + alpha*scalar_product(apId_j, sigma_i)        // Mixed elasticity eq-ns
-                                    + scalar_product(phi_d[j], div_phi_s[i])  + scalar_product(phi_d[i], div_phi_s[j])
-                                    + scalar_product<1, rotation_dim>(phi_r[i], asym_j)
-                                    + scalar_product<1, rotation_dim>(phi_r[j], asym_i) )
+            local_matrix(i, j) += // Darcy law
+                                  (k_inverse_values[q] * phi_u[j] * phi_u[i] - phi_p[j] * div_phi_u[i]   // (Kinv u_p, v_p) - (p, div v_p)
+                                  // Momentum           
+                                    + div_phi_u[j] * phi_p[i] + s0*phi_p[i]*phi_p[j] + alpha*trace(asigma_j)*phi_p[i]  // (div u_p, w_p) + s0(p, w_p) + alpha(Asigma, w_p I)
+                                    + alpha * alpha * trace(apId_j)*phi_p[i] // alpha^2 (Ap I, w_p I)
+                                    // Mixed elasticity eq-ns
+                                    + scalar_product(asigma_j, sigma_i) + alpha*scalar_product(apId_j, sigma_i)  // (Asigma, tau) + alpha(ApI, tau)      
+                                    + scalar_product(phi_d[j], div_phi_s[i])  + scalar_product(phi_d[i], div_phi_s[j]) // (eta_p, div tau) + (v_s, div sigma)
+                                    + scalar_product<1, rotation_dim>(phi_r[i], asym_j) // (chi, sigma)
+                                    + scalar_product<1, rotation_dim>(phi_r[j], asym_i) ) // (gamma, tau)
                                   * fe_values.JxW(q);
           }
-          local_rhs(i) += phi_d[i] * rhs_vec_val // (f_p, v_s)
-                          + phi_p[i] * rhs_scalar.value(fe_values.quadrature_point(q)) // (q, w_p)
+          local_rhs(i) +=  (- phi_d[i] * rhs_vec_val // - (f_p, v_s)
+                          + phi_p[i] * rhs_scalar.value(fe_values.quadrature_point(q))  ) // (q_p, w_p)
                           * fe_values.JxW(q);
         }
       }
@@ -486,8 +492,6 @@ namespace mfe_biot
             for (unsigned int q = 0; q < n_face_q_points; ++q)
             {
               // Get boundary values displacement
-              Tensor<1,dim> gd_disp; 
-              std::vector<Tensor<1,dim>> tau_n_i(dofs_per_cell);
               for (unsigned int i = 0; i < dim; ++i)
                 gd_disp[i] = boundary_values_dir_disp.value(fe_face_values.quadrature_point(q), i);
               
@@ -496,17 +500,18 @@ namespace mfe_biot
               {
                 phi_u[k] = fe_values[velocity].value (k, q);
                 for (unsigned int s_i=0; s_i<dim; ++s_i)
+                {
                   tau_n_i[k][s_i] = fe_values[stresses[s_i]].value (k, q)
                                     * fe_face_values.normal_vector(q);
+                }
               }
           
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                local_rhs(i) += (- phi_u[i] * fe_face_values.normal_vector(q) // -<u.n, g_p^D_p>
+                local_rhs(i) += (- phi_u[i] * fe_face_values.normal_vector(q) // - <u.n, g_p^D_p>
                                   * boundary_values_dir_press.value(fe_face_values.quadrature_point(q))
                                   + tau_n_i[i] * gd_disp )     // <tau.n, g_p^D_d>
-                                  * fe_face_values.JxW(q); 
-                                
+                                  * fe_face_values.JxW(q);                               
               }
             }
           }
@@ -663,9 +668,9 @@ namespace mfe_biot
     prm_fxn.enter_subsection("Exact solution Darcy");
     exact_solution.exact_solution_darcy_data.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
-    // prm_fxn.enter_subsection("Exact solution stress");
-    // exact_solution.exact_solution_stress_data.parse_parameters(prm_fxn);
-    // prm_fxn.leave_subsection();
+    prm_fxn.enter_subsection("Exact solution stress");
+    exact_solution.exact_solution_stress_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
     prm_fxn.enter_subsection("Exact solution displacement");
     exact_solution.exact_solution_displacement_data.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
@@ -684,6 +689,8 @@ namespace mfe_biot
     BlockVector<double> zerozeros(1, solution.size());
 
     // Pressure error and norm
+    cellwise_errors = 0;
+    cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, solution, exact_solution,
                                         cellwise_errors, quadrature,
                                         VectorTools::L2_norm,
@@ -703,6 +710,8 @@ namespace mfe_biot
                                                   VectorTools::L2_norm);
 
     // Velocity L2 error and norm
+    cellwise_errors = 0;
+    cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, solution, exact_solution,
                                         cellwise_errors, quadrature,
                                         VectorTools::L2_norm,
@@ -722,6 +731,8 @@ namespace mfe_biot
                                                   VectorTools::L2_norm);
 
     // Displacement error and norm
+    cellwise_errors = 0;
+    cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, solution, exact_solution,
                                         cellwise_errors, quadrature,
                                         VectorTools::L2_norm,
@@ -740,14 +751,36 @@ namespace mfe_biot
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);
 
+    // Stress error and norm
+    cellwise_errors = 0;
+    cellwise_norms = 0;
+    VectorTools::integrate_difference (dof_handler, solution, exact_solution,
+                                        cellwise_errors, quadrature,
+                                        VectorTools::L2_norm,
+                                        &stress_mask);
+    const double 
+    s_l2_error = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_errors,
+                                                  VectorTools::L2_norm);
+
+    VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
+                                        cellwise_norms, quadrature,
+                                        VectorTools::L2_norm,
+                                        &stress_mask);
+    const double 
+    s_l2_norm = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_norms,
+                                                  VectorTools::L2_norm);                                              
+
     const unsigned int n_active_cells = triangulation.n_active_cells();
     const unsigned int n_dofs = dof_handler.n_dofs();
     convergence_table_l2.add_value("cells", n_active_cells);
     convergence_table_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
     convergence_table_l2.add_value("dofs", n_dofs);
-    convergence_table_l2.add_value("||u-u_h||_L2", u_l2_error/u_l2_norm);
-    convergence_table_l2.add_value("||p-p_h||_L2", p_l2_error/p_l2_norm);
-    convergence_table_l2.add_value("||d-d_h||_L2", d_l2_error/d_l2_norm);
+    convergence_table_l2.add_value("||u-u_h||_L2", u_l2_error);
+    convergence_table_l2.add_value("||p-p_h||_L2", p_l2_error);
+    convergence_table_l2.add_value("||d-d_h||_L2", d_l2_error);
+    convergence_table_l2.add_value("||s-s_h||_L2", s_l2_error);
     convergence_table_l2.add_value("residual", residual);
   }
 
@@ -758,11 +791,13 @@ namespace mfe_biot
     convergence_table_l2.set_precision("||u-u_h||_L2", 3);
     convergence_table_l2.set_precision("||p-p_h||_L2", 3);
     convergence_table_l2.set_precision("||d-d_h||_L2", 3);
+    convergence_table_l2.set_precision("||s-s_h||_L2", 3);
 
     convergence_table_l2.set_scientific("residual", true);
     convergence_table_l2.set_scientific("||u-u_h||_L2", true);
     convergence_table_l2.set_scientific("||p-p_h||_L2", true);
     convergence_table_l2.set_scientific("||d-d_h||_L2", true);
+    convergence_table_l2.set_scientific("||s-s_h||_L2", true);
 
     convergence_table_l2.set_tex_caption("cells", "\\ cells");
     convergence_table_l2.set_tex_caption("dofs", "\\# dofs");
@@ -770,12 +805,15 @@ namespace mfe_biot
     convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
     convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
     convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||u_s-u_{sh}||_{L^2}$");
+    convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||s_s-s_{sh}||_{L^2}$");
 
     convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
                                               ConvergenceTable::reduction_rate_log2);
     convergence_table_l2.evaluate_convergence_rates("||p-p_h||_L2",
                                               ConvergenceTable::reduction_rate_log2);
     convergence_table_l2.evaluate_convergence_rates("||d-d_h||_L2",
+                                              ConvergenceTable::reduction_rate_log2);
+    convergence_table_l2.evaluate_convergence_rates("||s-s_h||_L2",
                                               ConvergenceTable::reduction_rate_log2);
 
     std::string conv_filename = "../output/convg_tables/biot_table_individual_l2" + std::string(".tex");

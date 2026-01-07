@@ -75,8 +75,8 @@ namespace mfe_biot
     // Exact solution values Elast 
     prm.enter_subsection("Exact solution stress");
     {
-      Functions::ParsedFunction<2>::declare_parameters(prm,4);
-      prm.set("Function expression", "0; 0; 0; 0");
+      Functions::ParsedFunction<2>::declare_parameters(prm,3);
+      prm.set("Function expression", "0; 0; 0");
     }
     prm.leave_subsection();
     prm.enter_subsection("Exact solution displacement");

@@ -25,49 +25,49 @@ namespace dd_utilities
   template <int dim>
   Tensor<2,dim> make_tensor(const std::vector<Tensor<1,dim> > &vec, Tensor<2, dim> &res)
   {
-      for(int row=0;row<dim;++row)
-          for(int col=0;col<dim;++col)
-              res[row][col] = vec[row][col];
+    for(int row=0;row<dim;++row)
+      for(int col=0;col<dim;++col)
+        res[row][col] = vec[row][col];
 
-      return res;
+    return res;
   }
 
   // create asymmetry tensor
   template <int dim, int tensor_dim>
   void make_asymmetry_tensor(const std::vector<Tensor<1,dim> > &vec, Tensor<1, tensor_dim> &res)
   {
-      Tensor<2,dim> mat;
-      make_tensor(vec, mat);
+    Tensor<2,dim> mat;
+    make_tensor(vec, mat);
 
-      switch(dim)
-      {
-          case 2:
-              res[0] = mat[0][1] - mat[1][0];
-              break;
-          case 3:
-              res[0] = mat[2][1] - mat[1][2];
-              res[1] = mat[0][2] - mat[2][0];
-              res[2] = mat[1][0] - mat[0][1];
-              break;
-          default:
-              Assert(false, ExcNotImplemented());
-      }
+    switch(dim)
+    {
+      case 2:
+        res[0] = mat[0][1] - mat[1][0];
+        break;
+      case 3:
+        res[0] = mat[2][1] - mat[1][2];
+        res[1] = mat[0][2] - mat[2][0];
+        res[2] = mat[1][0] - mat[0][1];
+        break;
+      default:
+        Assert(false, ExcNotImplemented());
+    }
   }
 
   // create compliance tensor
   template <int dim>
   void compliance_tensor(const std::vector<Tensor<1,dim> > &vec, const double mu, const double lambda, Tensor<2,dim> &res)
   {
-      double trace=0.;
-      for (unsigned int i=0;i<dim;++i)
-          trace += vec[i][i];
+    double trace=0.;
+    for (unsigned int i=0;i<dim;++i)
+      trace += vec[i][i];
 
-      for (unsigned int row=0;row<dim;++row)
-          for (unsigned int col=0;col<dim;++col)
-              if (row == col)
-                  res[row][col] = 1/(2*mu)*(vec[row][col] - lambda/(2*mu + dim*lambda)*trace);
-              else
-                  res[row][col] = 1/(2*mu)*(vec[row][col]);
+    for (unsigned int row=0;row<dim;++row)
+      for (unsigned int col=0;col<dim;++col)
+        if (row == col)
+          res[row][col] = 1/(2*mu)*(vec[row][col] - lambda/(2*mu + dim*lambda)*trace);
+        else
+          res[row][col] = 1/(2*mu)*(vec[row][col]);
   }
 
 
@@ -76,7 +76,7 @@ namespace dd_utilities
   void compliance_tensor_pressure(const double pres, const double mu, const double lambda, Tensor<2,dim> &res)
   {
     for(unsigned int i=0;i<dim;i++)
-        res[i][i] = pres/(2*mu+dim*lambda);
+      res[i][i] = ((2*mu+(dim-2)*lambda)*pres)/((2*mu+dim*lambda)*2*mu);
   }
 
   // Domain decomposition related utilities
@@ -105,18 +105,18 @@ namespace dd_utilities
   {
     double tmp = floor(sqrt(n_proc));
     while (true)
+    {
+      if (fmod(double(n_proc), tmp) == 0)
       {
-        if (fmod(double(n_proc), tmp) == 0)
-          {
-            n_dom[0] = n_proc / tmp;
-            n_dom[1] = tmp;
-            break;
-          }
-        else
-          {
-            tmp -= 1;
-          }
+        n_dom[0] = n_proc / tmp;
+        n_dom[1] = tmp;
+        break;
       }
+      else
+      {
+        tmp -= 1;
+      }
+    }
   }
 
   // Split number into three divisors (Try to make it recursive better)
@@ -129,27 +129,27 @@ namespace dd_utilities
     if (dim == 2)
       find_2_divisors<dim>(n_proc, n_dom);
     else if (dim == 3)
+    {
+      double tmp = floor(pow(n_proc, 1.0 / 3.0));
+      while (true)
       {
-        double tmp = floor(pow(n_proc, 1.0 / 3.0));
-        while (true)
-          {
-            if (fmod(static_cast<double>(n_proc), tmp) == 0)
-              {
-                std::vector<unsigned int> two_divisors(2);
-                unsigned int              two_proc = n_proc / tmp;
-                find_2_divisors<dim>(two_proc, two_divisors);
+        if (fmod(static_cast<double>(n_proc), tmp) == 0)
+        {
+          std::vector<unsigned int> two_divisors(2);
+          unsigned int              two_proc = n_proc / tmp;
+          find_2_divisors<dim>(two_proc, two_divisors);
 
-                n_dom[0] = two_divisors[0];
-                n_dom[1] = two_divisors[1];
-                n_dom[2] = tmp;
-                break;
-              }
-            else
-              {
-                tmp -= 1;
-              }
-          }
+          n_dom[0] = two_divisors[0];
+          n_dom[1] = two_divisors[1];
+          n_dom[2] = tmp;
+          break;
+        }
+        else
+        {
+          tmp -= 1;
+        }
       }
+    }
   }
 
   // Compute the lower left and upper right coordinate of a block
