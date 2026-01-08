@@ -104,7 +104,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/biot.prm");
+    param.read_parameters("../test function/matrix assembly/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -470,9 +470,10 @@ namespace mfe_biot
                                     + alpha * alpha * trace(apId_j)*phi_p[i] // alpha^2 (Ap I, w_p I)
                                   // Mixed elasticity eq-ns
                                     + scalar_product(asigma_j, sigma_i) + alpha*scalar_product(apId_j, sigma_i)  // (Asigma, tau) + alpha(ApI, tau)      
-                                    + scalar_product(phi_d[j], div_phi_s[i])  + scalar_product(phi_d[i], div_phi_s[j]) // (eta_p, div tau) + (v_s, div sigma)
-                                    + scalar_product<1, rotation_dim>(phi_r[i], asym_j) // (chi, sigma)
-                                    + scalar_product<1, rotation_dim>(phi_r[j], asym_i) ) // (gamma, tau)
+                                    + scalar_product(phi_d[j], div_phi_s[i])              // (eta_p, div tau)
+                                    + scalar_product<1, rotation_dim>(phi_r[j], asym_i)   // (gamma, tau)
+                                    + scalar_product(phi_d[i], div_phi_s[j])              // (v_s, div sigma)
+                                    + scalar_product<1, rotation_dim>(phi_r[i], asym_j) ) // (chi, sigma)
                                   * fe_values.JxW(q);
           }
           local_rhs(i) +=  (- phi_d[i] * rhs_vec_val // - (f_p, v_s)
@@ -498,17 +499,17 @@ namespace mfe_biot
               // Evaluate test functions  
               for (unsigned int k=0; k<dofs_per_cell; ++k)
               {
-                phi_u[k] = fe_values[velocity].value (k, q);
+                phi_u[k] = fe_face_values[velocity].value (k, q);
                 for (unsigned int s_i=0; s_i<dim; ++s_i)
                 {
-                  tau_n_i[k][s_i] = fe_values[stresses[s_i]].value (k, q)
+                  tau_n_i[k][s_i] = fe_face_values[stresses[s_i]].value (k, q)
                                     * fe_face_values.normal_vector(q);
                 }
               }
           
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                local_rhs(i) += (- phi_u[i] * fe_face_values.normal_vector(q) // - <u.n, g_p^D_p>
+                local_rhs(i) += (- (phi_u[i] * fe_face_values.normal_vector(q)) // - <u.n, g_p^D_p>
                                   * boundary_values_dir_press.value(fe_face_values.quadrature_point(q))
                                   + tau_n_i[i] * gd_disp )     // <tau.n, g_p^D_d>
                                   * fe_face_values.JxW(q);                               
@@ -699,9 +700,9 @@ namespace mfe_biot
     prm_fxn.enter_subsection("Exact solution displacement");
     exact_solution.exact_solution_displacement_data.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
-    // prm_fxn.enter_subsection("Exact solution rotation");
-    // exact_solution.exact_solution_rotation_data.parse_parameters(prm_fxn);
-    // prm_fxn.leave_subsection();
+    prm_fxn.enter_subsection("Exact solution rotation");
+    exact_solution.exact_solution_rotation_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
 
     // Vectors to temporarily store cellwise errros
     Vector<double> cellwise_errors (triangulation.n_active_cells());
@@ -776,6 +777,28 @@ namespace mfe_biot
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);
 
+    // Rotation error and norm
+    // Displacement error and norm
+    cellwise_errors = 0;
+    cellwise_norms = 0;
+    VectorTools::integrate_difference (dof_handler, solution, exact_solution,
+                                        cellwise_errors, quadrature,
+                                        VectorTools::L2_norm,
+                                        &rotation_mask);
+    const double 
+    r_l2_error = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_errors,
+                                                  VectorTools::L2_norm);
+
+    VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
+                                        cellwise_norms, quadrature,
+                                        VectorTools::L2_norm,
+                                        &rotation_mask);
+    const double 
+    r_l2_norm = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_norms,
+                                                  VectorTools::L2_norm);                                              
+
     // Stress error and norm
     cellwise_errors = 0;
     cellwise_norms = 0;
@@ -805,6 +828,7 @@ namespace mfe_biot
     convergence_table_l2.add_value("||u-u_h||_L2", u_l2_error);
     convergence_table_l2.add_value("||p-p_h||_L2", p_l2_error);
     convergence_table_l2.add_value("||d-d_h||_L2", d_l2_error);
+    convergence_table_l2.add_value("||r-r_h||_L2", r_l2_error);
     convergence_table_l2.add_value("||s-s_h||_L2", s_l2_error);
     convergence_table_l2.add_value("residual", residual);
   }
@@ -816,12 +840,14 @@ namespace mfe_biot
     convergence_table_l2.set_precision("||u-u_h||_L2", 3);
     convergence_table_l2.set_precision("||p-p_h||_L2", 3);
     convergence_table_l2.set_precision("||d-d_h||_L2", 3);
+    convergence_table_l2.set_precision("||r-r_h||_L2", 3);
     convergence_table_l2.set_precision("||s-s_h||_L2", 3);
 
     convergence_table_l2.set_scientific("residual", true);
     convergence_table_l2.set_scientific("||u-u_h||_L2", true);
     convergence_table_l2.set_scientific("||p-p_h||_L2", true);
     convergence_table_l2.set_scientific("||d-d_h||_L2", true);
+    convergence_table_l2.set_scientific("||r-r_h||_L2", true);
     convergence_table_l2.set_scientific("||s-s_h||_L2", true);
 
     convergence_table_l2.set_tex_caption("cells", "\\ cells");
@@ -830,6 +856,7 @@ namespace mfe_biot
     convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
     convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
     convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||u_s-u_{sh}||_{L^2}$");
+    convergence_table_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
     convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
 
     convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
@@ -838,6 +865,8 @@ namespace mfe_biot
                                               ConvergenceTable::reduction_rate_log2);
     convergence_table_l2.evaluate_convergence_rates("||d-d_h||_L2",
                                               ConvergenceTable::reduction_rate_log2);
+    convergence_table_l2.evaluate_convergence_rates("||r-r_h||_L2",
+                                              ConvergenceTable::reduction_rate_log2);                                          
     convergence_table_l2.evaluate_convergence_rates("||s-s_h||_L2",
                                               ConvergenceTable::reduction_rate_log2);
 

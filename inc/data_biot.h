@@ -167,7 +167,7 @@ namespace mfe_biot
         values(3) = exact_solution_stress_data.value(p, 2);
         values(4) = exact_solution_displacement_data.value(p, 0);
         values(5) = exact_solution_displacement_data.value(p, 1);
-        values(6) = 0.0;
+        values(6) = exact_solution_rotation_data.value(p, 0);
         values(7) = exact_solution_darcy_data.value(p, 0);
         values(8) = exact_solution_darcy_data.value(p, 1);
         values(9) = exact_solution_darcy_data.value(p, 2);

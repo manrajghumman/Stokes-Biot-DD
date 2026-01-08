@@ -102,8 +102,8 @@ namespace mfe_biot
     prm.leave_subsection();
     prm.enter_subsection("Exact solution rotation");
     {
-      Functions::ParsedFunction<2>::declare_parameters(prm,2);
-      prm.set("Function expression", "0; 0");
+      Functions::ParsedFunction<2>::declare_parameters(prm,1);
+      prm.set("Function expression", "0");
     }
     prm.leave_subsection();
 

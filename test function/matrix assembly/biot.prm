@@ -55,7 +55,7 @@ end
 # Exact solution values Elast 
 # Functions: stress, displacement, rotation
 subsection Exact solution stress
-  set Function expression = -sin(pi*x)*cos(pi*y)-6;0;-sin(pi*x)*cos(2*pi*y)-6
+  set Function expression = -sin(pi*x)*cos(2*pi*y)-6;0;-sin(pi*x)*cos(2*pi*y)-6
   set Variable names      = x, y
 end
 subsection Exact solution displacement
@@ -63,7 +63,7 @@ subsection Exact solution displacement
   set Variable names      = x, y
 end
 subsection Exact solution rotation
-  set Function expression = 
+  set Function expression = 0
   set Variable names      = x, y
 end
 #################################################################################
