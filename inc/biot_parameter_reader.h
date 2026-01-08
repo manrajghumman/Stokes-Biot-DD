@@ -56,6 +56,21 @@ namespace mfe_biot
     }
     prm.leave_subsection();
 
+    // BC Neumann - velocity and stress values
+    prm.enter_subsection("BC Neumann Velocity");
+    {
+      Functions::ParsedFunction<2>::declare_parameters(prm,2);
+      prm.set("Function expression", "0; 0");
+    }
+    prm.leave_subsection();
+    
+    prm.enter_subsection("BC Neumann Stress");
+    {
+      Functions::ParsedFunction<2>::declare_parameters(prm,3);
+      prm.set("Function expression", "0; 0; 0");
+    }
+    prm.leave_subsection();
+
     // Exact solution values Darcy
     prm.enter_subsection("Exact solution Darcy");
     {

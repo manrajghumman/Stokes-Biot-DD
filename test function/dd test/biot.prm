@@ -14,11 +14,11 @@ subsection RHS vector
 end
 subsection RHS scalar 
     set Function constants  = s0=1.0, alpha_BJS=1.0
-    set Function expression = 20/3 + (8*pi*pi+1)*sin(pi*x)*cos(2*pi*y)-pi*pi*cos(pi*y)-(pi*pi/3)*sin(pi*x/2)*cos(pi*y)
+    set Function expression = (2/3) + 6 + (8*pi*pi+1)*sin(pi*x)*cos(2*pi*y)-pi*pi*cos(pi*y)-(pi*pi/3)*sin(pi*x/2)*cos(pi*y)
     set Variable names      = x, y
 end
 subsection BC Dirichlet Displacement
-    set Function expression = -x/3-8/3+cos(pi*y)+pi*cos(pi*x)*cos(2*pi*y)-(2*pi/3)*cos(pi*x/2)*cos(pi*y);y+sin(2*pi*x)+2*pi*sin(pi*x)*sin(2*pi*y)+pi*(2*cos(2*pi*x)-sin(pi*y))
+    set Function expression = -(x/3)-(8/3)+cos(pi*y)+pi*cos(pi*x)*cos(2*pi*y)-(2*pi/3)*cos(pi*x/2)*cos(pi*y);y+sin(2*pi*x)+2*pi*sin(pi*x)*sin(2*pi*y)+pi*(2*cos(2*pi*x)-sin(pi*y))
     set Variable names      = x, y
 end
 subsection BC Dirichlet Pressure
@@ -44,7 +44,7 @@ end
 # Exact solution values Elast 
 # Functions: stress, displacement, rotation
 subsection Exact solution stress
-  set Function expression = (pi*pi-1)*sin(pi*x)*cos(2*pi*y)+pi*pi*sin(pi*x/2)*cos(pi*y)-pi*pi*cos(pi*y)-6;-pi*sin(pi*y)-(2*pi*pi/3) * cos(pi*x/2)*sin(pi*y/2)+2*pi*cos(2*pi*x)-4*pi*pi*sin(2*pi*x);8/3+(11*pi*pi-1)*sin(pi*x)*cos(2*pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)-3*pi*pi*cos(pi*y)
+  set Function expression = (pi*pi-1)*sin(pi*x)*cos(2*pi*y)+pi*pi*sin(pi*x/2)*cos(pi*y)-pi*pi*cos(pi*y)-6;-pi*sin(pi*y)-(2*pi*pi/3) * cos(pi*x/2)*sin(pi*y/2)+2*pi*cos(2*pi*x)-4*pi*pi*sin(2*pi*x);(8/3) -6 +(11*pi*pi-1)*sin(pi*x)*cos(2*pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)-3*pi*pi*cos(pi*y)
   set Variable names      = x, y
 end
 subsection Exact solution displacement

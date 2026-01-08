@@ -135,7 +135,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/stokes.prm");
+    param.read_parameters("../test function/dd test/stokes.prm");
   }
 
 
@@ -614,8 +614,8 @@ namespace mfe_stokes
                             local_matrix(i, j));
       }
         
-      for (unsigned int i = 0; i < dofs_per_cell; ++i)
-        system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
+      // for (unsigned int i = 0; i < dofs_per_cell; ++i)
+      //   system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
     }
   }
 
@@ -915,7 +915,7 @@ namespace mfe_stokes
       if (this_mpi_stokes == i)
       { 
         // Print to screen if you like, but messy for many processes
-        // convergence_table_l2.write_text(std::cout);
+        convergence_table_l2.write_text(std::cout);
 
         std::ofstream table_file(conv_filename, std::ios::app);
         // Write a LaTeX comment and a section header before the table:

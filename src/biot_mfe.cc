@@ -32,6 +32,7 @@
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_dgp.h>
 #include <deal.II/fe/fe_raviart_thomas.h>
+#include <deal.II/fe/fe_rt_bubbles.h>
 #include <deal.II/fe/fe_bdm.h>
 #include <deal.II/fe/fe_nothing.h>
 #include <deal.II/numerics/vector_tools.h>
@@ -103,7 +104,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/biot.prm");
+    param.read_parameters("../test function/dd test/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -353,14 +354,14 @@ namespace mfe_biot
     boundary_values_dir_press.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
 
-    //for F = -div sigma
+    //for f = -div sigma
     Functions::ParsedFunction<dim> rhs_vec(dim);
     prm_fxn.enter_subsection("RHS vector");
     rhs_vec.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
     Tensor<1, dim> rhs_vec_val;
 
-    //for G = -div u
+    //for q = s0 * p + alpha * (div eta) + div u
     Functions::ParsedFunction<dim> rhs_scalar(1);
     prm_fxn.enter_subsection("RHS scalar");
     rhs_scalar.parse_parameters(prm_fxn);
@@ -416,12 +417,13 @@ namespace mfe_biot
       std::vector<Tensor<1,dim>> div_phi_s(dofs_per_cell);
       std::vector<Tensor<1,dim>> phi_d(dofs_per_cell);
       std::vector<Tensor<1,rotation_dim>> phi_r(dofs_per_cell);
+      std::vector<double> div_phi_d(dofs_per_cell);
 
       Tensor<2,dim> sigma_i, asigma_j, apId_j;
       Tensor<1,rotation_dim> asym_i, asym_j;
       // to get boundary values for displacement and tau.n_p
       Tensor<1,dim> gd_disp; 
-      std::vector<Tensor<1,dim>> tau_n_i(dofs_per_cell);
+      std::vector<Tensor<1,dim>> tau_n_i(dofs_per_cell), sigma_n_i(dofs_per_cell);
 
       for (unsigned int q=0; q<n_q_points; ++q)
       {
@@ -442,6 +444,7 @@ namespace mfe_biot
             div_phi_s[k][s_i] = fe_values[stresses[s_i]].divergence (k, q);
           }
           phi_d[k] = fe_values[displacement].value (k, q);
+          div_phi_d[k] = fe_values[displacement].divergence (k, q);
 
           for (unsigned int r_i=0; r_i<rotation_dim; ++r_i)
             phi_r[k][r_i] = fe_values[rotations[r_i]].value (k, q);
@@ -451,14 +454,11 @@ namespace mfe_biot
           const double mu = lame_parameters_values[q][1];
           const double lambda = lame_parameters_values[q][0];
 
-          // compliance_tensor(phi_s[j], mu, lambda, asigma);
-          // compliance_tensor_pressure(phi_p[j], mu, lambda, apId);
           make_asymmetry_tensor(phi_s[i], asym_i);
           make_tensor(phi_s[i], sigma_i);
 
           for (unsigned int j=0; j<dofs_per_cell; ++j)// i is the test function, multiplied from left
           {
-            // make_tensor(phi_s[j], sigma);
             make_asymmetry_tensor(phi_s[j], asym_j);
             compliance_tensor(phi_s[j], mu, lambda, asigma_j);
             compliance_tensor_pressure(phi_p[j], mu, lambda, apId_j);
@@ -468,7 +468,7 @@ namespace mfe_biot
                                   // Momentum           
                                     + div_phi_u[j] * phi_p[i] + s0*phi_p[i]*phi_p[j] + alpha*trace(asigma_j)*phi_p[i]  // (div u_p, w_p) + s0(p, w_p) + alpha(Asigma, w_p I)
                                     + alpha * alpha * trace(apId_j)*phi_p[i] // alpha^2 (Ap I, w_p I)
-                                    // Mixed elasticity eq-ns
+                                  // Mixed elasticity eq-ns
                                     + scalar_product(asigma_j, sigma_i) + alpha*scalar_product(apId_j, sigma_i)  // (Asigma, tau) + alpha(ApI, tau)      
                                     + scalar_product(phi_d[j], div_phi_s[i])  + scalar_product(phi_d[i], div_phi_s[j]) // (eta_p, div tau) + (v_s, div sigma)
                                     + scalar_product<1, rotation_dim>(phi_r[i], asym_j) // (chi, sigma)
@@ -515,6 +515,30 @@ namespace mfe_biot
               }
             }
           }
+          // else if (face->boundary_id() == 7) //Entering Neumann Condition
+          // {
+          //   for (unsigned int q = 0; q < n_face_q_points; ++q)
+          //   {
+          //     // Evaluate test functions
+          //     for (unsigned int k=0; k<dofs_per_cell; ++k)
+          //     {
+          //       phi_u[k] = fe_values[velocity].value (k, q);
+          //       for (unsigned int s_i=0; s_i<dim; ++s_i)
+          //       {
+          //         phi_s[k][s_i] = fe_values[stresses[s_i]].value (k, q);  
+          //         sigma_n_i[k][s_i] = fe_values[stresses[s_i]].value (k, q)
+          //                           * fe_face_values.normal_vector(q);
+          //         tau_n_i[k][s_i] = fe_values[stresses[s_i]].value (k, q)
+          //                           * fe_face_values.normal_vector(q);
+          //       }
+          //     }
+
+          //     for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          //     {
+
+          //     }
+          //   }
+          // }
         }
       }
 
@@ -523,6 +547,7 @@ namespace mfe_biot
       for (unsigned int i=0; i<dofs_per_cell; ++i)
       {
         system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
+
         for (unsigned int j=0; j<dofs_per_cell; ++j)
           system_matrix.add (local_dof_indices[i],
                             local_dof_indices[j],
@@ -805,7 +830,7 @@ namespace mfe_biot
     convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
     convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
     convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||u_s-u_{sh}||_{L^2}$");
-    convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||s_s-s_{sh}||_{L^2}$");
+    convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
 
     convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
                                               ConvergenceTable::reduction_rate_log2);

@@ -4,7 +4,7 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 7
+set refinements  = 6
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
