@@ -9,12 +9,12 @@
 # different places in this and biot.prm file
 subsection RHS vector
     set Function constants = mu=1.0, lambda=1.0
-    set Function expression = -(pi*pi*pi-pi)*cos(pi*x)*cos(2*pi*y)+(pi*pi*pi/6)*cos(pi*x/2)*cos(pi*y)+pi*pi*cos(pi*y);4*pi*pi*sin(2*pi*x)+8*pi*pi*cos(2*pi*x)+(22*pi*pi*pi-2*pi)*sin(pi*x)*sin(2*pi*y)-3*pi*pi*pi*sin(pi*y)
+    set Function expression = -(pi*pi*pi-pi)*cos(pi*x)*cos(2*pi*y)-(7*pi*pi*pi/6)*cos(pi*x/2)*cos(pi*y)+pi*pi*cos(pi*y);-3*pi*pi*pi*sin(pi*y)+4*pi*pi*sin(2*pi*x)+8*pi*pi*pi*cos(2*pi*x)+(22*pi*pi*pi-2*pi)*sin(pi*x)*sin(2*pi*y)+(2*pi*pi*pi/3)*sin(pi*x/2)*sin(pi*y)
     set Variable names = x, y
 end
 subsection RHS scalar 
     set Function constants  = s0=1.0, alpha_BJS=1.0
-    set Function expression = (2/3) + 6 + (8*pi*pi+1)*sin(pi*x)*cos(2*pi*y)-pi*pi*cos(pi*y)-(pi*pi/3)*sin(pi*x/2)*cos(pi*y)
+    set Function expression = (2/3) + 6 + (8*pi*pi+1)*sin(pi*x)*cos(2*pi*y)-pi*pi*cos(pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)
     set Variable names      = x, y
 end
 subsection BC Dirichlet Displacement
@@ -55,7 +55,7 @@ end
 # Exact solution values Elast 
 # Functions: stress, displacement, rotation
 subsection Exact solution stress
-  set Function expression = (pi*pi-1)*sin(pi*x)*cos(2*pi*y)+pi*pi*sin(pi*x/2)*cos(pi*y)-pi*pi*cos(pi*y)-6;-pi*sin(pi*y)-(2*pi*pi/3) * cos(pi*x/2)*sin(pi*y/2)+2*pi*cos(2*pi*x)-4*pi*pi*sin(2*pi*x);(8/3) -6 +(11*pi*pi-1)*sin(pi*x)*cos(2*pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)-3*pi*pi*cos(pi*y)
+  set Function expression = (pi*pi-1)*sin(pi*x)*cos(2*pi*y)+pi*pi*sin(pi*x/2)*cos(pi*y)-pi*pi*cos(pi*y)-6;-pi*sin(pi*y)+(2*pi*pi/3)*cos(pi*x/2)*sin(pi*y)+2*pi*cos(2*pi*x)-4*pi*pi*sin(2*pi*x);(8/3) -6 +(11*pi*pi-1)*sin(pi*x)*cos(2*pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)-3*pi*pi*cos(pi*y)
   set Variable names      = x, y
 end
 subsection Exact solution displacement
@@ -63,7 +63,7 @@ subsection Exact solution displacement
   set Variable names      = x, y
 end
 subsection Exact solution rotation
-  set Function expression = 0.5 * (-pi*sin(pi*y)-4*pi*pi*cos(pi*x)*sin(2*pi*y)-(2*pi*pi/3)*cos(pi*x/2)*sin(pi*y)+4*pi*pi*sin(2*pi*x)) 
+  set Function expression = 0.5 * (-pi*sin(pi*y)-2*pi*cos(2*pi*x)+4*pi*pi*sin(2*pi*x)-4*pi*pi*cos(pi*x)*sin(2*pi*y)+(2*pi*pi/3)*cos(pi*x/2)*sin(pi*y)) 
   set Variable names      = x, y
 end
 #################################################################################

@@ -104,7 +104,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/matrix assembly/biot.prm");
+    param.read_parameters("../test function/dd test/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -423,7 +423,7 @@ namespace mfe_biot
       Tensor<1,rotation_dim> asym_i, asym_j;
       // to get boundary values for displacement and tau.n_p
       Tensor<1,dim> gd_disp; 
-      std::vector<Tensor<1,dim>> tau_n_i(dofs_per_cell), sigma_n_i(dofs_per_cell);
+      std::vector<Tensor<1,dim>> tau_n_i(dofs_per_cell);
 
       for (unsigned int q=0; q<n_q_points; ++q)
       {
