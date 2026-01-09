@@ -122,6 +122,8 @@ namespace mfe_biot
     Functions::ParsedFunction<dim> exact_solution_stress_data;
     Functions::ParsedFunction<dim> exact_solution_displacement_data;
     Functions::ParsedFunction<dim> exact_solution_rotation_data;
+    Functions::ParsedFunction<dim> exact_solution_darcy_vel_grad_data;
+    Functions::ParsedFunction<dim> exact_solution_stress_grad_data;
     ExactSolution();
 
     virtual void vector_value (const Point<dim> &p,
@@ -136,7 +138,9 @@ namespace mfe_biot
     exact_solution_darcy_data(dim+1),
     exact_solution_stress_data(dim*dim - 1),
     exact_solution_displacement_data(dim),
-    exact_solution_rotation_data(0.5*dim*(dim-1))
+    exact_solution_rotation_data(0.5*dim*(dim-1)),
+    exact_solution_darcy_vel_grad_data(dim*dim),
+    exact_solution_stress_grad_data((dim*dim-1)*dim)
   {}
 
   template <int dim>
@@ -201,43 +205,42 @@ namespace mfe_biot
   ExactSolution<dim>::vector_gradient (const Point<dim> &p,
                                         std::vector<Tensor<1,dim,double> > &grads) const
   {
-    double x = p[0];
-    double y = p[1];
-    double z;
+    // double x = p[0];
+    // double y = p[1];
+    // double z;
 
-    if (dim == 3)
-    z = p[2];
+    // if (dim == 3)
+    // z = p[2];
 
-    const LameParameters<dim> lame_function;
-    Vector<double> vec(2);
-    lame_function.vector_value(p,vec);
+    // const LameParameters<dim> lame_function;
+    // Vector<double> vec(2);
+    // lame_function.vector_value(p,vec);
 
-    const double lambda = vec[0];
-    const double mu = vec[1];
-    double t = FunctionTime<double>::get_time();
+    // const double lambda = vec[0];
+    // const double mu = vec[1];
+    // double t = FunctionTime<double>::get_time();
 
     int total_dim = dim*dim + dim + static_cast<int>(0.5*dim*(dim-1));
     Tensor<1,dim> tmp;
     switch (dim)
     {
       case 2:
-        grads[0][0] = lambda*(exp(t)*(x*(y*y*y*y)*6.0-cos(y-1.0)*sin((x-1.0)*(y-1.0))*pow(y-1.0,2.0)+2.0)-exp(t)*(sin(x*y)*sin(x)+pow(x-1.0,3.0)*pow(y-1.0,2.0)*1.2E1+x*sin(x*y)*cos(x)+x*y*cos(x*y)*sin(x)))+mu*exp(t)*(x*(y*y*y*y)*6.0-cos(y-1.0)*sin((x-1.0)*(y-1.0))*pow(y-1.0,2.0)+2.0)*2.0-3.141592653589793*exp(t)*cos(x*3.141592653589793)*cos(y*3.141592653589793);
-        grads[0][1] = -lambda*(exp(t)*((y*2.0-2.0)*pow(x-1.0,4.0)*3.0+(x*x)*cos(x*y)*sin(x)-2.0)-exp(t)*(cos(y-1.0)*cos((x-1.0)*(y-1.0))+(x*x)*(y*y*y)*1.2E1-sin(y-1.0)*cos((x-1.0)*(y-1.0))*(y-1.0)-cos(y-1.0)*sin((x-1.0)*(y-1.0))*(x-1.0)*(y-1.0)))+mu*exp(t)*(cos(y-1.0)*cos((x-1.0)*(y-1.0))+(x*x)*(y*y*y)*1.2E1-sin(y-1.0)*cos((x-1.0)*(y-1.0))*(y-1.0)-cos(y-1.0)*sin((x-1.0)*(y-1.0))*(x-1.0)*(y-1.0))*2.0+3.141592653589793*exp(t)*sin(x*3.141592653589793)*sin(y*3.141592653589793);
+        grads[0][0] = exact_solution_stress_grad_data.value(p, 0);
+        grads[0][1] = exact_solution_stress_grad_data.value(p, 1);
 
-        grads[1][0] = mu*(exp(t)*(cos(y-1.0)*cos((x-1.0)*(y-1.0))+(x*x)*(y*y*y)*1.2E1-sin(y-1.0)*cos((x-1.0)*(y-1.0))*(y-1.0)-cos(y-1.0)*sin((x-1.0)*(y-1.0))*(x-1.0)*(y-1.0))*(1.0/2.0)-exp(t)*(pow(x-1.0,2.0)*pow(y-1.0,3.0)*1.2E1+cos(x*y)*sin(x)+y*sin(x*y)*cos(x)*2.0+(y*y)*cos(x*y)*sin(x))*(1.0/2.0))*2.0;
-        grads[1][1] = mu*(exp(t)*((x*x*x)*(y*y)*-1.2E1+cos(y-1.0)*sin((x-1.0)*(y-1.0))+cos(y-1.0)*sin((x-1.0)*(y-1.0))*pow(x-1.0,2.0)+sin(y-1.0)*cos((x-1.0)*(y-1.0))*(x-1.0)*2.0)*(1.0/2.0)+exp(t)*(sin(x*y)*sin(x)+pow(x-1.0,3.0)*pow(y-1.0,2.0)*1.2E1+x*sin(x*y)*cos(x)+x*y*cos(x*y)*sin(x))*(1.0/2.0))*-2.0;
+        grads[1][0] = exact_solution_stress_grad_data.value(p, 2);
+        grads[1][1] = exact_solution_stress_grad_data.value(p, 3);
+        grads[2][0] = exact_solution_stress_grad_data.value(p, 2);
+        grads[2][1] = exact_solution_stress_grad_data.value(p, 3);
 
-        grads[2][0] = mu*(exp(t)*(cos(y-1.0)*cos((x-1.0)*(y-1.0))+(x*x)*(y*y*y)*1.2E1-sin(y-1.0)*cos((x-1.0)*(y-1.0))*(y-1.0)-cos(y-1.0)*sin((x-1.0)*(y-1.0))*(x-1.0)*(y-1.0))*(1.0/2.0)-exp(t)*(pow(x-1.0,2.0)*pow(y-1.0,3.0)*1.2E1+cos(x*y)*sin(x)+y*sin(x*y)*cos(x)*2.0+(y*y)*cos(x*y)*sin(x))*(1.0/2.0))*2.0;
-        grads[2][1] = mu*(exp(t)*((x*x*x)*(y*y)*-1.2E1+cos(y-1.0)*sin((x-1.0)*(y-1.0))+cos(y-1.0)*sin((x-1.0)*(y-1.0))*pow(x-1.0,2.0)+sin(y-1.0)*cos((x-1.0)*(y-1.0))*(x-1.0)*2.0)*(1.0/2.0)+exp(t)*(sin(x*y)*sin(x)+pow(x-1.0,3.0)*pow(y-1.0,2.0)*1.2E1+x*sin(x*y)*cos(x)+x*y*cos(x*y)*sin(x))*(1.0/2.0))*-2.0;
+        grads[3][0] = exact_solution_stress_grad_data.value(p, 4);
+        grads[3][1] = exact_solution_stress_grad_data.value(p, 5);
 
-        grads[3][0] = lambda*(exp(t)*(x*(y*y*y*y)*6.0-cos(y-1.0)*sin((x-1.0)*(y-1.0))*pow(y-1.0,2.0)+2.0)-exp(t)*(sin(x*y)*sin(x)+pow(x-1.0,3.0)*pow(y-1.0,2.0)*1.2E1+x*sin(x*y)*cos(x)+x*y*cos(x*y)*sin(x)))-mu*exp(t)*(sin(x*y)*sin(x)+pow(x-1.0,3.0)*pow(y-1.0,2.0)*1.2E1+x*sin(x*y)*cos(x)+x*y*cos(x*y)*sin(x))*2.0-3.141592653589793*exp(t)*cos(x*3.141592653589793)*cos(y*3.141592653589793);
-        grads[3][1] = -lambda*(exp(t)*((y*2.0-2.0)*pow(x-1.0,4.0)*3.0+(x*x)*cos(x*y)*sin(x)-2.0)-exp(t)*(cos(y-1.0)*cos((x-1.0)*(y-1.0))+(x*x)*(y*y*y)*1.2E1-sin(y-1.0)*cos((x-1.0)*(y-1.0))*(y-1.0)-cos(y-1.0)*sin((x-1.0)*(y-1.0))*(x-1.0)*(y-1.0)))-mu*exp(t)*((y*2.0-2.0)*pow(x-1.0,4.0)*3.0+(x*x)*cos(x*y)*sin(x)-2.0)*2.0+3.141592653589793*exp(t)*sin(x*3.141592653589793)*sin(y*3.141592653589793);
+        grads[7][0] = exact_solution_darcy_vel_grad_data.value(p, 0);
+        grads[7][1] = exact_solution_darcy_vel_grad_data.value(p, 1);
 
-        grads[7][0] = (3.141592653589793*3.141592653589793)*exp(t)*cos(y*3.141592653589793)*sin(x*3.141592653589793);
-        grads[7][1] = (3.141592653589793*3.141592653589793)*exp(t)*cos(x*3.141592653589793)*sin(y*3.141592653589793);
-
-        grads[8][0] = (3.141592653589793*3.141592653589793)*exp(t)*cos(x*3.141592653589793)*sin(y*3.141592653589793);
-        grads[8][1] = (3.141592653589793*3.141592653589793)*exp(t)*cos(y*3.141592653589793)*sin(x*3.141592653589793);
+        grads[8][0] = exact_solution_darcy_vel_grad_data.value(p, 2);
+        grads[8][1] = exact_solution_darcy_vel_grad_data.value(p, 3);
         break;
       case 3:
         for (int k=0;k<total_dim;++k)

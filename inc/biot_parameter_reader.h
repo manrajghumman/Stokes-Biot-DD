@@ -80,10 +80,10 @@ namespace mfe_biot
     prm.leave_subsection();
 
     // Exact solution, gradient values Darcy
-    prm.enter_subsection("Exact gradient Darcy");
+    prm.enter_subsection("Exact gradient Darcy Velocity");
     {
-      Functions::ParsedFunction<2>::declare_parameters(prm,6);
-      prm.set("Function expression", "0; 0; 0; 0; 0; 0");
+      Functions::ParsedFunction<2>::declare_parameters(prm,4);
+      prm.set("Function expression", "0; 0; 0; 0;");
     }
     prm.leave_subsection();
 
@@ -110,20 +110,8 @@ namespace mfe_biot
     // Exact solution, gradient values  Elast
     prm.enter_subsection("Exact gradient stress");
     {
-      Functions::ParsedFunction<2>::declare_parameters(prm,8);
-      prm.set("Function expression", "0; 0; 0; 0; 0; 0; 0; 0");
-    }
-    prm.leave_subsection();
-    prm.enter_subsection("Exact gradient displacement");
-    {
-      Functions::ParsedFunction<2>::declare_parameters(prm,4);
-      prm.set("Function expression", "0; 0; 0; 0");
-    }
-    prm.leave_subsection();
-    prm.enter_subsection("Exact gradient rotation");
-    {
-      Functions::ParsedFunction<2>::declare_parameters(prm,8);
-      prm.set("Function expression", "0; 0; 0; 0; 0; 0; 0; 0");
+      Functions::ParsedFunction<2>::declare_parameters(prm,6);
+      prm.set("Function expression", "0; 0; 0; 0; 0; 0");
     }
     prm.leave_subsection();
   }

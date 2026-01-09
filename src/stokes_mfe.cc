@@ -747,34 +747,36 @@ namespace mfe_stokes
                                       cellwise_errors,
                                       quadrature,
                                       VectorTools::H1_seminorm,
-                                      &v_x_mask);
+                                      &velocity_mask);
     
     const double u_H1_error =
       VectorTools::compute_global_error(triangulation,
                                         cellwise_errors,
                                         VectorTools::H1_seminorm);
-    VectorTools::integrate_difference(dof_handler,
-                                      solution,
-                                      exact_solution,
-                                      cellwise_errors,
-                                      quadrature,
-                                      VectorTools::H1_seminorm,
-                                      &velocity_mask);
-    const double ux_H1_error =
-      VectorTools::compute_global_error(triangulation,
-                                        cellwise_errors,
-                                        VectorTools::H1_seminorm);
-    VectorTools::integrate_difference(dof_handler,
-                                      solution,
-                                      exact_solution,
-                                      cellwise_errors,
-                                      quadrature,
-                                      VectorTools::H1_seminorm,
-                                      &v_y_mask);
-    const double uy_H1_error =
-      VectorTools::compute_global_error(triangulation,
-                                        cellwise_errors,
-                                        VectorTools::H1_seminorm);
+    
+    // VectorTools::integrate_difference(dof_handler,
+    //                                   solution,
+    //                                   exact_solution,
+    //                                   cellwise_errors,
+    //                                   quadrature,
+    //                                   VectorTools::H1_seminorm,
+    //                                   &v_x_mask);
+    // const double ux_H1_error =
+    //   VectorTools::compute_global_error(triangulation,
+    //                                     cellwise_errors,
+    //                                     VectorTools::H1_seminorm);
+
+    // VectorTools::integrate_difference(dof_handler,
+    //                                   solution,
+    //                                   exact_solution,
+    //                                   cellwise_errors,
+    //                                   quadrature,
+    //                                   VectorTools::H1_seminorm,
+    //                                   &v_y_mask);
+    // const double uy_H1_error =
+    //   VectorTools::compute_global_error(triangulation,
+    //                                     cellwise_errors,
+    //                                     VectorTools::H1_seminorm);
     VectorTools::integrate_difference(dof_handler,
                                       solution,
                                       exact_solution,
@@ -801,8 +803,8 @@ namespace mfe_stokes
     convergence_table_h1.add_value("dofs", n_dofs);
     convergence_table_h1.add_value("u_H1", u_H1_error);
     convergence_table_h1.add_value("p_H1", p_H1_error);
-    convergence_table_h1.add_value("ux_H1", ux_H1_error);
-    convergence_table_h1.add_value("uy_H1", uy_H1_error);
+    // convergence_table_h1.add_value("ux_H1", ux_H1_error);
+    // convergence_table_h1.add_value("uy_H1", uy_H1_error);
     // convergence_table_h1.add_value("gmres_iter", gmres_iteration);
   }
 
@@ -870,33 +872,33 @@ namespace mfe_stokes
     // convergence_table_h1.set_precision("residual", 3);
     convergence_table_h1.set_precision("u_H1", 3);
     convergence_table_h1.set_precision("p_H1", 3);
-    convergence_table_h1.set_precision("ux_H1", 3);
-    convergence_table_h1.set_precision("uy_H1", 3);
+    // convergence_table_h1.set_precision("ux_H1", 3);
+    // convergence_table_h1.set_precision("uy_H1", 3);
 
     // convergence_table_h1.set_scientific("residual", true);
     convergence_table_h1.set_scientific("h", true);
     convergence_table_h1.set_scientific("u_H1", true);
     convergence_table_h1.set_scientific("p_H1", true);
-    convergence_table_h1.set_scientific("ux_H1", true);
-    convergence_table_h1.set_scientific("uy_H1", true);
+    // convergence_table_h1.set_scientific("ux_H1", true);
+    // convergence_table_h1.set_scientific("uy_H1", true);
 
     convergence_table_h1.set_tex_caption("cells", "\\ cells");
     convergence_table_h1.set_tex_caption("dofs", "\\# dofs");
     // convergence_table_h1.set_tex_caption("residual", "residual");
     convergence_table_h1.set_tex_caption("u_H1", "$H^1$-error (u)");
     convergence_table_h1.set_tex_caption("p_H1", "$H^1$-error (p)");
-    convergence_table_h1.set_tex_caption("ux_H1", "$H^1$-error (ux)");
-    convergence_table_h1.set_tex_caption("uy_H1", "$H^1$-error (uy)");
+    // convergence_table_h1.set_tex_caption("ux_H1", "$H^1$-error (ux)");
+    // convergence_table_h1.set_tex_caption("uy_H1", "$H^1$-error (uy)");
     // convergence_table_h1.set_tex_caption("gmres_iter", "gmres iter");
 
     convergence_table_h1.evaluate_convergence_rates(
           "u_H1", ConvergenceTable::reduction_rate_log2);
     convergence_table_h1.evaluate_convergence_rates(
           "p_H1", ConvergenceTable::reduction_rate_log2);
-    convergence_table_h1.evaluate_convergence_rates(
-          "ux_H1", ConvergenceTable::reduction_rate_log2);
-    convergence_table_h1.evaluate_convergence_rates(
-          "uy_H1", ConvergenceTable::reduction_rate_log2);
+    // convergence_table_h1.evaluate_convergence_rates(
+    //       "ux_H1", ConvergenceTable::reduction_rate_log2);
+    // convergence_table_h1.evaluate_convergence_rates(
+    //       "uy_H1", ConvergenceTable::reduction_rate_log2);
 
     std::string conv_filename = "../output/convg_tables/table_individual_h1" + std::string(".tex");
 
@@ -915,7 +917,7 @@ namespace mfe_stokes
       if (this_mpi_stokes == i)
       { 
         // Print to screen if you like, but messy for many processes
-        convergence_table_l2.write_text(std::cout);
+        convergence_table_h1.write_text(std::cout);
 
         std::ofstream table_file(conv_filename, std::ios::app);
         // Write a LaTeX comment and a section header before the table:

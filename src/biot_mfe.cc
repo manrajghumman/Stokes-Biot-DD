@@ -704,6 +704,13 @@ namespace mfe_biot
     exact_solution.exact_solution_rotation_data.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
 
+    prm_fxn.enter_subsection("Exact gradient Darcy Velocity");
+    exact_solution.exact_solution_darcy_vel_grad_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    prm_fxn.enter_subsection("Exact gradient stress");
+    exact_solution.exact_solution_stress_grad_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
     // Vectors to temporarily store cellwise errros
     Vector<double> cellwise_errors (triangulation.n_active_cells());
     Vector<double> cellwise_norms (triangulation.n_active_cells());
@@ -725,7 +732,8 @@ namespace mfe_biot
     p_l2_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-
+    cellwise_errors = 0;
+    cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::L2_norm,
@@ -746,7 +754,8 @@ namespace mfe_biot
     u_l2_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-
+    cellwise_errors = 0;
+    cellwise_norms = 0;                                              
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::L2_norm,
@@ -756,7 +765,29 @@ namespace mfe_biot
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);
 
-    // Displacement error and norm
+    // Velocity H(div) error and norm
+    cellwise_errors = 0;
+    cellwise_norms = 0;
+    VectorTools::integrate_difference (dof_handler, solution, exact_solution,
+                                        cellwise_errors, quadrature,
+                                        VectorTools::Hdiv_seminorm,
+                                        &velocity_mask);
+    const double 
+    u_hdiv_error = VectorTools::compute_global_error(triangulation,
+                                                    cellwise_errors,
+                                                    VectorTools::L2_norm);
+    cellwise_errors = 0;
+    cellwise_norms = 0;                                              
+    VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
+                                        cellwise_norms, quadrature,
+                                        VectorTools::Hdiv_seminorm,
+                                        &velocity_mask);
+    const double 
+    u_hdiv_norm = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_norms,
+                                                  VectorTools::L2_norm);                                              
+
+    // Displacement L2 error and norm
     cellwise_errors = 0;
     cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, solution, exact_solution,
@@ -767,7 +798,8 @@ namespace mfe_biot
     d_l2_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-
+    cellwise_errors = 0;
+    cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::L2_norm,
@@ -777,8 +809,7 @@ namespace mfe_biot
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);
 
-    // Rotation error and norm
-    // Displacement error and norm
+    // Rotation L2 error and norm
     cellwise_errors = 0;
     cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, solution, exact_solution,
@@ -789,7 +820,8 @@ namespace mfe_biot
     r_l2_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-
+    cellwise_errors = 0;
+    cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::L2_norm,
@@ -799,7 +831,7 @@ namespace mfe_biot
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);                                              
 
-    // Stress error and norm
+    // Stress L2 error and norm
     cellwise_errors = 0;
     cellwise_norms = 0;
     VectorTools::integrate_difference (dof_handler, solution, exact_solution,
@@ -818,7 +850,30 @@ namespace mfe_biot
     const double 
     s_l2_norm = VectorTools::compute_global_error(triangulation,
                                                   cellwise_norms,
-                                                  VectorTools::L2_norm);                                              
+                                                  VectorTools::L2_norm);   
+    
+    // Stress H(div) error and norm                                              
+    cellwise_errors = 0;
+    cellwise_norms = 0;
+    VectorTools::integrate_difference (dof_handler, solution, exact_solution,
+                                        cellwise_errors, quadrature,
+                                        VectorTools::Hdiv_seminorm,
+                                        &stress_mask);
+    const double
+    s_hdiv_error = VectorTools::compute_global_error(triangulation,
+                                                  cellwise_errors,
+                                                  VectorTools::L2_norm);
+    
+    cellwise_errors = 0;
+    cellwise_norms = 0;                                              
+    VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
+                                        cellwise_norms, quadrature,
+                                        VectorTools::Hdiv_seminorm,
+                                        &stress_mask);                                              
+    const double
+    s_hdiv_norm = VectorTools::compute_global_error(triangulation,
+                                                    cellwise_errors,
+                                                    VectorTools::L2_norm);
 
     const unsigned int n_active_cells = triangulation.n_active_cells();
     const unsigned int n_dofs = dof_handler.n_dofs();
@@ -831,6 +886,13 @@ namespace mfe_biot
     convergence_table_l2.add_value("||r-r_h||_L2", r_l2_error);
     convergence_table_l2.add_value("||s-s_h||_L2", s_l2_error);
     convergence_table_l2.add_value("residual", residual);
+    
+    convergence_table_hdiv.add_value("cells", n_active_cells);
+    convergence_table_hdiv.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_hdiv.add_value("dofs", n_dofs);
+    convergence_table_hdiv.add_value("||u-u_h||_Hdiv", u_hdiv_error);
+    convergence_table_hdiv.add_value("||s-s_h||_Hdiv", s_hdiv_error);
+    convergence_table_hdiv.add_value("residual", residual);
   }
 
   template <int dim>
@@ -902,6 +964,57 @@ namespace mfe_biot
     {
         std::ofstream table_file(conv_filename, std::ios::app);
         table_file << "\n\\end{document}\n";
+    }
+  }
+
+  template <int dim>
+  void MixedBiotProblem<dim>::print_individual_convg_table_hdiv()
+  {
+    convergence_table_hdiv.set_precision("residual", 3);
+    convergence_table_hdiv.set_precision("||u-u_h||_Hdiv", 3);
+    convergence_table_hdiv.set_precision("||s-s_h||_Hdiv", 3);
+
+    convergence_table_hdiv.set_scientific("residual", true);
+    convergence_table_hdiv.set_scientific("||u-u_h||_Hdiv", true);
+    convergence_table_hdiv.set_scientific("||s-s_h||_Hdiv", true);
+
+    convergence_table_hdiv.set_tex_caption("cells", "\\ cells");
+    convergence_table_hdiv.set_tex_caption("dofs", "\\# dofs");
+    convergence_table_hdiv.set_tex_caption("residual", "residual");
+    convergence_table_hdiv.set_tex_caption("||u-u_h||_Hdiv", "$||u_p-u_{ph}||_{H(div)}$");
+    convergence_table_hdiv.set_tex_caption("||s-s_h||_Hdiv", "$||\\sigma_p-\\sigma_{ph}||_{H(div)}$");
+
+    convergence_table_hdiv.evaluate_convergence_rates("||u-u_h||_Hdiv",
+                                              ConvergenceTable::reduction_rate_log2);
+    convergence_table_hdiv.evaluate_convergence_rates("||s-s_h||_Hdiv",
+                                              ConvergenceTable::reduction_rate_log2);
+
+    std::string conv_filename = "../output/convg_tables/biot_table_individual_hdiv" + std::string(".tex");
+
+    if (this_mpi_biot == 0) // latex header
+    {
+        std::ofstream table_file(conv_filename, std::ios::out);
+        table_file << "\\documentclass[10pt]{report}\n"
+                   << "\\usepackage{float}\n"
+                   << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                   << "\\begin{document}\n\n";
+        table_file.close();
+    }
+    for (unsigned int i = 0; i<n_processes_biot; ++i)
+    {
+      MPI_Barrier(mpi_communicator_biot);
+      if (this_mpi_biot == i)
+      { 
+        // Print to screen if you like, but messy for many processes
+        convergence_table_hdiv.write_text(std::cout);
+
+        std::ofstream table_file(conv_filename, std::ios::app);
+        // Write a LaTeX comment and a section header before the table:
+        table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
+        table_file << "\\section*{MPI Process " << this_mpi << "}\n";
+        convergence_table_hdiv.write_tex(table_file, false);
+        table_file << "\n"; // Optional: extra space after each table
+      }
     }
   }
 

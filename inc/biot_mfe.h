@@ -59,6 +59,9 @@ namespace mfe_biot
 
     void
     print_individual_convg_table_h1();
+
+    void
+    print_individual_convg_table_hdiv();
     
     void 
     assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
@@ -207,7 +210,7 @@ namespace mfe_biot
     // Output extra
     ConditionalOStream pcout;
     ConvergenceTable   convergence_table_l2;
-    ConvergenceTable   convergence_table_h1;
+    ConvergenceTable   convergence_table_hdiv;
     // TimerOutput computing_timer;
   };
 }// namespace mfe_biot

@@ -308,7 +308,7 @@ namespace dd_stokes_biot
           biot->output_dof_results(cycle);
           biot->compute_errors(cycle);
           biot->print_individual_convg_table_l2();
-          // biot->print_individual_convg_table_h1();
+          biot->print_individual_convg_table_hdiv();
         }
       }
 
