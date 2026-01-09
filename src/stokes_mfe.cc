@@ -822,8 +822,8 @@ namespace mfe_stokes
     convergence_table_l2.set_tex_caption("cells", "\\ cells");
     convergence_table_l2.set_tex_caption("dofs", "\\# dofs");
     convergence_table_l2.set_tex_caption("residual", "residual");
-    convergence_table_l2.set_tex_caption("u_L2", "$L^2$-error (u)");
-    convergence_table_l2.set_tex_caption("p_L2", "$L^2$-error (p)");
+    convergence_table_l2.set_tex_caption("u_L2", "$||u_f-u_{fh}||_{L^2}$");
+    convergence_table_l2.set_tex_caption("p_L2", "$||p_f-p_{fh}||_{L^2}$");
 
     convergence_table_l2.evaluate_convergence_rates(
           "u_L2", ConvergenceTable::reduction_rate_log2);
@@ -885,8 +885,8 @@ namespace mfe_stokes
     convergence_table_h1.set_tex_caption("cells", "\\ cells");
     convergence_table_h1.set_tex_caption("dofs", "\\# dofs");
     // convergence_table_h1.set_tex_caption("residual", "residual");
-    convergence_table_h1.set_tex_caption("u_H1", "$H^1$-error (u)");
-    convergence_table_h1.set_tex_caption("p_H1", "$H^1$-error (p)");
+    convergence_table_h1.set_tex_caption("u_H1", "$||u_f-u_{fh}||_{H^1}$");
+    convergence_table_h1.set_tex_caption("p_H1", "$||p_f-p_{fh}||_{H^1}$");
     // convergence_table_h1.set_tex_caption("ux_H1", "$H^1$-error (ux)");
     // convergence_table_h1.set_tex_caption("uy_H1", "$H^1$-error (uy)");
     // convergence_table_h1.set_tex_caption("gmres_iter", "gmres iter");

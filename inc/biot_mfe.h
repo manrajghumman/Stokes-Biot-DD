@@ -55,7 +55,10 @@ namespace mfe_biot
     compute_errors(const unsigned int &cycle); 
 
     void 
-    print_individual_convg_table_l2();
+    print_individual_convg_table_darcy_l2();
+
+    void 
+    print_individual_convg_table_elast_l2();
 
     void
     print_individual_convg_table_h1();
@@ -209,7 +212,8 @@ namespace mfe_biot
 
     // Output extra
     ConditionalOStream pcout;
-    ConvergenceTable   convergence_table_l2;
+    ConvergenceTable   convergence_table_darcy_l2;
+    ConvergenceTable   convergence_table_elast_l2;
     ConvergenceTable   convergence_table_hdiv;
     // TimerOutput computing_timer;
   };

@@ -877,15 +877,20 @@ namespace mfe_biot
 
     const unsigned int n_active_cells = triangulation.n_active_cells();
     const unsigned int n_dofs = dof_handler.n_dofs();
-    convergence_table_l2.add_value("cells", n_active_cells);
-    convergence_table_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
-    convergence_table_l2.add_value("dofs", n_dofs);
-    convergence_table_l2.add_value("||u-u_h||_L2", u_l2_error);
-    convergence_table_l2.add_value("||p-p_h||_L2", p_l2_error);
-    convergence_table_l2.add_value("||d-d_h||_L2", d_l2_error);
-    convergence_table_l2.add_value("||r-r_h||_L2", r_l2_error);
-    convergence_table_l2.add_value("||s-s_h||_L2", s_l2_error);
-    convergence_table_l2.add_value("residual", residual);
+
+    convergence_table_darcy_l2.add_value("cells", n_active_cells);
+    convergence_table_darcy_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_darcy_l2.add_value("dofs", n_dofs);
+    convergence_table_darcy_l2.add_value("||u-u_h||_L2", u_l2_error);
+    convergence_table_darcy_l2.add_value("||p-p_h||_L2", p_l2_error);
+    convergence_table_darcy_l2.add_value("residual", residual);
+
+    convergence_table_elast_l2.add_value("cells", n_active_cells);
+    convergence_table_elast_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_elast_l2.add_value("||d-d_h||_L2", d_l2_error);
+    convergence_table_elast_l2.add_value("||r-r_h||_L2", r_l2_error);
+    convergence_table_elast_l2.add_value("||s-s_h||_L2", s_l2_error);
+    convergence_table_elast_l2.add_value("residual", residual);
     
     convergence_table_hdiv.add_value("cells", n_active_cells);
     convergence_table_hdiv.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
@@ -896,43 +901,41 @@ namespace mfe_biot
   }
 
   template <int dim>
-  void MixedBiotProblem<dim>::print_individual_convg_table_l2()
+  void MixedBiotProblem<dim>::print_individual_convg_table_darcy_l2()
   {
-    convergence_table_l2.set_precision("residual", 3);
-    convergence_table_l2.set_precision("||u-u_h||_L2", 3);
-    convergence_table_l2.set_precision("||p-p_h||_L2", 3);
-    convergence_table_l2.set_precision("||d-d_h||_L2", 3);
-    convergence_table_l2.set_precision("||r-r_h||_L2", 3);
-    convergence_table_l2.set_precision("||s-s_h||_L2", 3);
+    convergence_table_darcy_l2.set_precision("residual", 3);
+    convergence_table_darcy_l2.set_precision("||u-u_h||_L2", 3);
+    convergence_table_darcy_l2.set_precision("||p-p_h||_L2", 3);
+    
 
-    convergence_table_l2.set_scientific("residual", true);
-    convergence_table_l2.set_scientific("||u-u_h||_L2", true);
-    convergence_table_l2.set_scientific("||p-p_h||_L2", true);
-    convergence_table_l2.set_scientific("||d-d_h||_L2", true);
-    convergence_table_l2.set_scientific("||r-r_h||_L2", true);
-    convergence_table_l2.set_scientific("||s-s_h||_L2", true);
+    convergence_table_darcy_l2.set_scientific("residual", true);
+    convergence_table_darcy_l2.set_scientific("||u-u_h||_L2", true);
+    convergence_table_darcy_l2.set_scientific("||p-p_h||_L2", true);
+    // convergence_table_l2.set_scientific("||d-d_h||_L2", true);
+    // convergence_table_l2.set_scientific("||r-r_h||_L2", true);
+    // convergence_table_l2.set_scientific("||s-s_h||_L2", true);
 
-    convergence_table_l2.set_tex_caption("cells", "\\ cells");
-    convergence_table_l2.set_tex_caption("dofs", "\\# dofs");
-    convergence_table_l2.set_tex_caption("residual", "residual");
-    convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
-    convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
-    convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||u_s-u_{sh}||_{L^2}$");
-    convergence_table_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
-    convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
+    convergence_table_darcy_l2.set_tex_caption("cells", "\\ cells");
+    convergence_table_darcy_l2.set_tex_caption("dofs", "\\# dofs");
+    convergence_table_darcy_l2.set_tex_caption("residual", "residual");
+    convergence_table_darcy_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
+    convergence_table_darcy_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
+    // convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
+    // convergence_table_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
+    // convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
 
-    convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
+    convergence_table_darcy_l2.evaluate_convergence_rates("||u-u_h||_L2",
                                               ConvergenceTable::reduction_rate_log2);
-    convergence_table_l2.evaluate_convergence_rates("||p-p_h||_L2",
+    convergence_table_darcy_l2.evaluate_convergence_rates("||p-p_h||_L2",
                                               ConvergenceTable::reduction_rate_log2);
-    convergence_table_l2.evaluate_convergence_rates("||d-d_h||_L2",
-                                              ConvergenceTable::reduction_rate_log2);
-    convergence_table_l2.evaluate_convergence_rates("||r-r_h||_L2",
-                                              ConvergenceTable::reduction_rate_log2);                                          
-    convergence_table_l2.evaluate_convergence_rates("||s-s_h||_L2",
-                                              ConvergenceTable::reduction_rate_log2);
+    // convergence_table_l2.evaluate_convergence_rates("||d-d_h||_L2",
+    //                                           ConvergenceTable::reduction_rate_log2);
+    // convergence_table_l2.evaluate_convergence_rates("||r-r_h||_L2",
+    //                                           ConvergenceTable::reduction_rate_log2);                                          
+    // convergence_table_l2.evaluate_convergence_rates("||s-s_h||_L2",
+    //                                           ConvergenceTable::reduction_rate_log2);
 
-    std::string conv_filename = "../output/convg_tables/biot_table_individual_l2" + std::string(".tex");
+    std::string conv_filename = "../output/convg_tables/darcy_table_individual_l2" + std::string(".tex");
 
     if (this_mpi_biot == 0) // latex header
     {
@@ -949,13 +952,83 @@ namespace mfe_biot
       if (this_mpi_biot == i)
       { 
         // Print to screen if you like, but messy for many processes
-        convergence_table_l2.write_text(std::cout);
+        convergence_table_darcy_l2.write_text(std::cout);
 
         std::ofstream table_file(conv_filename, std::ios::app);
         // Write a LaTeX comment and a section header before the table:
         table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
         table_file << "\\section*{MPI Process " << this_mpi << "}\n";
-        convergence_table_l2.write_tex(table_file, false);
+        convergence_table_darcy_l2.write_tex(table_file, false);
+        table_file << "\n"; // Optional: extra space after each table
+      }
+    }
+    MPI_Barrier(mpi_communicator_biot);
+    if (this_mpi_biot == 0)
+    {
+        std::ofstream table_file(conv_filename, std::ios::app);
+        table_file << "\n\\end{document}\n";
+    }
+  }
+
+  template <int dim>
+  void MixedBiotProblem<dim>::print_individual_convg_table_elast_l2()
+  {
+    convergence_table_elast_l2.set_precision("residual", 3);
+    convergence_table_elast_l2.set_precision("||d-d_h||_L2", 3);
+    convergence_table_elast_l2.set_precision("||r-r_h||_L2", 3);
+    convergence_table_elast_l2.set_precision("||s-s_h||_L2", 3);
+
+    convergence_table_elast_l2.set_scientific("residual", true);
+    // convergence_table_l2.set_scientific("||u-u_h||_L2", true);
+    // convergence_table_l2.set_scientific("||p-p_h||_L2", true);
+    convergence_table_elast_l2.set_scientific("||d-d_h||_L2", true);
+    convergence_table_elast_l2.set_scientific("||r-r_h||_L2", true);
+    convergence_table_elast_l2.set_scientific("||s-s_h||_L2", true);
+
+    convergence_table_elast_l2.set_tex_caption("cells", "\\ cells");
+    convergence_table_elast_l2.set_tex_caption("dofs", "\\# dofs");
+    convergence_table_elast_l2.set_tex_caption("residual", "residual");
+    // convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
+    // convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
+    convergence_table_elast_l2.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
+    convergence_table_elast_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
+    convergence_table_elast_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
+
+    // convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
+    //                                           ConvergenceTable::reduction_rate_log2);
+    // convergence_table_l2.evaluate_convergence_rates("||p-p_h||_L2",
+    //                                           ConvergenceTable::reduction_rate_log2);
+    convergence_table_elast_l2.evaluate_convergence_rates("||d-d_h||_L2",
+                                              ConvergenceTable::reduction_rate_log2);
+    convergence_table_elast_l2.evaluate_convergence_rates("||r-r_h||_L2",
+                                              ConvergenceTable::reduction_rate_log2);                                          
+    convergence_table_elast_l2.evaluate_convergence_rates("||s-s_h||_L2",
+                                              ConvergenceTable::reduction_rate_log2);
+
+    std::string conv_filename = "../output/convg_tables/elast_table_individual_l2" + std::string(".tex");
+
+    if (this_mpi_biot == 0) // latex header
+    {
+        std::ofstream table_file(conv_filename, std::ios::out);
+        table_file << "\\documentclass[10pt]{report}\n"
+                   << "\\usepackage{float}\n"
+                   << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                   << "\\begin{document}\n\n";
+        table_file.close();
+    }
+    for (unsigned int i = 0; i<n_processes_biot; ++i)
+    {
+      MPI_Barrier(mpi_communicator_biot);
+      if (this_mpi_biot == i)
+      { 
+        // Print to screen if you like, but messy for many processes
+        convergence_table_elast_l2.write_text(std::cout);
+
+        std::ofstream table_file(conv_filename, std::ios::app);
+        // Write a LaTeX comment and a section header before the table:
+        table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
+        table_file << "\\section*{MPI Process " << this_mpi << "}\n";
+        convergence_table_elast_l2.write_tex(table_file, false);
         table_file << "\n"; // Optional: extra space after each table
       }
     }
@@ -989,6 +1062,7 @@ namespace mfe_biot
     convergence_table_hdiv.evaluate_convergence_rates("||s-s_h||_Hdiv",
                                               ConvergenceTable::reduction_rate_log2);
 
+    
     std::string conv_filename = "../output/convg_tables/biot_table_individual_hdiv" + std::string(".tex");
 
     if (this_mpi_biot == 0) // latex header
@@ -1015,6 +1089,12 @@ namespace mfe_biot
         convergence_table_hdiv.write_tex(table_file, false);
         table_file << "\n"; // Optional: extra space after each table
       }
+    }
+    MPI_Barrier(mpi_communicator_biot);
+    if (this_mpi_biot == 0)
+    {
+        std::ofstream table_file(conv_filename, std::ios::app);
+        table_file << "\n\\end{document}\n";
     }
   }
 
