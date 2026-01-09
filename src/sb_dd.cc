@@ -312,6 +312,22 @@ namespace dd_stokes_biot
           biot->print_individual_convg_table_hdiv();
         }
       }
+      else
+      {
+        if (subdomain_type == 1)
+        {
+          stokes->local_gmres(cycle);
+          stokes->output_results(cycle);
+          stokes->output_dof_results(cycle);
+          stokes->compute_errors(cycle);
+          stokes->print_individual_convg_table_l2();
+          stokes->print_individual_convg_table_h1();
+        }
+        else if (subdomain_type == 2)
+        {
+          biot->output_dof_results(cycle);
+        }
+      }
 
 
       

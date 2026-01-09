@@ -494,242 +494,6 @@ namespace dd_utilities
     constraints.close();
     constraints.distribute(out_vec);
   }
-
-  template <int dim>
-  void
-  print_individual_table_l2(ConvergenceTable &convergence_table,
-                            const unsigned int &iter_meth_flag,
-                            const unsigned int &this_mpi,
-                            const unsigned int &n_processes,
-                            MPI_Comm &mpi_communicator)
-  {
-    convergence_table.set_precision("residual", 3);
-    convergence_table.set_precision("h", 1);
-    convergence_table.set_precision("u_L2", 3);
-    convergence_table.set_precision("p_L2", 3);
-    convergence_table.set_precision("u_order", 2);
-    convergence_table.set_precision("p_order", 2);
-    // convergence_table.set_precision("u_H1", 3);
-    // convergence_table.set_precision("p_H1", 3);
-    // convergence_table.set_precision("ux_H1", 3);
-    // convergence_table.set_precision("uy_H1", 3);
-
-    convergence_table.set_scientific("residual", true);
-    convergence_table.set_scientific("h", true);
-    convergence_table.set_scientific("u_L2", true);
-    convergence_table.set_scientific("p_L2", true);
-    // convergence_table.set_scientific("u_order", true);
-    // convergence_table.set_scientific("p_order", true);
-    // convergence_table.set_scientific("u_H1", true);
-    // convergence_table.set_scientific("p_H1", true);
-    // convergence_table.set_scientific("ux_H1", true);
-    // convergence_table.set_scientific("uy_H1", true);
-
-    convergence_table.set_tex_caption("cells", "\\ cells");
-    convergence_table.set_tex_caption("h", "\\ h");
-    // convergence_table.set_tex_caption("dofs", "\\# dofs");
-    convergence_table.set_tex_caption("interface_dofs", "\\ dofs");
-    if (iter_meth_flag == 1)
-      convergence_table.set_tex_caption("gmres_iter", "gmres iter");
-    else
-      convergence_table.set_tex_caption("cg_iter", "cg iter");
-    convergence_table.set_tex_caption("u_order", "u order");
-    convergence_table.set_tex_caption("p_order", "p order");
-    convergence_table.set_tex_caption("residual", "residual");
-    convergence_table.set_tex_caption("u_L2", "$L^2$-error (u)");
-    convergence_table.set_tex_caption("p_L2", "$L^2$-error (p)");
-    // convergence_table.set_tex_caption("u_H1", "$H^1$-error (u)");
-    // convergence_table.set_tex_caption("p_H1", "$H^1$-error (p)");
-    // convergence_table.set_tex_caption("ux_H1", "$H^1$-error (ux)");
-    // convergence_table.set_tex_caption("uy_H1", "$H^1$-error (uy)");
-
-    convergence_table.set_tex_format("h", "r");
-    convergence_table.set_tex_format("interface_dofs", "r");
-    // convergence_table.set_tex_format("dofs_m", "r");
-
-    // convergence_table.add_column_to_supercolumn("cycle", "n   h");
-    // convergence_table.add_column_to_supercolumn("h", "n   h");
-    
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_L2", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_L2", "h", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_L2", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_L2", "h", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "ux_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "ux_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "uy_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "uy_H1", ConvergenceTable::reduction_rate_log2);
-
-    // convergence_table.set_precision("u_L2-rate", 3);
-    // convergence_table.set_precision("p_L2-rate", 3);
-    // convergence_table.set_precision("u_H1-rate", 3);
-    // convergence_table.set_precision("p_H1-rate", 3);
-    // convergence_table.set_precision("ux_H1-rate", 3);
-    // convergence_table.set_precision("uy_H1-rate", 3);
-
-    // std::cout << std::endl;
-    // convergence_table.write_text(std::cout);
-
-    // std::string conv_filename = "convergence_mpi" + Utilities::int_to_string(this_mpi) + ".tex";
-
-    // std::ofstream table_file(conv_filename);
-    // convergence_table.write_tex(table_file);
-  
-    std::string conv_filename = "../output/convg_tables/table_individual_l2" + std::string(".tex");
-
-    if (this_mpi == 0) // latex header
-    {
-        std::ofstream table_file(conv_filename, std::ios::out);
-        table_file << "\\documentclass[10pt]{report}\n"
-                   << "\\usepackage{float}\n"
-                   << "\\usepackage[margin=0.7in]{geometry}\n\n"
-                   << "\\begin{document}\n\n";
-        table_file.close();
-    }
-    for (unsigned int i = 0; i<n_processes; ++i)
-    {
-      MPI_Barrier(mpi_communicator);
-      if (this_mpi == i)
-      { 
-        // Print to screen if you like, but messy for many processes
-        // convergence_table.write_text(std::cout);
-
-        std::ofstream table_file(conv_filename, std::ios::app);
-        // Write a LaTeX comment and a section header before the table:
-        table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
-        table_file << "\\section*{MPI Process " << this_mpi << "}\n";
-        convergence_table.write_tex(table_file, false);
-        table_file << "\n"; // Optional: extra space after each table
-      }
-    }
-    MPI_Barrier(mpi_communicator);
-    if (this_mpi == 0)
-    {
-        std::ofstream table_file(conv_filename, std::ios::app);
-        table_file << "\n\\end{document}\n";
-    }
-  }
-
-  template <int dim>
-  void
-  print_individual_table_h1(ConvergenceTable &convergence_table,
-                            const unsigned int &iter_meth_flag,
-                            const unsigned int &this_mpi,
-                            const unsigned int &n_processes,
-                            MPI_Comm &mpi_communicator)
-  {
-    convergence_table.set_precision("h", 1);
-    convergence_table.set_precision("u_H1", 3);
-    convergence_table.set_precision("p_H1", 3);
-    convergence_table.set_precision("ux_H1", 3);
-    convergence_table.set_precision("uy_H1", 3);
-
-    convergence_table.set_scientific("h", true);
-    convergence_table.set_scientific("u_H1", true);
-    convergence_table.set_scientific("p_H1", true);
-    convergence_table.set_scientific("ux_H1", true);
-    convergence_table.set_scientific("uy_H1", true);
-
-    convergence_table.set_tex_caption("cells", "\\ cells");
-    convergence_table.set_tex_caption("h", "\\ h");
-    convergence_table.set_tex_caption("interface_dofs", "\\ dofs");
-    if (iter_meth_flag == 1)
-      convergence_table.set_tex_caption("gmres_iter", "gmres iter");
-    else
-      convergence_table.set_tex_caption("cg_iter", "cg iter");
-    convergence_table.set_tex_caption("u_H1", "$H^1$-error (u)");
-    convergence_table.set_tex_caption("p_H1", "$H^1$-error (p)");
-    convergence_table.set_tex_caption("ux_H1", "$H^1$-error (ux)");
-    convergence_table.set_tex_caption("uy_H1", "$H^1$-error (uy)");
-
-    convergence_table.set_tex_format("h", "r");
-    convergence_table.set_tex_format("interface_dofs", "r");
-    // convergence_table.set_tex_format("dofs_m", "r");
-
-    // convergence_table.add_column_to_supercolumn("cycle", "n   h");
-    // convergence_table.add_column_to_supercolumn("h", "n   h");
-    
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "u_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "p_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "ux_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "ux_H1", ConvergenceTable::reduction_rate_log2);
-    // convergence_table.evaluate_convergence_rates(
-    //       "uy_H1", ConvergenceTable::reduction_rate);
-    // convergence_table.evaluate_convergence_rates(
-    //       "uy_H1", ConvergenceTable::reduction_rate_log2);
-
-    // convergence_table.set_precision("u_L2-rate", 3);
-    // convergence_table.set_precision("p_L2-rate", 3);
-    // convergence_table.set_precision("u_H1-rate", 3);
-    // convergence_table.set_precision("p_H1-rate", 3);
-    // convergence_table.set_precision("ux_H1-rate", 3);
-    // convergence_table.set_precision("uy_H1-rate", 3);
-
-    // std::cout << std::endl;
-    // convergence_table.write_text(std::cout);
-
-    // std::string conv_filename = "convergence_mpi" + Utilities::int_to_string(this_mpi) + ".tex";
-
-    // std::ofstream table_file(conv_filename);
-    // convergence_table.write_tex(table_file);
-  
-    std::string conv_filename = "../output/convg_tables/table_individual_h1" + std::string(".tex");
-
-    if (this_mpi == 0) // latex header
-    {
-        std::ofstream table_file(conv_filename, std::ios::out);
-        table_file << "\\documentclass[10pt]{report}\n"
-                   << "\\usepackage{float}\n"
-                   << "\\usepackage[margin=0.7in]{geometry}\n\n"
-                   << "\\begin{document}\n\n";
-        table_file.close();
-    }
-    for (unsigned int i = 0; i<n_processes; ++i)
-    {
-      MPI_Barrier(mpi_communicator);
-      if (this_mpi == i)
-      { 
-        // Print to screen if you like, but messy for many processes
-        // convergence_table.write_text(std::cout);
-
-        std::ofstream table_file(conv_filename, std::ios::app);
-        // Write a LaTeX comment and a section header before the table:
-        table_file << "\n% ===== MPI Process " << this_mpi << " =====\n";
-        table_file << "\\section*{MPI Process " << this_mpi << "}\n";
-        convergence_table.write_tex(table_file, false);
-        table_file << "\n"; // Optional: extra space after each table
-      }
-    }
-    MPI_Barrier(mpi_communicator);
-    if (this_mpi == 0)
-    {
-        std::ofstream table_file(conv_filename, std::ios::app);
-        table_file << "\n\\end{document}\n";
-    }
-  }
   
   template <int dim>
   void
@@ -802,9 +566,31 @@ namespace dd_utilities
 
   template <int dim>
   void
-  print_total_table_h1()
+  compute_interface_dofs_size(std::vector<double> &interface_dofs_total,
+                              const MPI_Comm      &mpi_communicator,
+                              const unsigned int  &this_mpi,
+                              int                 &interface_dofs_size)
   {
+    interface_dofs_size = 0;
+    int tmp = 0;
 
+    // If dim == 2, we can use MPI_Allreduce to get the total size of the interface dofs
+    // If dim == 3, this is not implemented yet
+    if (dim == 2)
+    {
+      if (this_mpi % 2 == 0)
+        tmp = 0;
+      else
+        tmp = interface_dofs_total.size();
+      MPI_Allreduce(&tmp, //sending this data
+                    &interface_dofs_size, //receiving the result here
+                    1, //number of elements in alpha and alpha_buffer = 1+1
+                    MPI_INT, //type of each element
+                    MPI_SUM, //adding all elements received
+                    mpi_communicator);
+    }
+    else
+      throw std::runtime_error("dim = 3 not yet implemented!");
   }
 
 } // namespace dd_utilities

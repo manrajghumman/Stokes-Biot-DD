@@ -75,6 +75,9 @@ namespace mfe_stokes
     void
     print_individual_convg_table_h1();
 
+    void
+    local_gmres(unsigned int &cycle);
+
 
   private:
     MPI_Comm   mpi_communicator;
@@ -100,6 +103,8 @@ namespace mfe_stokes
     // std::vector<int> neighbors;
     // std::vector<unsigned int> neighbor_type;
 
+    Projector::Projector<dim> P_stokes2biot;
+    Projector::Projector<dim> P_biot2stokes;
     Projector::Projector<dim> P_coarse2fine;
     Projector::Projector<dim> P_fine2coarse;
 
@@ -117,6 +122,23 @@ namespace mfe_stokes
 
     void
     get_interface_dofs();
+
+    double
+    vect_norm(std::vector<double> v);
+
+    void
+    givens_rotation(double v1, double v2, double &cs, double &sn);
+
+    void
+	  apply_givens_rotation(std::vector<double> &h, 
+                          std::vector<double> &cs, 
+                          std::vector<double> &sn,
+    							        unsigned int k_iteration);
+
+    void
+	  back_solve(std::vector<std::vector<double>> H, 
+               std::vector<double> beta, 
+               std::vector<double> &y);
 
 
     unsigned int       gmres_iteration;

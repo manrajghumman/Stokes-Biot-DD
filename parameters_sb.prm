@@ -4,17 +4,17 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 8
+set refinements  = 6
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
-set initial_grid_2D  = 2, 1
+set initial_grid_2D  = 1, 1
 set initial_grid_3D  = 1, 1, 1
 
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
 # Note: Total subdomains should equal number of processes for mpirun
-set grid = 1
+set grid = 1, 1
 
 
 #################################################################################
@@ -53,7 +53,7 @@ end
 # 2 sides Dirichlet
 
 subsection External Boundary Conditions
-	set boundary_2D         = D, N, D, D
+	set boundary_2D         = N, D, D, D
 	set boundary_3D         = D, D, D, D, D, D
 end
 
@@ -61,6 +61,6 @@ end
 # Parameters for solver ('GMRES')
 
 subsection Solver
-	set max_iter = 5000
+	set max_iter = 100
 	set tol      = 1e-9
 end
