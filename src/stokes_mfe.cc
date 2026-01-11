@@ -241,14 +241,14 @@ namespace mfe_stokes
     solution_bar = 0;
 
     // Reinit solution and RHS vectors
-    solution_star_stokes.reinit(solution_bar);
-    solution_star_stokes = 0;
+    solution_star.reinit(solution_bar);
+    solution_star = 0;
 
     system_rhs_bar.reinit(solution_bar);
     system_rhs_bar = 0;
 
-    system_rhs_star_stokes.reinit(solution_bar);
-    system_rhs_star_stokes = 0;
+    system_rhs_star.reinit(solution_bar);
+    system_rhs_star = 0;
 
     pcout << "Stokes part:\n N velocity dofs: " << n_u
     <<" | N pressure dofs: "<< n_p
@@ -625,9 +625,6 @@ namespace mfe_stokes
                             local_dof_indices[j],
                             local_matrix(i, j));
       }
-        
-      // for (unsigned int i = 0; i < dofs_per_cell; ++i)
-      //   system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
     }
   }
 
@@ -639,7 +636,7 @@ namespace mfe_stokes
     FEFaceValues<dim> &fe_face_values)
   {
     // TimerOutput::Scope t(computing_timer, "Assemble RHS star stokes");
-    system_rhs_star_stokes = 0;
+    system_rhs_star = 0;
 
     const unsigned int n_face_q_points = fe_face_values.get_quadrature().size();
     const unsigned int dofs_per_cell   = fe.dofs_per_cell;
@@ -700,7 +697,7 @@ namespace mfe_stokes
       }
 
       for (unsigned int i = 0; i < dofs_per_cell; ++i)
-        system_rhs_star_stokes(local_dof_indices[i]) += local_rhs(i);        
+        system_rhs_star(local_dof_indices[i]) += local_rhs(i);        
     }
   }
 
@@ -719,7 +716,7 @@ namespace mfe_stokes
   void MixedStokesProblem<dim>::solve_star()
   {
     // TimerOutput::Scope t(computing_timer, "Solve star");
-    A_direct.vmult (solution_star_stokes, system_rhs_star_stokes);
+    A_direct.vmult (solution_star, system_rhs_star);
   }
 
   //Functions for GMRES:-------------------
@@ -800,7 +797,7 @@ namespace mfe_stokes
   	}
   }
 
-//local GMRES function.
+  //local GMRES function.
   template <int dim>
   void
   MixedStokesProblem<dim>::local_gmres(unsigned int &cycle)
@@ -857,46 +854,45 @@ namespace mfe_stokes
     double l0 = 0.0;
     // CG with rhs being 0 and initial guess lambda = 0
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
-
       if (neighbors[side] >= 0)
+      {
+
+        // Something will be here to initialize lambda correctly, right now it
+        // is just zero
+        Ap[side].resize(interface_dofs[side].size(), 0);
+        lambda[side].resize(interface_dofs[side].size(), 0);
+
+        q[side].resize(interface_dofs[side].size());
+        r[side].resize(interface_dofs[side].size(), 0);
+        std::vector<double> r_receive_buffer(r[side].size());
+
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         {
-
-          // Something will be here to initialize lambda correctly, right now it
-          // is just zero
-          Ap[side].resize(interface_dofs[side].size(), 0);
-          lambda[side].resize(interface_dofs[side].size(), 0);
-
-          q[side].resize(interface_dofs[side].size());
-          r[side].resize(interface_dofs[side].size(), 0);
-          std::vector<double> r_receive_buffer(r[side].size());
-
-          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          {
-            r[side][i] =  get_normal_direction<dim>(side) * 
-                            solution_bar[interface_dofs[side][i]]-
-                          get_normal_direction<dim>(side) * l0;
-          }
-
-          MPI_Send(&r[side][0],
-                  r[side].size(),
-                  MPI_DOUBLE,
-                  neighbors[side],
-                  this_mpi,
-                  mpi_communicator);
-          MPI_Recv(&r_receive_buffer[0],
-                  r_receive_buffer.size(),
-                  MPI_DOUBLE,
-                  neighbors[side],
-                  neighbors[side],
-                  mpi_communicator,
-                  &mpi_status);
-
-          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            {
-              r[side][i] += r_receive_buffer[i];
-            }
-          r_norm_side[side] = vect_norm(r[side]);
+          r[side][i] =  get_normal_direction<dim>(side) * 
+                          solution_bar[interface_dofs[side][i]]-
+                        get_normal_direction<dim>(side) * l0;
         }
+
+        MPI_Send(&r[side][0],
+                r[side].size(),
+                MPI_DOUBLE,
+                neighbors[side],
+                this_mpi,
+                mpi_communicator);
+        MPI_Recv(&r_receive_buffer[0],
+                r_receive_buffer.size(),
+                MPI_DOUBLE,
+                neighbors[side],
+                neighbors[side],
+                mpi_communicator,
+                &mpi_status);
+
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            r[side][i] += r_receive_buffer[i];
+          }
+        r_norm_side[side] = vect_norm(r[side]);
+      }
 
 
     //Calculating r-norm(same as b-norm)-----
@@ -906,22 +902,23 @@ namespace mfe_stokes
         r_norm+=r_norm_side[side]*r_norm_side[side];
     double r_norm_buffer =0;
     MPI_Allreduce(&r_norm,
-        &r_norm_buffer,
-      1,
-      MPI_DOUBLE,
-      MPI_SUM,
-            mpi_communicator);
+                  &r_norm_buffer,
+                  1,
+                  MPI_DOUBLE,
+                  MPI_SUM,
+                  mpi_communicator);
     r_norm = sqrt(r_norm_buffer);
     //end -----------of calclatig r-norm------------------
 
     //Making the first element of matrix Q[side] same as r_side[side/r_norm
     for(unsigned int side=0; side<n_faces_per_cell;++side)
-          if (neighbors[side] >= 0){
-            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-                            q[side][i]= r[side][i]/r_norm ;
-            //adding q[side] as first element of Q[side]
-            Q_side[side].push_back(q[side]);
-          }
+      if (neighbors[side] >= 0)
+      {
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+                        q[side][i]= r[side][i]/r_norm ;
+        //adding q[side] as first element of Q[side]
+        Q_side[side].push_back(q[side]);
+      }
 
 
 
@@ -967,7 +964,7 @@ namespace mfe_stokes
           // Create vector of u\dot n to send
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             interface_data_send[side][i] = get_normal_direction<dim>(side) *
-                                            solution_star_stokes[interface_dofs[side][i]];
+                                            solution_star[interface_dofs[side][i]];
           
           MPI_Send(&interface_data_send[side][0],
                   interface_dofs[side].size(),
@@ -1020,8 +1017,8 @@ namespace mfe_stokes
 
       //calculating h(k+1)=norm(q) as summation over side,subdomains norm_squared(q[side])
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-                      if (neighbors[side] >= 0)
-                        h_dummy+=vect_norm(q[side])*vect_norm(q[side]);
+        if (neighbors[side] >= 0)
+          h_dummy+=vect_norm(q[side])*vect_norm(q[side]);
       
       double h_k_buffer=0;
 
@@ -1049,8 +1046,10 @@ namespace mfe_stokes
       //---end of Arnoldi Algorithm
 
       //Eliminating the last element in H ith row and updating the rotation matrix.
-      apply_givens_rotation(H[k_counter],cs,sn,
-                  k_counter);
+      apply_givens_rotation(H[k_counter],
+                            cs,
+                            sn,
+                            k_counter);
       //Updating the residual vector
       Beta.push_back(-sn[k_counter]*Beta[k_counter]);
       Beta[k_counter]*=cs[k_counter];
@@ -1106,10 +1105,10 @@ namespace mfe_stokes
       
       //maxing interface_data_receive and send zero so it can be used is solving for Ap(or A*Q([k_counter]).
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-        {
-          interface_data_receive[side].resize(interface_dofs[side].size(), 0);
-          interface_data_send[side].resize(interface_dofs[side].size(), 0);
-        }
+      {
+        interface_data_receive[side].resize(interface_dofs[side].size(), 0);
+        interface_data_send[side].resize(interface_dofs[side].size(), 0);
+      }
 
       Ap.resize(n_faces_per_cell);
       k_counter++;
@@ -1125,7 +1124,7 @@ namespace mfe_stokes
     solve_star();
     solution.reinit(solution_bar);
     solution = solution_bar;
-    solution.sadd(1.0, solution_star_stokes);
+    solution.sadd(1.0, solution_star);
     pcout<<"finished local_gmres"<<"\n";
   }
 

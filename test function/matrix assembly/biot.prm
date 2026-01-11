@@ -47,8 +47,8 @@ end
 #################################################################################
 # Exact solution, gradient values Darcy
 # Functions: velocity, pressure
-subsection Exact gradient Darcy
-  set Function expression = 
+subsection Exact gradient Darcy Velocity
+  set Function expression = 0;0;0;0
   set Variable names      = x,y
 end
 #################################################################################
@@ -70,14 +70,6 @@ end
 # Exact solution, gradient values  Elast
 # Functions: stress, displacement, rotation
 subsection Exact gradient stress
-  set Function expression = 
-  set Variable names      = x,y
-end
-subsection Exact gradient displacement
-  set Function expression = 
-  set Variable names      = x,y
-end
-subsection Exact gradient rotation
-  set Function expression = 
+  set Function expression = 0;0;0;0;0;0
   set Variable names      = x,y
 end

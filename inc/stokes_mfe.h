@@ -227,7 +227,7 @@ namespace mfe_stokes
 
 
     BlockVector<double> solution_bar;
-    BlockVector<double> solution_star_stokes;
+    BlockVector<double> solution_star;
     BlockVector<double> solution;
     BlockVector<double> exact_solution_at_nodes;
     BlockVector<double> biot_stress_vec;
@@ -235,7 +235,7 @@ namespace mfe_stokes
     std::vector<BlockVector<double>> exact_normal_stress_at_nodes_fe;
     std::vector<BlockVector<double>> exact_normal_stress_at_nodes_mortar;
     BlockVector<double> system_rhs_bar;
-    BlockVector<double> system_rhs_star_stokes;
+    BlockVector<double> system_rhs_star;
     std::vector<BlockVector<double>> interface_fe_function;
     std::vector<BlockVector<double>> interface_fe_function_fe;
 
@@ -255,9 +255,6 @@ namespace mfe_stokes
     ConvergenceTable   convergence_table_h1;
     ConvergenceTable   convergence_table_total;
     // TimerOutput        computing_timer;
-    
-
-
   };
 } // namespace mfe_stokes
 

@@ -65,9 +65,9 @@ namespace mfe_biot
 
     void
     print_individual_convg_table_hdiv();
-    
-    void 
-    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
+
+    void
+    local_gmres(unsigned int &cycle);
 
     private:
     MPI_Comm mpi_communicator;
@@ -82,12 +82,39 @@ namespace mfe_biot
     Projector::Projector <dim> P_fine2coarse;
 
     void interpret_parameters();
+
     void setup_system();
+
     void assemble_system();
+
     void get_interface_dofs();
+
     void solve_bar();
+
     void solve_star();
+
+    void 
+    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
+
+    double
+    vect_norm(std::vector<double> v);
+
+    void
+    givens_rotation(double v1, double v2, double &cs, double &sn);
+
+    void
+	  apply_givens_rotation(std::vector<double> &h, 
+                          std::vector<double> &cs, 
+                          std::vector<double> &sn,
+    							        unsigned int k_iteration);
+
+    void
+	  back_solve(std::vector<std::vector<double>> H, 
+               std::vector<double> beta, 
+               std::vector<double> &y);
+
     void compute_multiscale_basis();
+
     void reset_mortars();
     // //For implementing GMRES
     // void
@@ -145,7 +172,7 @@ namespace mfe_biot
     std::vector<unsigned int> faces_on_interface;
     std::vector<unsigned int> faces_on_interface_mortar;
     std::vector <std::vector<unsigned int>> interface_dofs;
-    std::vector <unsigned int> interface_dofs_total;
+    std::vector <double> interface_dofs_total;
 
 
     unsigned long n_stress;
@@ -154,6 +181,7 @@ namespace mfe_biot
     unsigned long n_flux;
     unsigned long n_pressure;
     unsigned long n_Elast;
+    int           interface_dofs_size;
 
     unsigned long n_stress_mortar;
     unsigned long n_disp_mortar;
@@ -199,7 +227,7 @@ namespace mfe_biot
 
     BlockVector<double> system_rhs_star;
 
-    BlockVector<double> interface_fe_function;
+    std::vector<BlockVector<double>> interface_fe_function;
 
     std::vector<std::vector<double>> lambda_guess;
     std::vector<std::vector<double>> Alambda_guess;
