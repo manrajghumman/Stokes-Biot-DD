@@ -125,7 +125,7 @@ namespace mfe_biot
     //     triangulation_mortar, neighbors, p1, p2, faces_on_interface_mortar);
     // //this is a function in utilities.h
 
-    std::cout << "Biot Part:\n boundary condition:";
+    pcout << "Biot Part:\n boundary condition:";
     for (unsigned int i = 0; i < external_bdry_ids.size(); ++i)
     {
       if (external_bdry_ids[i] == 0)
@@ -133,13 +133,13 @@ namespace mfe_biot
       else 
         external_bdry_ids[i] = 7;
       if (external_bdry_ids[i] == 7)
-        std::cout << " N";
+        pcout << " N";
       else if (external_bdry_ids[i] == 0)
-        std::cout << " D";
+        pcout << " D";
       else
         AssertThrow(false, ExcMessage("Invalid boundary condition type. Use 0 for Dirichlet or 7 for Neumann."));
     }
-    std::cout << "" << std::endl;
+    pcout << "" << std::endl;
     for (const auto &cell : triangulation.active_cell_iterators()){
       for (const auto &face : cell->face_iterators()){
         if (face->center()[dim - 1] == 0)
@@ -148,7 +148,7 @@ namespace mfe_biot
         if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 2)
+        if (face->center()[dim - 1] == 1)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -186,11 +186,11 @@ namespace mfe_biot
     n_pressure= n_p;
     // n_Elast= n_s+n_u+n_g;
 
-    std::cout << "Biot part:\n N stress dofs: " << n_s 
-              << "\n N displacement dofs: " << n_u
-              << "\n N rotation dofs: " << n_g
-              << "\n N flux dofs: " << n_z
-              << "\n N pressure dofs: " << n_p << std::endl;
+    pcout << "Biot part:\n N stress dofs: " << n_s 
+          << "\n N displacement dofs: " << n_u
+          << "\n N rotation dofs: " << n_g
+          << "\n N flux dofs: " << n_z
+          << "\n N pressure dofs: " << n_p << std::endl;
 
     BlockDynamicSparsityPattern dsp(5, 5);
 			dsp.block(0, 0).reinit (n_s, n_s);
@@ -322,6 +322,7 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::assemble_system ()
   {
+    pcout << "Assembling system..." << std::endl;
     // TimerOutput::Scope t(computing_timer, "Assemble system"); 
     double s0 = 1.0;
     double alpha = 1.0;         
@@ -559,6 +560,7 @@ namespace mfe_biot
                             local_matrix(i,j));
       }
     }
+    pcout << "System assembly complete." << std::endl;
   }
 
 
@@ -615,7 +617,7 @@ namespace mfe_biot
               side = 0;
             else 
               side = 2;
-            // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side = " << this_mpi << ", " << side << std::endl;
+            // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side, face_n = " << this_mpi << ", " << side << ", " << face_n << std::endl;
             // std::cout << "\ninterface_values = " << interface_values.size() << std::endl;
 
             for (unsigned int d_i=0; d_i<dim; ++d_i)
@@ -648,6 +650,12 @@ namespace mfe_biot
       for (unsigned int i=0; i<dofs_per_cell; ++i)
         system_rhs_star(local_dof_indices[i]) += local_rhs(i);
     }
+    // for (unsigned int i = 0; i < n_processes; ++i)
+    //   if (this_mpi == i)
+    //   {
+    //     std::cout << "Assembled RHS for star problem. this_mpi = " << this_mpi << std::endl;
+    //     system_rhs_star.print(std::cout);
+    // }
   }
 
 
@@ -659,6 +667,7 @@ namespace mfe_biot
     // TimerOutput::Scope t(computing_timer, "Solve bar");
     A_direct.initialize (system_matrix);
     A_direct.vmult(solution_bar, system_rhs_bar);
+    pcout << "Solve bar completed." << std::endl;
   }
 
   template <int dim>
@@ -751,6 +760,7 @@ namespace mfe_biot
   void
   MixedBiotProblem<dim>::local_gmres(unsigned int &cycle)
   {
+    pcout << "Starting GMRES solver for interface problem..." << std::endl;
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     std::vector<std::vector<double>> interface_data_receive(n_faces_per_cell);
     std::vector<std::vector<double>> interface_data_send(n_faces_per_cell);
@@ -762,13 +772,13 @@ namespace mfe_biot
     solve_bar();
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
-        {
-          interface_data_receive[side].resize(interface_dofs[side].size(),
-                                              0);
-          interface_data_send[side].resize(interface_dofs[side].size(), 0);
-          interface_data[side].resize(interface_dofs[side].size(), 0);
-          interface_fe_function[side].reinit(solution_bar);
-        }
+      {
+        interface_data_receive[side].resize(interface_dofs[side].size(),
+                                            0);
+        interface_data_send[side].resize(interface_dofs[side].size(), 0);
+        interface_data[side].resize(interface_dofs[side].size(), 0);
+        interface_fe_function[side].reinit(solution_bar);
+      }
 
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
@@ -801,7 +811,7 @@ namespace mfe_biot
     //defing q  to push_back to Q (reused in Arnoldi algorithm)
     std::vector<std::vector<double>> q(n_faces_per_cell);
 
-
+    // std::cout << "Hello 1, from this_mpi = " << this_mpi << std::endl;
     double l0 = 0.0;
     // CG with rhs being 0 and initial guess lambda = 0
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
@@ -817,7 +827,7 @@ namespace mfe_biot
         r[side].resize(interface_dofs[side].size(), 0);
         // r_b[side].resize(interface_dofs[side].size(), 0);
         std::vector<double> r_receive_buffer(r[side].size());
-        std::vector<double> r_b_receive_buffer(r[side].size());
+        // std::vector<double> r_b_receive_buffer(r[side].size());
 
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         {
@@ -835,21 +845,43 @@ namespace mfe_biot
                           solution_bar[interface_dofs[side][i]];
           }                
         }
+        // std::cout << "Hello mix, from this_mpi = " << this_mpi 
+        //           << ", side = " << side 
+        //           << ", r[side].size() = " << r[side].size() 
+        //           << ", r_receive_buffer.size() = " << r_receive_buffer.size()
+        //           << ", neighbors[side] = " << neighbors[side]
+        //           << std::endl;
+                  
+        // MPI_Send(&r[side][0],
+        //         r[side].size(),
+        //         MPI_DOUBLE,
+        //         neighbors[side],
+        //         this_mpi,
+        //         mpi_communicator);
+        // MPI_Recv(&r_receive_buffer[0],
+        //         r_receive_buffer.size(),
+        //         MPI_DOUBLE,
+        //         neighbors[side],
+        //         neighbors[side],
+        //         mpi_communicator,
+        //         &mpi_status);
+        MPI_Sendrecv(r[side].data(),
+                    (int)r[side].size(),
+                    MPI_DOUBLE,
+                    neighbors[side],
+                    this_mpi,                 // send tag
 
-        MPI_Send(&r[side][0],
-                r[side].size(),
-                MPI_DOUBLE,
-                neighbors[side],
-                this_mpi,
-                mpi_communicator);
-        MPI_Recv(&r_receive_buffer[0],
-                r_receive_buffer.size(),
-                MPI_DOUBLE,
-                neighbors[side],
-                neighbors[side],
-                mpi_communicator,
-                &mpi_status);
+                    r_receive_buffer.data(),
+                    (int)r_receive_buffer.size(),
+                    MPI_DOUBLE,
+                    neighbors[side],
+                    neighbors[side],          // recv tag (sender rank)
 
+                    mpi_communicator,
+                    &mpi_status);
+
+        // std::cout << "Hello mix 2, from this_mpi = " << this_mpi 
+        //           << ", side = " << side << std::endl;
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
             r[side][i] += r_receive_buffer[i];
@@ -857,7 +889,7 @@ namespace mfe_biot
         r_norm_side[side] = vect_norm(r[side]);
       }
 
-
+    // std::cout << "Hello 2, from this_mpi = " << this_mpi << std::endl;
     //Calculating r-norm(same as b-norm)-----
     double r_norm =0;
     for(unsigned int side=0; side<n_faces_per_cell;++side)
@@ -891,13 +923,13 @@ namespace mfe_biot
 
 
     std::vector<double> y;
-
+    // std::cout << "Hello 3, from this_mpi = " << this_mpi << std::endl;
     unsigned int k_counter = 0; //same as the count of the iteration
     gmres_iteration = 0;
     while (k_counter < maxiter)
     {
 
-
+      // std::cout << "Hello 4, from this_mpi = " << this_mpi << std::endl;
       //////------solving the  star problem to find AQ(k)---------------------
 
       //Performing the Arnoldi algorithm
@@ -935,19 +967,35 @@ namespace mfe_biot
                                                 solution_star[interface_dofs[side][i]];
           }
           
-          MPI_Send(&interface_data_send[side][0],
-                  interface_dofs[side].size(),
-                  MPI_DOUBLE,
-                  neighbors[side],
-                  this_mpi,
-                  mpi_communicator);
-          MPI_Recv(&interface_data_receive[side][0],
-                  interface_dofs[side].size(),
-                  MPI_DOUBLE,
-                  neighbors[side],
-                  neighbors[side],
-                  mpi_communicator,
-                  &mpi_status);
+          // MPI_Send(&interface_data_send[side][0],
+          //         interface_dofs[side].size(),
+          //         MPI_DOUBLE,
+          //         neighbors[side],
+          //         this_mpi,
+          //         mpi_communicator);
+          // MPI_Recv(&interface_data_receive[side][0],
+          //         interface_dofs[side].size(),
+          //         MPI_DOUBLE,
+          //         neighbors[side],
+          //         neighbors[side],
+          //         mpi_communicator,
+          //         &mpi_status);
+
+          MPI_Sendrecv(interface_data_send[side].data(),
+                        static_cast<int>(interface_dofs[side].size()),
+                        MPI_DOUBLE,
+                        neighbors[side],
+                        this_mpi,  // send tag
+
+                        interface_data_receive[side].data(),
+                        static_cast<int>(interface_dofs[side].size()),
+                        MPI_DOUBLE,
+                        neighbors[side],
+                        neighbors[side],  // recv tag
+
+                        mpi_communicator,
+                        &mpi_status);
+
 
           // Compute Ap and with it compute alpha
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)

@@ -183,7 +183,7 @@ namespace mfe_stokes
         if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 2)
+        if (face->center()[dim - 1] == 1)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -251,8 +251,8 @@ namespace mfe_stokes
     system_rhs_star = 0;
 
     pcout << "Stokes part:\n N velocity dofs: " << n_u
-    <<" | N pressure dofs: "<< n_p
-    << std::endl;
+          <<" | N pressure dofs: "<< n_p
+          << std::endl;
 
   }
 
@@ -673,6 +673,7 @@ namespace mfe_stokes
               side = 0;
             else 
               side = 2;
+            // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side, face_n = " << this_mpi << ", " << side << ", " << face_n << std::endl;
             // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side = " << this_mpi << ", " << side << std::endl;
             // std::cout << "\ninterface_values = " << interface_values.size() << std::endl;
             fe_face_values[velocities].get_function_values(
@@ -873,19 +874,34 @@ namespace mfe_stokes
                         get_normal_direction<dim>(side) * l0;
         }
 
-        MPI_Send(&r[side][0],
-                r[side].size(),
-                MPI_DOUBLE,
-                neighbors[side],
-                this_mpi,
-                mpi_communicator);
-        MPI_Recv(&r_receive_buffer[0],
-                r_receive_buffer.size(),
-                MPI_DOUBLE,
-                neighbors[side],
-                neighbors[side],
-                mpi_communicator,
-                &mpi_status);
+        // MPI_Send(&r[side][0],
+        //         r[side].size(),
+        //         MPI_DOUBLE,
+        //         neighbors[side],
+        //         this_mpi,
+        //         mpi_communicator);
+        // MPI_Recv(&r_receive_buffer[0],
+        //         r_receive_buffer.size(),
+        //         MPI_DOUBLE,
+        //         neighbors[side],
+        //         neighbors[side],
+        //         mpi_communicator,
+        //         &mpi_status);
+
+        MPI_Sendrecv(r[side].data(),
+                    (int)r[side].size(),
+                    MPI_DOUBLE,
+                    neighbors[side],
+                    this_mpi,                 // send tag
+
+                    r_receive_buffer.data(),
+                    (int)r_receive_buffer.size(),
+                    MPI_DOUBLE,
+                    neighbors[side],
+                    neighbors[side],          // recv tag (sender rank)
+
+                    mpi_communicator,
+                    &mpi_status);
 
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
@@ -966,19 +982,34 @@ namespace mfe_stokes
             interface_data_send[side][i] = get_normal_direction<dim>(side) *
                                             solution_star[interface_dofs[side][i]];
           
-          MPI_Send(&interface_data_send[side][0],
-                  interface_dofs[side].size(),
-                  MPI_DOUBLE,
-                  neighbors[side],
-                  this_mpi,
-                  mpi_communicator);
-          MPI_Recv(&interface_data_receive[side][0],
-                  interface_dofs[side].size(),
-                  MPI_DOUBLE,
-                  neighbors[side],
-                  neighbors[side],
-                  mpi_communicator,
-                  &mpi_status);
+          // MPI_Send(&interface_data_send[side][0],
+          //         interface_dofs[side].size(),
+          //         MPI_DOUBLE,
+          //         neighbors[side],
+          //         this_mpi,
+          //         mpi_communicator);
+          // MPI_Recv(&interface_data_receive[side][0],
+          //         interface_dofs[side].size(),
+          //         MPI_DOUBLE,
+          //         neighbors[side],
+          //         neighbors[side],
+          //         mpi_communicator,
+          //         &mpi_status);
+
+          MPI_Sendrecv(interface_data_send[side].data(),
+                        static_cast<int>(interface_dofs[side].size()),
+                        MPI_DOUBLE,
+                        neighbors[side],
+                        this_mpi,  // send tag
+
+                        interface_data_receive[side].data(),
+                        static_cast<int>(interface_dofs[side].size()),
+                        MPI_DOUBLE,
+                        neighbors[side],
+                        neighbors[side],  // recv tag
+
+                        mpi_communicator,
+                        &mpi_status);
 
           // Compute Ap and with it compute alpha
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
