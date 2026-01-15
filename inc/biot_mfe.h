@@ -113,6 +113,31 @@ namespace mfe_biot
                std::vector<double> beta, 
                std::vector<double> &y);
 
+    void
+    compute_residual(std::vector<std::vector<double>> &Ax,
+                    std::vector<std::vector<double>> &r,
+                    double                           &r_norm,
+                    std::vector<std::vector<double>> &r_b,
+                    double                           &b_norm);
+
+    void 
+    interface_operator(std::vector<std::vector<double>> &interface_data,
+                       std::vector<std::vector<double>> &interface_data_send,
+                       std::vector<std::vector<double>> &interface_data_receive,
+                       FEFaceValues<dim>                &fe_face_values,
+                       std::vector<std::vector<double>> &Ap);
+
+    void
+    arnoldi(unsigned int                      &k_counter, 
+            std::vector<std::vector<double>> &interface_data,
+            std::vector<std::vector<double>> &interface_data_send,
+            std::vector<std::vector<double>> &interface_data_receive,
+            FEFaceValues<dim>                &fe_face_values,
+            std::vector<std::vector<double>> &Ap,
+            std::vector<std::vector<double>> &q,
+            std::vector<std::vector<std::vector<double>>>	&Q_side,
+            std::vector<std::vector<double>>	            &H);
+
     void compute_multiscale_basis();
 
     void reset_mortars();
