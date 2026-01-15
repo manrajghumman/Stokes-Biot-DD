@@ -114,11 +114,12 @@ namespace mfe_biot
                std::vector<double> &y);
 
     void
-    compute_residual(std::vector<std::vector<double>> &Ax,
-                    std::vector<std::vector<double>> &r,
-                    double                           &r_norm,
-                    std::vector<std::vector<double>> &r_b,
-                    double                           &b_norm);
+    compute_residual(FEFaceValues<dim>                &fe_face_values,
+                    std::vector<std::vector<double>> &interface_data,
+                    std::vector<std::vector<double>>  &r,
+                    double                            &r_norm,
+                    std::vector<std::vector<double>>  &r_b,
+                    double                            &b_norm);
 
     void 
     interface_operator(std::vector<std::vector<double>> &interface_data,

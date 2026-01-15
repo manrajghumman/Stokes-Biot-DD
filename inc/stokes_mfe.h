@@ -141,7 +141,8 @@ namespace mfe_stokes
                std::vector<double> &y);
 
     void
-    compute_residual(std::vector<std::vector<double>> &Ax,
+    compute_residual(FEFaceValues<dim>               &fe_face_values,
+                    std::vector<std::vector<double>> &interface_data,
                     std::vector<std::vector<double>> &r,
                     double                           &r_norm,
                     std::vector<std::vector<double>> &r_b,

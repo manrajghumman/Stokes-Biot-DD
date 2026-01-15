@@ -824,7 +824,8 @@ namespace mfe_biot
   // computing the residual over all sides
   template <int dim>
   void
-  MixedBiotProblem<dim>::compute_residual(std::vector<std::vector<double>> &Ax,
+  MixedBiotProblem<dim>::compute_residual(FEFaceValues<dim>                &fe_face_values,
+                                          std::vector<std::vector<double>> &interface_data,
                                           std::vector<std::vector<double>> &r,
                                           double                           &r_norm,
                                           std::vector<std::vector<double>> &r_b,
@@ -834,6 +835,18 @@ namespace mfe_biot
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     std::vector<double>     r_norm_side(n_faces_per_cell,0);
     std::vector<double>     r_b_norm_side(n_faces_per_cell,0);
+
+    //compute Ax from x = initial_val
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        interface_fe_function[side][interface_dofs[side][i]] = 
+          interface_data[side][i];
+
+    // interface_fe_function.block(1) = 0;
+    assemble_rhs_star(fe_face_values);
+    solve_star();
+    
+    //compute residual r = b - A*x
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
       { 
@@ -845,19 +858,19 @@ namespace mfe_biot
           if (interface_dofs[side][i] < n_stress) //monolithic-Elascitiy part (coupled)
           {
             r_b[side][i] = - get_normal_direction<dim>(side) * 
-                            solution_bar[interface_dofs[side][i]]-
-                          get_normal_direction<dim>(side) * Ax[side][i];
+                            solution_bar[interface_dofs[side][i]];
             r[side][i] = - get_normal_direction<dim>(side) * 
-                            solution_bar[interface_dofs[side][i]];     
+                            solution_bar[interface_dofs[side][i]]
+                         - get_normal_direction<dim>(side) * solution_star[interface_dofs[side][i]];     
             // pcout << "Ax[side][i]: " << Ax[side][i] << " solution_bar: " << solution_bar[interface_dofs[side][i]] << std::endl;
           }
           else //monolithic-darcy part (coupled)
           {
             r_b[side][i] = get_normal_direction<dim>(side) * 
-                          solution_bar[interface_dofs[side][i]]-
-                        get_normal_direction<dim>(side) * Ax[side][i];
-            r[side][i] = get_normal_direction<dim>(side) * 
                           solution_bar[interface_dofs[side][i]];
+            r[side][i] = get_normal_direction<dim>(side) * 
+                          solution_bar[interface_dofs[side][i]]
+                        + get_normal_direction<dim>(side) * solution_star[interface_dofs[side][i]];
           }                
         }
 
@@ -877,13 +890,13 @@ namespace mfe_biot
                     &mpi_status);
 
         MPI_Sendrecv(r[side].data(),
-                    (int)r[side].size(),
+                    r[side].size(),
                     MPI_DOUBLE,
                     neighbors[side],
                     this_mpi,                 // send tag
 
                     r_receive_buffer.data(),
-                    (int)r_receive_buffer.size(),
+                    r_receive_buffer.size(),
                     MPI_DOUBLE,
                     neighbors[side],
                     neighbors[side],          // recv tag (sender rank)
@@ -926,7 +939,7 @@ namespace mfe_biot
     r_norm = sqrt(r_norm_buffer);
   }
 
-    // Arnoldi algorithm
+  // Arnoldi algorithm
   template <int dim>
   void
   MixedBiotProblem<dim>::arnoldi(unsigned int                      &k_counter, 
@@ -1029,7 +1042,7 @@ namespace mfe_biot
     std::vector<std::vector<double>> interface_data_receive(n_faces_per_cell);
     std::vector<std::vector<double>> interface_data_send(n_faces_per_cell);
     std::vector<std::vector<double>> interface_data(n_faces_per_cell);
-    double initial_val = 0.0; //initial guess for gmres
+    double initial_val = 1.0; //initial guess for gmres
     interface_fe_function.resize(n_faces_per_cell);
 
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
@@ -1087,14 +1100,9 @@ namespace mfe_biot
     //Calculating r-norm(same as b-norm)-----
     double r_norm =0;
     double b_norm =0;
-    //compute the intial value Ax from x = initial_val
-    interface_operator(interface_data,
-                       interface_data_send,
-                       interface_data_receive,
-                       fe_face_values,
-                       Ap);
     //computing the residual r=b-Ax
-    compute_residual(Ap,
+    compute_residual(fe_face_values,
+                     interface_data,
                      r,
                      r_norm,
                      r_b,
