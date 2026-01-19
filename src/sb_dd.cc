@@ -322,6 +322,8 @@ namespace dd_stokes_biot
           stokes->compute_errors(cycle);
           stokes->print_individual_convg_table_l2();
           stokes->print_individual_convg_table_h1();
+          stokes->print_total_convg_table_l2();
+          stokes->print_total_convg_table_h1();
         }
         else if (subdomain_type == 2)
         {
@@ -331,7 +333,10 @@ namespace dd_stokes_biot
           biot->compute_errors(cycle);
           biot->print_individual_convg_table_darcy_l2();
           biot->print_individual_convg_table_elast_l2();
-          // biot->print_individual_convg_table_hdiv();
+          biot->print_individual_convg_table_hdiv();
+          biot->print_total_convg_table_darcy_l2();
+          biot->print_total_convg_table_elast_l2();
+          biot->print_total_convg_table_hdiv();
         }
       }
 

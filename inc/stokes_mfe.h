@@ -76,6 +76,12 @@ namespace mfe_stokes
     print_individual_convg_table_h1();
 
     void
+    print_total_convg_table_l2();
+
+    void
+    print_total_convg_table_h1();
+
+    void
     local_gmres(unsigned int &cycle);
 
 
@@ -136,9 +142,10 @@ namespace mfe_stokes
     							        unsigned int k_iteration);
 
     void
-	  back_solve(std::vector<std::vector<double>> H, 
-               std::vector<double> beta, 
-               std::vector<double> &y);
+	  back_solve(const std::vector<std::vector<double>> &H, 
+               const std::vector<double>              &beta, 
+               std::vector<double>                    &y,
+               const unsigned int                     &k);
 
     void
     compute_residual(FEFaceValues<dim>               &fe_face_values,
@@ -278,7 +285,8 @@ namespace mfe_stokes
     ConditionalOStream pcout;
     ConvergenceTable   convergence_table_l2;
     ConvergenceTable   convergence_table_h1;
-    ConvergenceTable   convergence_table_total;
+    ConvergenceTable   convergence_table_l2_total;
+    ConvergenceTable   convergence_table_h1_total;
     // TimerOutput        computing_timer;
   };
 } // namespace mfe_stokes

@@ -80,8 +80,15 @@ namespace dd_utilities
   }
 
   // Domain decomposition related utilities
-  // Function to get the true normal vector orientation (in deal.II they are all
-  // positive by default)
+  
+  /*
+    Function to get the true normal vector orientation 
+    (in deal.II they are all positive by default)
+    in dd two domains sharing a face will have different
+    signs of test functions on the interface but this
+    will not show up in the normal vector from deal.II
+    so we need to manually set it here
+  */
   template <int dim>
   double
   get_normal_direction(const unsigned int &face)

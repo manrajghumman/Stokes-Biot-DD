@@ -61,10 +61,16 @@ namespace mfe_biot
     print_individual_convg_table_elast_l2();
 
     void
-    print_individual_convg_table_h1();
+    print_individual_convg_table_hdiv();
+
+    void 
+    print_total_convg_table_darcy_l2();
+
+    void 
+    print_total_convg_table_elast_l2();
 
     void
-    print_individual_convg_table_hdiv();
+    print_total_convg_table_hdiv();
 
     void
     local_gmres(unsigned int &cycle);
@@ -108,10 +114,11 @@ namespace mfe_biot
                           std::vector<double> &sn,
     							        unsigned int k_iteration);
 
-    void
-	  back_solve(std::vector<std::vector<double>> H, 
-               std::vector<double> beta, 
-               std::vector<double> &y);
+   void
+	  back_solve(const std::vector<std::vector<double>> &H, 
+               const std::vector<double>              &beta, 
+               std::vector<double>                    &y,
+               const unsigned int                     &k);
 
     void
     compute_residual(FEFaceValues<dim>                &fe_face_values,
@@ -269,6 +276,9 @@ namespace mfe_biot
     ConvergenceTable   convergence_table_darcy_l2;
     ConvergenceTable   convergence_table_elast_l2;
     ConvergenceTable   convergence_table_hdiv;
+    ConvergenceTable   convergence_table_darcy_l2_total;
+    ConvergenceTable   convergence_table_elast_l2_total;
+    ConvergenceTable   convergence_table_hdiv_total;
     // TimerOutput computing_timer;
   };
 }// namespace mfe_biot

@@ -404,9 +404,6 @@ namespace mfe_stokes
       {
         std::cout << "Stokes Part:\n Number of interface dofs on face " << i
               << " : " << interface_dofs[i].size() << ", interface dofs: ";
-        // for (unsigned int j = 0; j < interface_dofs[i].size(); ++j)
-        //   std::cout << interface_dofs[i][j] << " ";
-        std::cout << std::endl;
       }
     }
     compute_interface_dofs_size<dim>(interface_dofs_total, 
@@ -780,19 +777,27 @@ namespace mfe_stokes
   	 sn.push_back(sn_k);
   }
 
+  //solving Ry = beta[0:k] for y (with back substitution)
+  //where k = # iterations = k_counter + 1
+  //and R is upper triangular matrix obtained from
+  //applying givens rotations to H
   template <int dim>
   void
-  MixedStokesProblem<dim>::back_solve(std::vector<std::vector<double>> H, 
-                                      std::vector<double> beta, 
-                                      std::vector<double> &y)
+  MixedStokesProblem<dim>::back_solve(const std::vector<std::vector<double>> &H, 
+                                      const std::vector<double>              &beta, 
+                                      std::vector<double>                    &y,
+                                      const unsigned int                     &k)
   {
-  	 int k = beta.size()-1;
-  	 assert(y.size()==beta.size()-1);
-  	 for(int i=0; i<y.size();i++)
-  		 y[i]=0;
-  	for( int i =k-1; i>=0;i-- ){
+  	//  int k = beta.size()-1;
+  	assert(y.size()==beta.size()-1);
+    //initializing reset y to zero
+  	for(int i=0; i<y.size();i++)
+  		y[i]=0;
+  	for(int i=k; i>=0; i--)
+    {
   		y[i]= beta[i]/H[i][i];
-  		for( int j = i+1; j<=k-1;j++){
+  		for(int j = i+1; j<=k-1; j++)
+      {
   			y[i]-= H[j][i]*y[j]/H[i][i];
   		}
   	}
@@ -878,6 +883,10 @@ namespace mfe_stokes
     // interface_fe_function.block(1) = 0;
     assemble_rhs_star(fe_face_values);
     solve_star();
+
+    //for computing rhs b for
+    // Ax = b in interface problem below
+    solve_bar();
 
     //compute residual r = b - A*x
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
@@ -992,6 +1001,14 @@ namespace mfe_stokes
 
     //defing q  to push_back to Q (Arnoldi algorithm)
     //defing h  to push_back to H (Arnoldi algorithm)
+    /*
+        let k = iter count = k_counter + 1
+        since c++ index starts from 0
+        we start k_counter from 0. Now
+        q[side].size() = k, where k = iter count
+        h.size() = k + 1
+        we use the extra space in h to store h(k+1) = norm(q)
+    */
     std::vector<double> h(k_counter+2,0);
 
 
@@ -1071,8 +1088,6 @@ namespace mfe_stokes
     double initial_val = 100.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
-    solve_bar();
-
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
     quad = QGauss<dim - 1>(qdegree);
@@ -1147,7 +1162,6 @@ namespace mfe_stokes
     Beta.push_back(r_norm);
 
 
-    std::vector<double> y;
     unsigned int k_counter = 0; //same as the count of the iteration
     gmres_iteration = 0;
     while (k_counter < maxiter)
@@ -1214,19 +1228,12 @@ namespace mfe_stokes
 
     //Calculating the result from H ,Q_side and Beta
     //Finding y which has size k_counter using back sove function
-    y.resize(k_counter+1,0);
+    std::vector<double> y(k_counter+1,0);
     // assert(Beta.size()==k_counter+2); // gives error if exceed maxiter, do break if size is too much and going to exceed maxiter
-    back_solve(H,Beta,y);
-
-    // // reset lambda to zero, x = 0, lambda = x + Q*y
-    // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-    //   if (neighbors[side] >= 0)
-    //     for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-    //       lambda[side][i] = initial_val;
-
-    // lambda = 0; // reset lambda to zero, x = 0, lambda = x + Q*y
-
-    //updating X(lambda) to get the final lambda value before solving the final star problem
+    back_solve(H,Beta,y,k_counter);
+    
+    //updating X(lambda) to get the final lambda value 
+    //lambda = x_initial + Q*y before solving the final star problem
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
         for (unsigned int i = 0; i < interface_data[side].size(); ++i)
@@ -1307,10 +1314,17 @@ namespace mfe_stokes
     prm_fxn.leave_subsection();
 
     Vector<double> cellwise_errors(triangulation.n_active_cells());
+    Vector<double> cellwise_norms(triangulation.n_active_cells());
 
     QTrapezoid<1>  q_trapez;
     QIterated<dim> quadrature(q_trapez, degree + 2);
 
+    // Since we want to compute the relative norm
+    BlockVector<double> zerozeros(1, solution.size());
+
+    // Pressure L2 error and norm
+    cellwise_errors = 0;
+    cellwise_norms = 0;
     VectorTools::integrate_difference(dof_handler,
                                       solution,
                                       exact_solution,
@@ -1324,6 +1338,35 @@ namespace mfe_stokes
                                         VectorTools::L2_norm);
 
     VectorTools::integrate_difference(dof_handler,
+                                      zerozeros,
+                                      exact_solution,
+                                      cellwise_norms,
+                                      quadrature,
+                                      VectorTools::L2_norm,
+                                      &pressure_mask);
+    const double p_l2_norm =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_norms,
+                                        VectorTools::L2_norm);     
+                                        
+    double p_l2_error_total, p_l2_norm_total;
+    MPI_Allreduce(&p_l2_error, //sending this data
+                  &p_l2_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_stokes); //communicator
+    MPI_Allreduce(&p_l2_norm, //sending this data
+                  &p_l2_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_stokes); //communicator                                   
+    
+    // Velocity L2 error and norm    
+    cellwise_errors = 0;
+    cellwise_norms = 0;                                
+    VectorTools::integrate_difference(dof_handler,
                                       solution,
                                       exact_solution,
                                       cellwise_errors,
@@ -1336,6 +1379,35 @@ namespace mfe_stokes
                                         VectorTools::L2_norm);
 
     VectorTools::integrate_difference(dof_handler,
+                                      zerozeros,
+                                      exact_solution,
+                                      cellwise_norms,
+                                      quadrature,
+                                      VectorTools::L2_norm,
+                                      &velocity_mask);
+    const double u_l2_norm =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_norms,
+                                        VectorTools::L2_norm);
+                                        
+    double u_l2_error_total, u_l2_norm_total;
+    MPI_Allreduce(&u_l2_error, //sending this data
+                  &u_l2_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_stokes); //communicator
+    MPI_Allreduce(&u_l2_norm, //sending this data
+                  &u_l2_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_stokes); //communicator                                          
+
+    // Velocity H1 semi-norms
+    cellwise_errors = 0;
+    cellwise_norms = 0;
+    VectorTools::integrate_difference(dof_handler,
                                       solution,
                                       exact_solution,
                                       cellwise_errors,
@@ -1346,31 +1418,36 @@ namespace mfe_stokes
     const double u_H1_error =
       VectorTools::compute_global_error(triangulation,
                                         cellwise_errors,
-                                        VectorTools::H1_seminorm);
-    
-    // VectorTools::integrate_difference(dof_handler,
-    //                                   solution,
-    //                                   exact_solution,
-    //                                   cellwise_errors,
-    //                                   quadrature,
-    //                                   VectorTools::H1_seminorm,
-    //                                   &v_x_mask);
-    // const double ux_H1_error =
-    //   VectorTools::compute_global_error(triangulation,
-    //                                     cellwise_errors,
-    //                                     VectorTools::H1_seminorm);
+                                        VectorTools::L2_norm);
 
-    // VectorTools::integrate_difference(dof_handler,
-    //                                   solution,
-    //                                   exact_solution,
-    //                                   cellwise_errors,
-    //                                   quadrature,
-    //                                   VectorTools::H1_seminorm,
-    //                                   &v_y_mask);
-    // const double uy_H1_error =
-    //   VectorTools::compute_global_error(triangulation,
-    //                                     cellwise_errors,
-    //                                     VectorTools::H1_seminorm);
+    VectorTools::integrate_difference(dof_handler,
+                                      zerozeros,
+                                      exact_solution,
+                                      cellwise_norms,
+                                      quadrature,
+                                      VectorTools::H1_seminorm,
+                                      &velocity_mask);
+    
+    const double u_H1_norm =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_norms,
+                                        VectorTools::L2_norm);            
+                                        
+    double u_H1_error_total, u_H1_norm_total;
+    MPI_Allreduce(&u_H1_error, //sending this data
+                  &u_H1_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_stokes); //communicator
+    MPI_Allreduce(&u_H1_norm, //sending this data
+                  &u_H1_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_stokes); //communicator                                          
+
+    // Pressure H1 semi-norm
     VectorTools::integrate_difference(dof_handler,
                                       solution,
                                       exact_solution,
@@ -1381,28 +1458,69 @@ namespace mfe_stokes
     const double p_H1_error =
       VectorTools::compute_global_error(triangulation,
                                         cellwise_errors,
-                                        VectorTools::H1_seminorm);
+                                        VectorTools::L2_norm);
+
+    VectorTools::integrate_difference(dof_handler,
+                                      zerozeros,
+                                      exact_solution,
+                                      cellwise_norms,
+                                      quadrature,
+                                      VectorTools::H1_seminorm,
+                                      &pressure_mask);
+    const double p_H1_norm =
+      VectorTools::compute_global_error(triangulation,
+                                        cellwise_norms,
+                                        VectorTools::L2_norm); 
+                                        
+    double p_H1_error_total, p_H1_norm_total;
+    MPI_Allreduce(&p_H1_error, //sending this data
+                  &p_H1_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_stokes); //communicator
+    MPI_Allreduce(&p_H1_norm, //sending this data
+                  &p_H1_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_stokes); //communicator                                          
     
     const unsigned int n_active_cells = triangulation.n_active_cells();
     unsigned int n_dofs = dof_handler.n_dofs();
     if (n_processes > 1)
       n_dofs = interface_dofs_size;
+
     convergence_table_l2.add_value("cells", n_active_cells);
     convergence_table_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
     convergence_table_l2.add_value("dofs", n_dofs);
-    convergence_table_l2.add_value("u_L2", u_l2_error);
-    convergence_table_l2.add_value("p_L2", p_l2_error);
+    convergence_table_l2.add_value("u_L2", u_l2_error/u_l2_norm);
+    convergence_table_l2.add_value("p_L2", p_l2_error/p_l2_norm);
     convergence_table_l2.add_value("gmres_iter", gmres_iteration);
     convergence_table_l2.add_value("residual", residual);
 
     convergence_table_h1.add_value("cells", n_active_cells);
     convergence_table_h1.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
     convergence_table_h1.add_value("dofs", n_dofs);
-    convergence_table_h1.add_value("u_H1", u_H1_error);
-    convergence_table_h1.add_value("p_H1", p_H1_error);
+    convergence_table_h1.add_value("u_H1", u_H1_error/u_H1_norm);
+    convergence_table_h1.add_value("p_H1", p_H1_error/p_H1_norm);
     // convergence_table_h1.add_value("ux_H1", ux_H1_error);
     // convergence_table_h1.add_value("uy_H1", uy_H1_error);
     // convergence_table_h1.add_value("gmres_iter", gmres_iteration);
+
+    convergence_table_l2_total.add_value("cells", n_active_cells);
+    convergence_table_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_l2_total.add_value("dofs", n_dofs);
+    convergence_table_l2_total.add_value("u_L2", u_l2_error_total/u_l2_norm_total);
+    convergence_table_l2_total.add_value("p_L2", p_l2_error_total/p_l2_norm_total);
+    convergence_table_l2_total.add_value("gmres_iter", gmres_iteration);
+    convergence_table_l2_total.add_value("residual", residual);
+
+    convergence_table_h1_total.add_value("cells", n_active_cells);
+    convergence_table_h1_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_h1_total.add_value("dofs", n_dofs);
+    convergence_table_h1_total.add_value("u_H1", u_H1_error_total/u_H1_norm_total);
+    convergence_table_h1_total.add_value("p_H1", p_H1_error_total/p_H1_norm_total);
   }
 
   template <int dim>
@@ -1445,7 +1563,7 @@ namespace mfe_stokes
       if (this_mpi_stokes == i)
       { 
         // Print to screen if you like, but messy for many processes
-        convergence_table_l2.write_text(std::cout);
+        // convergence_table_l2.write_text(std::cout);
 
         std::ofstream table_file(conv_filename, std::ios::app);
         // Write a LaTeX comment and a section header before the table:
@@ -1530,6 +1648,99 @@ namespace mfe_stokes
     {
       std::ofstream table_file(conv_filename, std::ios::app);
       table_file << "\n\\end{document}\n";
+    }
+  }
+
+    template <int dim>
+  void MixedStokesProblem<dim>::print_total_convg_table_l2()
+  {
+    if (this_mpi_stokes == 0)
+    {
+      convergence_table_l2_total.set_precision("residual", 3);
+      convergence_table_l2_total.set_precision("u_L2", 3);
+      convergence_table_l2_total.set_precision("p_L2", 3);
+      convergence_table_l2_total.set_scientific("residual", true);
+      convergence_table_l2_total.set_scientific("u_L2", true);
+      convergence_table_l2_total.set_scientific("p_L2", true);
+
+      convergence_table_l2_total.set_tex_caption("cells", "\\ cells");
+      convergence_table_l2_total.set_tex_caption("dofs", "\\# dofs");
+      convergence_table_l2_total.set_tex_caption("residual", "residual");
+      convergence_table_l2_total.set_tex_caption("gmres_iter", "iter");
+      convergence_table_l2_total.set_tex_caption("u_L2", "$||u_f-u_{fh}||_{L^2}$");
+      convergence_table_l2_total.set_tex_caption("p_L2", "$||p_f-p_{fh}||_{L^2}$");
+
+      convergence_table_l2_total.evaluate_convergence_rates(
+            "u_L2", ConvergenceTable::reduction_rate_log2);
+      convergence_table_l2_total.evaluate_convergence_rates(
+            "p_L2", ConvergenceTable::reduction_rate_log2);
+
+      std::string conv_filename = "../output/convg_table_total/stokes_table_total_l2" + std::string(".tex");
+
+      std::cout << "total error\n" << std::endl;
+      convergence_table_l2_total.write_text(std::cout);
+      std::ofstream table_file(conv_filename, std::ios::out);
+      table_file << "\\documentclass[10pt]{report}\n"
+                  << "\\usepackage{float}\n"
+                  << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                  << "\\begin{document}\n\n";
+      
+      convergence_table_l2_total.write_tex(table_file, false);
+      table_file << "\n\\end{document}\n";
+      table_file.close();
+    }
+  }
+
+  template <int dim>
+  void
+  MixedStokesProblem<dim>::print_total_convg_table_h1()
+  {
+    if (this_mpi_stokes == 0)
+    {
+      // convergence_table_h1.set_precision("residual", 3);
+      convergence_table_h1_total.set_precision("u_H1", 3);
+      convergence_table_h1_total.set_precision("p_H1", 3);
+      // convergence_table_h1.set_precision("ux_H1", 3);
+      // convergence_table_h1.set_precision("uy_H1", 3);
+
+      // convergence_table_h1.set_scientific("residual", true);
+      convergence_table_h1_total.set_scientific("h", true);
+      convergence_table_h1_total.set_scientific("u_H1", true);
+      convergence_table_h1_total.set_scientific("p_H1", true);
+      // convergence_table_h1.set_scientific("ux_H1", true);
+      // convergence_table_h1.set_scientific("uy_H1", true);
+
+      convergence_table_h1_total.set_tex_caption("cells", "\\ cells");
+      convergence_table_h1_total.set_tex_caption("dofs", "\\# dofs");
+      // convergence_table_h1.set_tex_caption("residual", "residual");
+      convergence_table_h1_total.set_tex_caption("u_H1", "$||u_f-u_{fh}||_{H^1}$");
+      convergence_table_h1_total.set_tex_caption("p_H1", "$||p_f-p_{fh}||_{H^1}$");
+      // convergence_table_h1.set_tex_caption("ux_H1", "$H^1$-error (ux)");
+      // convergence_table_h1.set_tex_caption("uy_H1", "$H^1$-error (uy)");
+      // convergence_table_h1.set_tex_caption("gmres_iter", "gmres iter");
+
+      convergence_table_h1_total.evaluate_convergence_rates(
+            "u_H1", ConvergenceTable::reduction_rate_log2);
+      convergence_table_h1_total.evaluate_convergence_rates(
+            "p_H1", ConvergenceTable::reduction_rate_log2);
+      // convergence_table_h1.evaluate_convergence_rates(
+      //       "ux_H1", ConvergenceTable::reduction_rate_log2);
+      // convergence_table_h1.evaluate_convergence_rates(
+      //       "uy_H1", ConvergenceTable::reduction_rate_log2);
+
+      std::string conv_filename = "../output/convg_table_total/stokes_table_total_h1" + std::string(".tex");
+
+      std::cout << "total error\n" << std::endl;
+      convergence_table_h1_total.write_text(std::cout);
+      std::ofstream table_file(conv_filename, std::ios::out);
+      table_file << "\\documentclass[10pt]{report}\n"
+                  << "\\usepackage{float}\n"
+                  << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                  << "\\begin{document}\n\n";
+      
+      convergence_table_h1_total.write_tex(table_file, false);
+      table_file << "\n\\end{document}\n";
+      table_file.close();
     }
   }
 

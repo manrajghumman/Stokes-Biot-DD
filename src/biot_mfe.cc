@@ -273,6 +273,9 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::get_interface_dofs ()
   {
+    interface_dofs.clear();
+    interface_dofs_total.clear();
+    interface_dofs_size = 0;
     interface_dofs.resize(GeometryInfo<dim>::faces_per_cell, std::vector<unsigned int> ());
     std::vector<types::global_dof_index> local_face_dof_indices;
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
@@ -742,19 +745,27 @@ namespace mfe_biot
   	 sn.push_back(sn_k);
   }
 
+  //solving Ry = beta[0:k] for y (with back substitution)
+  //where k = # iterations = k_counter + 1
+  //and R is upper triangular matrix obtained from
+  //applying givens rotations to H
   template <int dim>
   void
-  MixedBiotProblem<dim>::back_solve(std::vector<std::vector<double>> H, 
-                                      std::vector<double> beta, 
-                                      std::vector<double> &y)
+  MixedBiotProblem<dim>::back_solve(const std::vector<std::vector<double>> &H, 
+                                      const std::vector<double>              &beta, 
+                                      std::vector<double>                    &y,
+                                      const unsigned int                     &k)
   {
-  	 int k = beta.size()-1;
-  	 assert(y.size()==beta.size()-1);
-  	 for(int i=0; i<y.size();i++)
-  		 y[i]=0;
-  	for( int i =k-1; i>=0;i-- ){
+  	//  int k = beta.size()-1;
+  	assert(y.size()==beta.size()-1);
+    //initializing reset y to zero
+  	for(int i=0; i<y.size();i++)
+  		y[i]=0;
+  	for(int i=k; i>=0; i--)
+    {
   		y[i]= beta[i]/H[i][i];
-  		for( int j = i+1; j<=k-1;j++){
+  		for(int j = i+1; j<=k-1; j++)
+      {
   			y[i]-= H[j][i]*y[j]/H[i][i];
   		}
   	}
@@ -798,13 +809,13 @@ namespace mfe_biot
           }                                  
 
         MPI_Sendrecv(interface_data_send[side].data(),
-                      static_cast<int>(interface_dofs[side].size()),
+                      interface_dofs[side].size(),
                       MPI_DOUBLE,
                       neighbors[side],
                       this_mpi,  // send tag
 
                       interface_data_receive[side].data(),
-                      static_cast<int>(interface_dofs[side].size()),
+                      interface_dofs[side].size(),
                       MPI_DOUBLE,
                       neighbors[side],
                       neighbors[side],  // recv tag
@@ -841,10 +852,13 @@ namespace mfe_biot
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         interface_fe_function[side][interface_dofs[side][i]] = 
           interface_data[side][i];
-
     // interface_fe_function.block(1) = 0;
     assemble_rhs_star(fe_face_values);
     solve_star();
+
+    //for computing rhs b for
+    // Ax = b in interface problem below
+    solve_bar();
     
     //compute residual r = b - A*x
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
@@ -1047,8 +1061,6 @@ namespace mfe_biot
 
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
-    solve_bar();
-
     //GMRES structures and parameters
     std::vector<double>	sn;
     std::vector<double>	cs;
@@ -1077,7 +1089,7 @@ namespace mfe_biot
         interface_fe_function[side].reinit(solution_bar);
 
         Ap[side].resize(interface_dofs[side].size(), 0);
-        lambda[side].resize(interface_dofs[side].size(), 0);
+        lambda[side].resize(interface_dofs[side].size(), initial_val);
 
         q[side].resize(interface_dofs[side].size());
         r[side].resize(interface_dofs[side].size(), 0);
@@ -1124,7 +1136,6 @@ namespace mfe_biot
     Beta.push_back(r_norm);
 
 
-    std::vector<double> y;
     unsigned int k_counter = 0; //same as the count of the iteration
     gmres_iteration = 0;
     while (k_counter < maxiter)
@@ -1191,19 +1202,12 @@ namespace mfe_biot
 
     //Calculating the result from H ,Q_side and Beta
     //Finding y which has size k_counter using back sove function
-    y.resize(k_counter+1,0);
+    std::vector<double> y(k_counter+1,0);
     // assert(Beta.size()==k_counter+2); // gives error if exceed maxiter, do break if size is too much and going to exceed maxiter
-    back_solve(H,Beta,y);
+    back_solve(H,Beta,y,k_counter);
 
-    // reset lambda to initial_val, x = initial_val, lambda = x + Q*y
-    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-      if (neighbors[side] >= 0)
-        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          lambda[side][i] = initial_val;
-
-    // lambda = 0; // reset lambda to zero, x = 0, lambda = x + Q*y
-
-    //updating X(lambda) to get the final lambda value before solving the final star problem
+    //updating X(lambda) to get the final lambda value 
+    //lambda = x_initial + Q*y before solving the final star problem
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
         for (unsigned int i = 0; i < interface_data[side].size(); ++i)
@@ -1375,8 +1379,7 @@ namespace mfe_biot
     p_l2_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-    cellwise_errors = 0;
-    cellwise_norms = 0;
+
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::L2_norm,
@@ -1385,6 +1388,19 @@ namespace mfe_biot
     p_l2_norm = VectorTools::compute_global_error(triangulation,
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);
+    double p_l2_error_total, p_l2_norm_total;
+    MPI_Allreduce(&p_l2_error, //sending this data
+                  &p_l2_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot); //communicator
+    MPI_Allreduce(&p_l2_norm, //sending this data
+                  &p_l2_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot);
 
     // Velocity L2 error and norm
     cellwise_errors = 0;
@@ -1397,8 +1413,7 @@ namespace mfe_biot
     u_l2_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-    cellwise_errors = 0;
-    cellwise_norms = 0;                                              
+                                            
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::L2_norm,
@@ -1407,6 +1422,19 @@ namespace mfe_biot
     u_l2_norm = VectorTools::compute_global_error(triangulation,
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);
+    double u_l2_error_total, u_l2_norm_total;
+    MPI_Allreduce(&u_l2_error, //sending this data
+                  &u_l2_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot); //communicator
+    MPI_Allreduce(&u_l2_norm, //sending this data
+                  &u_l2_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot);                                              
 
     // Velocity H(div) error and norm
     cellwise_errors = 0;
@@ -1419,8 +1447,7 @@ namespace mfe_biot
     u_hdiv_error = VectorTools::compute_global_error(triangulation,
                                                     cellwise_errors,
                                                     VectorTools::L2_norm);
-    cellwise_errors = 0;
-    cellwise_norms = 0;                                              
+                                            
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::Hdiv_seminorm,
@@ -1428,7 +1455,20 @@ namespace mfe_biot
     const double 
     u_hdiv_norm = VectorTools::compute_global_error(triangulation,
                                                   cellwise_norms,
-                                                  VectorTools::L2_norm);                                              
+                                                  VectorTools::L2_norm);  
+    double u_hdiv_error_total, u_hdiv_norm_total;
+    MPI_Allreduce(&u_hdiv_error, //sending this data
+                  &u_hdiv_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot); //communicator
+    MPI_Allreduce(&u_hdiv_norm, //sending this data
+                  &u_hdiv_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot);                                                                                          
 
     // Displacement L2 error and norm
     cellwise_errors = 0;
@@ -1441,8 +1481,7 @@ namespace mfe_biot
     d_l2_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-    cellwise_errors = 0;
-    cellwise_norms = 0;
+
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::L2_norm,
@@ -1451,6 +1490,19 @@ namespace mfe_biot
     d_l2_norm = VectorTools::compute_global_error(triangulation,
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);
+    double d_l2_error_total, d_l2_norm_total;
+    MPI_Allreduce(&d_l2_error, //sending this data
+                  &d_l2_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot); //communicator
+    MPI_Allreduce(&d_l2_norm, //sending this data
+                  &d_l2_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot);
 
     // Rotation L2 error and norm
     cellwise_errors = 0;
@@ -1463,8 +1515,7 @@ namespace mfe_biot
     r_l2_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-    cellwise_errors = 0;
-    cellwise_norms = 0;
+
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::L2_norm,
@@ -1473,6 +1524,19 @@ namespace mfe_biot
     r_l2_norm = VectorTools::compute_global_error(triangulation,
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);                                              
+    double r_l2_error_total, r_l2_norm_total;
+    MPI_Allreduce(&r_l2_error, //sending this data
+                  &r_l2_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot); //communicator
+    MPI_Allreduce(&r_l2_norm, //sending this data
+                  &r_l2_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot);
 
     // Stress L2 error and norm
     cellwise_errors = 0;
@@ -1494,7 +1558,20 @@ namespace mfe_biot
     s_l2_norm = VectorTools::compute_global_error(triangulation,
                                                   cellwise_norms,
                                                   VectorTools::L2_norm);   
-    
+    double s_l2_error_total, s_l2_norm_total;
+    MPI_Allreduce(&s_l2_error, //sending this data
+                  &s_l2_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot); //communicator
+    MPI_Allreduce(&s_l2_norm, //sending this data
+                  &s_l2_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot);
+
     // Stress H(div) error and norm                                              
     cellwise_errors = 0;
     cellwise_norms = 0;
@@ -1506,17 +1583,28 @@ namespace mfe_biot
     s_hdiv_error = VectorTools::compute_global_error(triangulation,
                                                   cellwise_errors,
                                                   VectorTools::L2_norm);
-    
-    cellwise_errors = 0;
-    cellwise_norms = 0;                                              
+                                               
     VectorTools::integrate_difference (dof_handler, zerozeros, exact_solution,
                                         cellwise_norms, quadrature,
                                         VectorTools::Hdiv_seminorm,
                                         &stress_mask);                                              
     const double
     s_hdiv_norm = VectorTools::compute_global_error(triangulation,
-                                                    cellwise_errors,
+                                                    cellwise_norms,
                                                     VectorTools::L2_norm);
+    double s_hdiv_error_total, s_hdiv_norm_total;
+    MPI_Allreduce(&s_hdiv_error, //sending this data
+                  &s_hdiv_error_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot); //communicator
+    MPI_Allreduce(&s_hdiv_norm, //sending this data
+                  &s_hdiv_norm_total, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_DOUBLE, //type of each element
+                  MPI_SUM, //adding all elements received
+                  mpi_communicator_biot);
 
     const unsigned int n_active_cells = triangulation.n_active_cells();
     unsigned int n_dofs = dof_handler.n_dofs();
@@ -1526,24 +1614,52 @@ namespace mfe_biot
     convergence_table_darcy_l2.add_value("cells", n_active_cells);
     convergence_table_darcy_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
     convergence_table_darcy_l2.add_value("dofs", n_dofs);
-    convergence_table_darcy_l2.add_value("||u-u_h||_L2", u_l2_error);
-    convergence_table_darcy_l2.add_value("||p-p_h||_L2", p_l2_error);
+    convergence_table_darcy_l2.add_value("||u-u_h||_L2", u_l2_error/u_l2_norm);
+    convergence_table_darcy_l2.add_value("||p-p_h||_L2", p_l2_error/p_l2_norm);
+    convergence_table_darcy_l2.add_value("gmres_iter", gmres_iteration);
     convergence_table_darcy_l2.add_value("residual", residual);
 
     convergence_table_elast_l2.add_value("cells", n_active_cells);
     convergence_table_elast_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
     convergence_table_elast_l2.add_value("dofs", n_dofs);
-    convergence_table_elast_l2.add_value("||d-d_h||_L2", d_l2_error);
-    convergence_table_elast_l2.add_value("||r-r_h||_L2", r_l2_error);
-    convergence_table_elast_l2.add_value("||s-s_h||_L2", s_l2_error);
-    convergence_table_elast_l2.add_value("residual", residual);
+    convergence_table_elast_l2.add_value("||d-d_h||_L2", d_l2_error/d_l2_norm);
+    convergence_table_elast_l2.add_value("||r-r_h||_L2", r_l2_error/r_l2_norm);
+    convergence_table_elast_l2.add_value("||s-s_h||_L2", s_l2_error/s_l2_norm);
+    convergence_table_elast_l2.add_value("gmres_iter", gmres_iteration);
+    // convergence_table_elast_l2.add_value("residual", residual);
     
     convergence_table_hdiv.add_value("cells", n_active_cells);
     convergence_table_hdiv.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
     convergence_table_hdiv.add_value("dofs", n_dofs);
-    convergence_table_hdiv.add_value("||u-u_h||_Hdiv", u_hdiv_error);
-    convergence_table_hdiv.add_value("||s-s_h||_Hdiv", s_hdiv_error);
-    convergence_table_hdiv.add_value("residual", residual);
+    convergence_table_hdiv.add_value("||u-u_h||_Hdiv", u_hdiv_error/u_hdiv_norm);
+    convergence_table_hdiv.add_value("||s-s_h||_Hdiv", s_hdiv_error/s_hdiv_norm);
+    convergence_table_hdiv.add_value("gmres_iter", gmres_iteration);
+    // convergence_table_hdiv.add_value("residual", residual);
+
+    convergence_table_darcy_l2_total.add_value("cells", n_active_cells);
+    convergence_table_darcy_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_darcy_l2_total.add_value("dofs", n_dofs);
+    convergence_table_darcy_l2_total.add_value("||u-u_h||_L2", u_l2_error_total/u_l2_norm_total);
+    convergence_table_darcy_l2_total.add_value("||p-p_h||_L2", p_l2_error_total/p_l2_norm_total);
+    convergence_table_darcy_l2_total.add_value("gmres_iter", gmres_iteration);
+    convergence_table_darcy_l2_total.add_value("residual", residual);
+
+    convergence_table_elast_l2_total.add_value("cells", n_active_cells);
+    convergence_table_elast_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_elast_l2_total.add_value("dofs", n_dofs);
+    convergence_table_elast_l2_total.add_value("||d-d_h||_L2", d_l2_error_total/d_l2_norm_total);
+    convergence_table_elast_l2_total.add_value("||r-r_h||_L2", r_l2_error_total/r_l2_norm_total);
+    convergence_table_elast_l2_total.add_value("||s-s_h||_L2", s_l2_error_total/s_l2_norm_total);
+    convergence_table_elast_l2_total.add_value("gmres_iter", gmres_iteration);
+    // convergence_table_elast_l2_total.add_value("residual", residual);
+    
+    convergence_table_hdiv_total.add_value("cells", n_active_cells);
+    convergence_table_hdiv_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_hdiv_total.add_value("dofs", n_dofs);
+    convergence_table_hdiv_total.add_value("||u-u_h||_Hdiv", u_hdiv_error_total/u_hdiv_norm_total);
+    convergence_table_hdiv_total.add_value("||s-s_h||_Hdiv", s_hdiv_error_total/s_hdiv_norm_total);
+    convergence_table_hdiv_total.add_value("gmres_iter", gmres_iteration);
+    // convergence_table_hdiv_total.add_value("residual", residual);
   }
 
   template <int dim>
@@ -1566,6 +1682,7 @@ namespace mfe_biot
     convergence_table_darcy_l2.set_tex_caption("residual", "residual");
     convergence_table_darcy_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
     convergence_table_darcy_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
+    convergence_table_darcy_l2.set_tex_caption("gmres_iter", "iter");
     // convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
     // convergence_table_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
     // convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
@@ -1598,7 +1715,7 @@ namespace mfe_biot
       if (this_mpi_biot == i)
       { 
         // Print to screen if you like, but messy for many processes
-        convergence_table_darcy_l2.write_text(std::cout);
+        // convergence_table_darcy_l2.write_text(std::cout);
 
         std::ofstream table_file(conv_filename, std::ios::app);
         // Write a LaTeX comment and a section header before the table:
@@ -1619,12 +1736,12 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::print_individual_convg_table_elast_l2()
   {
-    convergence_table_elast_l2.set_precision("residual", 3);
+    // convergence_table_elast_l2.set_precision("residual", 3);
     convergence_table_elast_l2.set_precision("||d-d_h||_L2", 3);
     convergence_table_elast_l2.set_precision("||r-r_h||_L2", 3);
     convergence_table_elast_l2.set_precision("||s-s_h||_L2", 3);
 
-    convergence_table_elast_l2.set_scientific("residual", true);
+    // convergence_table_elast_l2.set_scientific("residual", true);
     // convergence_table_l2.set_scientific("||u-u_h||_L2", true);
     // convergence_table_l2.set_scientific("||p-p_h||_L2", true);
     convergence_table_elast_l2.set_scientific("||d-d_h||_L2", true);
@@ -1633,12 +1750,13 @@ namespace mfe_biot
 
     convergence_table_elast_l2.set_tex_caption("cells", "\\ cells");
     convergence_table_elast_l2.set_tex_caption("dofs", "\\# dofs");
-    convergence_table_elast_l2.set_tex_caption("residual", "residual");
+    // convergence_table_elast_l2.set_tex_caption("residual", "residual");
     // convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
     // convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
     convergence_table_elast_l2.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
     convergence_table_elast_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
     convergence_table_elast_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
+    convergence_table_elast_l2.set_tex_caption("gmres_iter", "iter");
 
     // convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
     //                                           ConvergenceTable::reduction_rate_log2);
@@ -1668,7 +1786,7 @@ namespace mfe_biot
       if (this_mpi_biot == i)
       { 
         // Print to screen if you like, but messy for many processes
-        convergence_table_elast_l2.write_text(std::cout);
+        // convergence_table_elast_l2.write_text(std::cout);
 
         std::ofstream table_file(conv_filename, std::ios::app);
         // Write a LaTeX comment and a section header before the table:
@@ -1689,19 +1807,20 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::print_individual_convg_table_hdiv()
   {
-    convergence_table_hdiv.set_precision("residual", 3);
+    // convergence_table_hdiv.set_precision("residual", 3);
     convergence_table_hdiv.set_precision("||u-u_h||_Hdiv", 3);
     convergence_table_hdiv.set_precision("||s-s_h||_Hdiv", 3);
 
-    convergence_table_hdiv.set_scientific("residual", true);
+    // convergence_table_hdiv.set_scientific("residual", true);
     convergence_table_hdiv.set_scientific("||u-u_h||_Hdiv", true);
     convergence_table_hdiv.set_scientific("||s-s_h||_Hdiv", true);
 
     convergence_table_hdiv.set_tex_caption("cells", "\\ cells");
     convergence_table_hdiv.set_tex_caption("dofs", "\\# dofs");
-    convergence_table_hdiv.set_tex_caption("residual", "residual");
+    // convergence_table_hdiv.set_tex_caption("residual", "residual");
     convergence_table_hdiv.set_tex_caption("||u-u_h||_Hdiv", "$||u_p-u_{ph}||_{H(div)}$");
     convergence_table_hdiv.set_tex_caption("||s-s_h||_Hdiv", "$||\\sigma_p-\\sigma_{ph}||_{H(div)}$");
+    convergence_table_hdiv.set_tex_caption("gmres_iter", "iter");
 
     convergence_table_hdiv.evaluate_convergence_rates("||u-u_h||_Hdiv",
                                               ConvergenceTable::reduction_rate_log2);
@@ -1726,7 +1845,7 @@ namespace mfe_biot
       if (this_mpi_biot == i)
       { 
         // Print to screen if you like, but messy for many processes
-        convergence_table_hdiv.write_text(std::cout);
+        // convergence_table_hdiv.write_text(std::cout);
 
         std::ofstream table_file(conv_filename, std::ios::app);
         // Write a LaTeX comment and a section header before the table:
@@ -1741,6 +1860,157 @@ namespace mfe_biot
     {
         std::ofstream table_file(conv_filename, std::ios::app);
         table_file << "\n\\end{document}\n";
+    }
+  }
+
+  template <int dim>
+  void MixedBiotProblem<dim>::print_total_convg_table_darcy_l2()
+  {
+    // only one process prints this data
+    if (this_mpi_biot == 0)
+    {
+      convergence_table_darcy_l2_total.set_precision("residual", 3);
+      convergence_table_darcy_l2_total.set_precision("||u-u_h||_L2", 3);
+      convergence_table_darcy_l2_total.set_precision("||p-p_h||_L2", 3);
+      
+
+      convergence_table_darcy_l2_total.set_scientific("residual", true);
+      convergence_table_darcy_l2_total.set_scientific("||u-u_h||_L2", true);
+      convergence_table_darcy_l2_total.set_scientific("||p-p_h||_L2", true);
+      // convergence_table_l2.set_scientific("||d-d_h||_L2", true);
+      // convergence_table_l2.set_scientific("||r-r_h||_L2", true);
+      // convergence_table_l2.set_scientific("||s-s_h||_L2", true);
+
+      convergence_table_darcy_l2_total.set_tex_caption("cells", "\\ cells");
+      convergence_table_darcy_l2_total.set_tex_caption("dofs", "\\# dofs");
+      convergence_table_darcy_l2_total.set_tex_caption("residual", "residual");
+      convergence_table_darcy_l2_total.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
+      convergence_table_darcy_l2_total.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
+      convergence_table_darcy_l2_total.set_tex_caption("gmres_iter", "iter");
+      // convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
+      // convergence_table_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
+      // convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
+
+      convergence_table_darcy_l2_total.evaluate_convergence_rates("||u-u_h||_L2",
+                                                ConvergenceTable::reduction_rate_log2);
+      convergence_table_darcy_l2_total.evaluate_convergence_rates("||p-p_h||_L2",
+                                                ConvergenceTable::reduction_rate_log2);
+      // convergence_table_l2.evaluate_convergence_rates("||d-d_h||_L2",
+      //                                           ConvergenceTable::reduction_rate_log2);
+      // convergence_table_l2.evaluate_convergence_rates("||r-r_h||_L2",
+      //                                           ConvergenceTable::reduction_rate_log2);                                          
+      // convergence_table_l2.evaluate_convergence_rates("||s-s_h||_L2",
+      //                                           ConvergenceTable::reduction_rate_log2);
+
+      std::string conv_filename = "../output/convg_table_total/darcy_table_total_l2" + std::string(".tex");
+      
+      std::cout << "total error\n" << std::endl;
+      convergence_table_darcy_l2_total.write_text(std::cout);
+      std::ofstream table_file(conv_filename, std::ios::out);
+      table_file << "\\documentclass[10pt]{report}\n"
+                 << "\\usepackage{float}\n"
+                 << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                 << "\\begin{document}\n\n";
+      
+      convergence_table_darcy_l2_total.write_tex(table_file, false);
+      table_file << "\n\\end{document}\n";
+      table_file.close();
+    }
+  }
+
+  template <int dim>
+  void MixedBiotProblem<dim>::print_total_convg_table_elast_l2()
+  {
+    if (this_mpi_biot == 0)
+    {
+      // convergence_table_elast_l2.set_precision("residual", 3);
+      convergence_table_elast_l2_total.set_precision("||d-d_h||_L2", 3);
+      convergence_table_elast_l2_total.set_precision("||r-r_h||_L2", 3);
+      convergence_table_elast_l2_total.set_precision("||s-s_h||_L2", 3);
+
+      // convergence_table_elast_l2.set_scientific("residual", true);
+      // convergence_table_l2.set_scientific("||u-u_h||_L2", true);
+      // convergence_table_l2.set_scientific("||p-p_h||_L2", true);
+      convergence_table_elast_l2_total.set_scientific("||d-d_h||_L2", true);
+      convergence_table_elast_l2_total.set_scientific("||r-r_h||_L2", true);
+      convergence_table_elast_l2_total.set_scientific("||s-s_h||_L2", true);
+
+      convergence_table_elast_l2_total.set_tex_caption("cells", "\\ cells");
+      convergence_table_elast_l2_total.set_tex_caption("dofs", "\\# dofs");
+      // convergence_table_elast_l2.set_tex_caption("residual", "residual");
+      // convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
+      // convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
+      convergence_table_elast_l2_total.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
+      convergence_table_elast_l2_total.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
+      convergence_table_elast_l2_total.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
+      convergence_table_elast_l2_total.set_tex_caption("gmres_iter", "iter");
+
+      // convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
+      //                                           ConvergenceTable::reduction_rate_log2);
+      // convergence_table_l2.evaluate_convergence_rates("||p-p_h||_L2",
+      //                                           ConvergenceTable::reduction_rate_log2);
+      convergence_table_elast_l2_total.evaluate_convergence_rates("||d-d_h||_L2",
+                                                ConvergenceTable::reduction_rate_log2);
+      convergence_table_elast_l2_total.evaluate_convergence_rates("||r-r_h||_L2",
+                                                ConvergenceTable::reduction_rate_log2);                                          
+      convergence_table_elast_l2_total.evaluate_convergence_rates("||s-s_h||_L2",
+                                                ConvergenceTable::reduction_rate_log2);
+
+      std::string conv_filename = "../output/convg_table_total/elast_table_total_l2" + std::string(".tex");
+
+      std::cout << "total error\n" << std::endl;
+      convergence_table_elast_l2_total.write_text(std::cout);
+      std::ofstream table_file(conv_filename, std::ios::out);
+      table_file << "\\documentclass[10pt]{report}\n"
+                 << "\\usepackage{float}\n"
+                 << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                 << "\\begin{document}\n\n";
+      
+      convergence_table_elast_l2_total.write_tex(table_file, false);
+      table_file << "\n\\end{document}\n";
+      table_file.close();
+    }
+  }
+
+  template <int dim>
+  void MixedBiotProblem<dim>::print_total_convg_table_hdiv()
+  {
+    if (this_mpi_biot == 0)
+    {
+      // convergence_table_hdiv.set_precision("residual", 3);
+      convergence_table_hdiv_total.set_precision("||u-u_h||_Hdiv", 3);
+      convergence_table_hdiv_total.set_precision("||s-s_h||_Hdiv", 3);
+
+      // convergence_table_hdiv.set_scientific("residual", true);
+      convergence_table_hdiv_total.set_scientific("||u-u_h||_Hdiv", true);
+      convergence_table_hdiv_total.set_scientific("||s-s_h||_Hdiv", true);
+
+      convergence_table_hdiv_total.set_tex_caption("cells", "\\ cells");
+      convergence_table_hdiv_total.set_tex_caption("dofs", "\\# dofs");
+      // convergence_table_hdiv.set_tex_caption("residual", "residual");
+      convergence_table_hdiv_total.set_tex_caption("||u-u_h||_Hdiv", "$||u_p-u_{ph}||_{H(div)}$");
+      convergence_table_hdiv_total.set_tex_caption("||s-s_h||_Hdiv", "$||\\sigma_p-\\sigma_{ph}||_{H(div)}$");
+      convergence_table_hdiv_total.set_tex_caption("gmres_iter", "iter");
+
+      convergence_table_hdiv_total.evaluate_convergence_rates("||u-u_h||_Hdiv",
+                                                ConvergenceTable::reduction_rate_log2);
+      convergence_table_hdiv_total.evaluate_convergence_rates("||s-s_h||_Hdiv",
+                                                ConvergenceTable::reduction_rate_log2);
+
+      
+      std::string conv_filename = "../output/convg_table_total/biot_table_total_hdiv" + std::string(".tex");
+      
+      std::cout << "total error\n" << std::endl;
+      convergence_table_hdiv_total.write_text(std::cout);
+      std::ofstream table_file(conv_filename, std::ios::out);
+      table_file << "\\documentclass[10pt]{report}\n"
+                 << "\\usepackage{float}\n"
+                 << "\\usepackage[margin=0.7in]{geometry}\n\n"
+                 << "\\begin{document}\n\n";
+      
+      convergence_table_hdiv_total.write_tex(table_file, false);
+      table_file << "\n\\end{document}\n";
+      table_file.close();
     }
   }
 
