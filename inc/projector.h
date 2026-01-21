@@ -736,12 +736,11 @@ namespace Projector
   template <int spacedim, typename number>
   void
   Projector<dim>::project_boundary_values(
-    const DoFHandler<dim, spacedim> &dof,
-    const std::map<types::boundary_id, const Function<spacedim, number> *>
-      &                        boundary_functions,
-    const Quadrature<dim - 1> &q,
-    dealii::AffineConstraints<double>  &         constraints,
-    std::vector<unsigned int>  component_mapping)
+    const DoFHandler<dim, spacedim>                                             &dof,
+    const std::map<types::boundary_id, const Function<spacedim, number> *>      &boundary_functions,
+    const Quadrature<dim - 1>                                                   &q,
+    dealii::AffineConstraints<double>                                           &constraints,
+    std::vector<unsigned int>                                                    component_mapping)
   {
     std::map<types::global_dof_index, number> boundary_values;
 

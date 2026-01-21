@@ -470,13 +470,13 @@ namespace dd_utilities
   template <int dim>
   void
   project_mortar(Projector::Projector<dim> &proj,
-                 const DoFHandler<dim> &    dof1,
-                 BlockVector<double> &      in_vec,
+                 const DoFHandler<dim>     &dof1,
+                 BlockVector<double>       &in_vec,
                  const Quadrature<dim - 1> &quad,
-                 AffineConstraints<double> &         constraints,
-                 const std::vector<int> &   neighbors,
-                 const DoFHandler<dim> &    dof2,
-                 BlockVector<double> &      out_vec)
+                 AffineConstraints<double> &constraints,
+                 const std::vector<int>    &neighbors,
+                 const DoFHandler<dim>     &dof2,
+                 BlockVector<double>       &out_vec)
   {
     out_vec = 0;
 
@@ -500,75 +500,6 @@ namespace dd_utilities
 
     constraints.close();
     constraints.distribute(out_vec);
-  }
-  
-  template <int dim>
-  void
-  print_total_table_l2(ConvergenceTable &convergence_table_total,
-                       const unsigned int &iter_meth_flag,
-                       const unsigned int &print_interface_matrix_flag,
-                       const unsigned int &this_mpi)
-  {
-    // only one process prints this data
-    if (this_mpi == 0)
-    {
-      convergence_table_total.set_precision("residual", 3);
-      convergence_table_total.set_precision("h", 1);
-      convergence_table_total.set_precision("u_L2", 3);
-      convergence_table_total.set_precision("p_L2", 3);
-      convergence_table_total.set_precision("u_order", 2);
-      convergence_table_total.set_precision("p_order", 2);
-      if (print_interface_matrix_flag)
-      {
-        convergence_table_total.set_precision("cond(S)", 3);
-        convergence_table_total.set_precision("||S-S'||", 3);
-      }
-
-      convergence_table_total.set_scientific("residual", true);
-      convergence_table_total.set_scientific("h", true);
-      convergence_table_total.set_scientific("u_L2", true);
-      convergence_table_total.set_scientific("p_L2", true);
-      if (print_interface_matrix_flag)
-      {
-        convergence_table_total.set_scientific("cond(S)", true);
-        convergence_table_total.set_scientific("||S-S'||", true);
-      }
-
-      // convergence_table_total.set_tex_caption("cells", "\\# cells");
-      convergence_table_total.set_tex_caption("h", "\\ h");
-      // convergence_table_total.set_tex_caption("dofs", "\\# dofs");
-      convergence_table_total.set_tex_caption("interface_dofs", "\\ dofs");
-      if (iter_meth_flag == 1)
-        convergence_table_total.set_tex_caption("gmres_iter", "gmres iter");
-      else
-        convergence_table_total.set_tex_caption("cg_iter", "cg iter");
-      convergence_table_total.set_tex_caption("u_order", "u order");
-      convergence_table_total.set_tex_caption("p_order", "p order");
-      convergence_table_total.set_tex_caption("residual", "residual");
-      convergence_table_total.set_tex_caption("u_L2", "$L^2$-error (u)");
-      convergence_table_total.set_tex_caption("p_L2", "$L^2$-error (p)");
-      if (print_interface_matrix_flag)
-        convergence_table_total.set_tex_caption("||S-S'||", "$||S-S'||$");
-
-      convergence_table_total.set_tex_format("h", "r");
-      convergence_table_total.set_tex_format("interface_dofs", "r");
-      // convergence_table_total.set_tex_format("dofs_m", "r");
-
-      convergence_table_total.write_text(std::cout);
-
-      std::string conv_filename = std::string("../output/convg_table_total/convergence_total_l2") + ".tex";
-
-      std::cout << "total error\n" << std::endl;
-      std::ofstream table_file(conv_filename, std::ios::out);
-      table_file << "\\documentclass[10pt]{report}\n"
-                 << "\\usepackage{float}\n"
-                 << "\\usepackage[margin=0.7in]{geometry}\n\n"
-                 << "\\begin{document}\n\n";
-      
-      convergence_table_total.write_tex(table_file, false);
-      table_file << "\n\\end{document}\n";
-      table_file.close();
-    }
   }
 
   template <int dim>
