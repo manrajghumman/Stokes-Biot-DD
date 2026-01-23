@@ -67,7 +67,6 @@ namespace mfe_biot
     std::vector<int> &neighbors,
     std::vector<unsigned int> &neighbor_type,
     MPI_Comm mpi_communicator_biot,
-    const bool mortar_flag,
     const unsigned int mortar_degree)
     : mpi_communicator (MPI_COMM_WORLD),
       mpi_communicator_biot(mpi_communicator_biot),

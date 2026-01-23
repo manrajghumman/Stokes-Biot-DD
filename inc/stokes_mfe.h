@@ -18,6 +18,8 @@
 #include <deal.II/lac/precondition.h>
 #include <deal.II/base/smartpointer.h>
 
+#include <deal.II/numerics/fe_field_function.h>
+
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
 
@@ -35,6 +37,7 @@ namespace mfe_stokes
   template <int dim>
   class MixedStokesProblem
   {
+  using FEFunction = Functions::FEFieldFunction<dim, BlockVector<double>>;
   public:
   MixedStokesProblem (ParameterHandler &prm,
                       unsigned int &degree,
@@ -44,15 +47,15 @@ namespace mfe_stokes
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
                       MPI_Comm mpi_communicator_stokes,
-                      const bool mortar_flag = 0,
-                      const unsigned int mortar_degree = 0,
-                      const bool cont_mortar_flag = 0);
+                      const unsigned int mortar_degree = 2,
+                      const bool cont_mortar_flag = 1);
 
     void
     run(unsigned int cycle);
 
     void
-    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
+    assemble_rhs_star(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                      FEFaceValues<dim> &fe_face_values);
 
     void
     solve_bar();
@@ -102,7 +105,7 @@ namespace mfe_stokes
     bool stokes_neighbor;
     bool biot_neighbor;
     std::vector<unsigned int> external_bdry_ids;
-    bool mortar_flag, cont_mortar_flag;
+    bool cont_mortar_flag;
     unsigned int mortar_degree;
     double       tol;
     std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
@@ -148,7 +151,8 @@ namespace mfe_stokes
                const unsigned int                     &k);
 
     void
-    compute_residual(FEFaceValues<dim>               &fe_face_values,
+    compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                    FEFaceValues<dim>               &fe_face_values,
                     std::vector<std::vector<double>> &interface_data,
                     std::vector<std::vector<double>> &r,
                     double                           &r_norm,
@@ -156,14 +160,16 @@ namespace mfe_stokes
                     double                           &b_norm);
 
     void 
-    interface_operator(std::vector<std::vector<double>> &Ax,
+    interface_operator(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                       std::vector<std::vector<double>> &interface_data,
                        std::vector<std::vector<double>> &interface_data_send,
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
                        std::vector<std::vector<double>> &Ap);
               
     void
-    arnoldi(unsigned int                      &k_counter, 
+    arnoldi(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+            unsigned int                      &k_counter, 
             std::vector<std::vector<double>> &interface_data,
             std::vector<std::vector<double>> &interface_data_send,
             std::vector<std::vector<double>> &interface_data_receive,
@@ -239,9 +245,9 @@ namespace mfe_stokes
     DoFHandler<dim>    dof_handler_darcy_vel;
 
     // Mortar triangulation
-    // Triangulation<dim> triangulation_mortar;
-    // FESystem<dim>      fe_mortar;
-    // DoFHandler<dim>    dof_handler_mortar;
+    Triangulation<dim> triangulation_mortar;
+    FESystem<dim>      fe_mortar;
+    DoFHandler<dim>    dof_handler_mortar;
 
     // Star and bar problem data structures
     BlockSparsityPattern      sparsity_pattern;
@@ -278,6 +284,7 @@ namespace mfe_stokes
     std::vector<BlockVector<double>>   interface_fe_function_mortar_fe;
     BlockVector<double>                solution_bar_mortar;
     BlockVector<double>                solution_star_mortar;
+    BlockVector<double>                mortar_vec;
     std::vector<BlockVector<double>>   multiscale_basis;
 
 

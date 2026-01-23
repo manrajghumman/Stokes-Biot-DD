@@ -51,7 +51,7 @@
 #include <deal.II/numerics/vector_tools.h>
 // Extra for MPI and mortars
 #include <deal.II/base/timer.h>
-#include <deal.II/numerics/fe_field_function.h>
+// #include <deal.II/numerics/fe_field_function.h>
 // C++
 #include <cstdlib>
 #include <fstream>
@@ -73,17 +73,16 @@ namespace mfe_stokes
   // MixedStokesBiotDD class constructor
   template <int dim>
   MixedStokesProblem<dim>::MixedStokesProblem(
-    ParameterHandler &prm,
-    unsigned int &degree,
-    unsigned int &degree_biot,
-    std::vector<unsigned int> n_domains,
-    const unsigned int &subdomain_type,
-    std::vector<int> &neighbors,
-    std::vector<unsigned int> &neighbor_type,
-    MPI_Comm mpi_communicator_stokes,
-    const bool mortar_flag,
-    const unsigned int mortar_degree,
-    const bool cont_mortar_flag)
+    ParameterHandler           &prm,
+    unsigned int               &degree,
+    unsigned int               &degree_biot,
+    std::vector<unsigned int>   n_domains,
+    const unsigned int         &subdomain_type,
+    std::vector<int>           &neighbors,
+    std::vector<unsigned int>  &neighbor_type,
+    MPI_Comm                   mpi_communicator_stokes,
+    const unsigned int         mortar_degree,
+    const bool                 cont_mortar_flag)
     : mpi_communicator(MPI_COMM_WORLD)
     , mpi_communicator_stokes(mpi_communicator_stokes)
     , this_mpi (Utilities::MPI::this_mpi_process(mpi_communicator))
@@ -96,9 +95,8 @@ namespace mfe_stokes
     , n_domains(n_domains)
     , stokes_neighbor(false)
     , biot_neighbor(false)
-    , mortar_flag(mortar_flag)
     , mortar_degree(mortar_degree)
-    , cont_mortar_flag((mortar_flag == 1 && mortar_degree == 0) ? false: cont_mortar_flag) // if mortar_degree is 0, use RT<dim> (0)
+    , cont_mortar_flag(cont_mortar_flag) // if mortar_degree is 0, use RT<dim> (0)
     // , tol(tol)
     // , reps(reps)
     , neighbors(neighbors)
@@ -119,15 +117,18 @@ namespace mfe_stokes
                FE_Nothing<dim>(), 1)
     , dof_handler_biot_stress(triangulation)
     , dof_handler_darcy_vel(triangulation)
-    // , dof_handler_mortar(triangulation_mortar)
-    // ,fe_mortar([mortar_degree, cont_mortar_flag]() -> FESystem<dim> {
-    //   if (mortar_degree > 0 && cont_mortar_flag)
-    //     return FESystem<dim>(FE_Q<dim>(mortar_degree), dim, FE_Nothing<dim>(), 1);
-    //   else if (mortar_degree == 0 || !cont_mortar_flag)
-    //     return FESystem<dim>(FE_RaviartThomas<dim>(mortar_degree), 1, FE_Nothing<dim>(), 1);
-    //   else
-    //     return FESystem<dim>(FE_Nothing<dim>(), dim, FE_Nothing<dim>(), 1);
-    // }()) // Conditional initialization using a lambda function
+    , dof_handler_mortar(triangulation_mortar)
+    ,fe_mortar([mortar_degree, cont_mortar_flag]() -> FESystem<dim> {
+      if (cont_mortar_flag)
+        return FESystem<dim>(FE_Q<dim>(mortar_degree), dim, FE_Nothing<dim>(), 1);
+      else if (!cont_mortar_flag)
+        return FESystem<dim>(FE_RaviartThomas<dim>(mortar_degree), 1, FE_Nothing<dim>(), 1);
+      else
+      {
+        AssertThrow(false, ExcMessage("Invalid mortar element configuration."));
+        return FESystem<dim>(FE_Nothing<dim>(), dim, FE_Nothing<dim>(), 1);
+      }
+    }()) // Conditional initialization using a lambda function
     , pcout(std::cout,
             (Utilities::MPI::this_mpi_process(mpi_communicator_stokes) == 0))
     // , computing_timer(mpi_communicator,
@@ -138,6 +139,9 @@ namespace mfe_stokes
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
     param.read_parameters("../test function/dd test/stokes.prm");
+    pcout << "cont_mortar_flag: " << cont_mortar_flag
+          << ", mortar_degree: " << mortar_degree 
+          << ", degree: " << degree << std::endl;
   }
 
 
@@ -151,13 +155,13 @@ namespace mfe_stokes
 
     // Make interface data structures
     faces_on_interface.resize(GeometryInfo<dim>::faces_per_cell, 0);
-    // faces_on_interface_mortar.resize(GeometryInfo<dim>::faces_per_cell, 0);
+    faces_on_interface_mortar.resize(GeometryInfo<dim>::faces_per_cell, 0);
 
     // Label interface faces and count how many of them there are per interface
     mark_interface_faces<dim>(triangulation, neighbors, p1, p2, faces_on_interface);
     // if (mortar_flag)
-    //   mark_interface_faces(
-    //     triangulation_mortar, neighbors, p1, p2, faces_on_interface_mortar);
+    mark_interface_faces(
+      triangulation_mortar, neighbors, p1, p2, faces_on_interface_mortar);
     // //this is a function in utilities.h
 
     pcout << "Stokes Part:\n boundary condition:";
@@ -195,6 +199,9 @@ namespace mfe_stokes
     dof_handler.distribute_dofs(fe);
     DoFRenumbering::component_wise(dof_handler);
 
+    dof_handler_mortar.distribute_dofs(fe_mortar);
+    DoFRenumbering::component_wise(dof_handler_mortar);
+
     std::vector<types::global_dof_index> dofs_per_component =
             DoFTools::count_dofs_per_fe_component (dof_handler);
 
@@ -206,8 +213,6 @@ namespace mfe_stokes
         n_u += dofs_per_component[i];
       }
     n_p = dofs_per_component[dim];
-
-    n_velocity_interface = n_u;
 
     /**
      * @brief Constructs a BlockDynamicSparsityPattern object with 2x2 blocks.
@@ -254,6 +259,28 @@ namespace mfe_stokes
           <<" | N pressure dofs: "<< n_p
           << std::endl;
 
+    std::vector<types::global_dof_index> dofs_per_component_mortar =
+            DoFTools::count_dofs_per_fe_component (dof_handler_mortar);
+    unsigned int n_u_mortar = 0, n_p_mortar = 0;
+    // Enable for dim = 2, 3 right now only works for dim = 2
+    if (cont_mortar_flag && mortar_degree > 0)
+      for (unsigned int i = 0; i < dim; ++i)
+        n_u_mortar += dofs_per_component_mortar[i];
+    else if (!cont_mortar_flag) // the case of RT elements
+      n_u_mortar = dofs_per_component_mortar[0];
+
+    n_p_mortar = dofs_per_component_mortar[dim];
+
+    n_velocity_interface = n_u_mortar;
+    pcout << "Stokes part:\n N velocity mortar dofs: " << n_u_mortar
+          <<" | N pressure mortar dofs: "<< n_p_mortar
+          << std::endl;
+
+    mortar_vec.reinit(2);
+    mortar_vec.block(0).reinit(n_u_mortar);
+    mortar_vec.block(1).reinit(n_p_mortar);
+    mortar_vec.collect_sizes();
+    mortar_vec = 0;
   }
 
   // MixedStokesProblemDD - setup system for biot
@@ -321,9 +348,9 @@ namespace mfe_stokes
 
     unsigned int side = 0;
 
-    local_face_dof_indices.resize(fe.dofs_per_face);
+    local_face_dof_indices.resize(fe_mortar.dofs_per_face);
 
-    for (const auto &cell : dof_handler.active_cell_iterators())
+    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
       for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
         if (cell->at_boundary(face_n) &&
               (cell->face(face_n)->boundary_id() != 0 && 
@@ -630,6 +657,7 @@ namespace mfe_stokes
   template <int dim>
   void
   MixedStokesProblem<dim>::assemble_rhs_star(
+    std::vector<std::unique_ptr<FEFunction>> &interface_function,
     FEFaceValues<dim> &fe_face_values)
   {
     // TimerOutput::Scope t(computing_timer, "Assemble RHS star stokes");
@@ -642,8 +670,9 @@ namespace mfe_stokes
     std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
     const FEValuesExtractors::Vector velocities(0);
-    std::vector<Tensor<1, dim>>          interface_values(n_face_q_points, Tensor<1, dim>());
-    std::vector<Tensor<1, dim>>          phi_u(dofs_per_cell);
+    // std::vector<Tensor<1, dim>>          interface_values(n_face_q_points, Tensor<1, dim>());
+    std::vector<std::vector<double>>     interface_values(dim, std::vector<double>(n_face_q_points, 0.0));//first index for dim components, 0, 1: vel, 2: pressure
+    std::vector<Tensor<1, dim>>          phi_u(dofs_per_cell);                                            //second for value at each quad point
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     int side;
     // if (this_mpi == 1)
@@ -668,13 +697,23 @@ namespace mfe_stokes
               side = 1;
             else if (face_n == 2)
               side = 0;
-            else 
+            else if (face_n == 3)
               side = 2;
+            else if (face_n == 4)
+              side = 4; // only for 3D
+            else if (face_n == 5)
+              side = 5; // only for 3D
+            
             // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side, face_n = " << this_mpi << ", " << side << ", " << face_n << std::endl;
             // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side = " << this_mpi << ", " << side << std::endl;
             // std::cout << "\ninterface_values = " << interface_values.size() << std::endl;
-            fe_face_values[velocities].get_function_values(
-              interface_fe_function[side], interface_values);
+            // fe_face_values[velocities].get_function_values(
+            //   interface_fe_function[side], interface_values);
+            // interface_function.vector_value_list(fe_face_values.get_quadrature_points(),
+            //                              interface_values);
+            for (unsigned int s = 0; s < dim; ++s)
+              interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
+                                    interface_values[s], s);
             for (unsigned int q_point = 0; q_point < n_face_q_points;
                 ++q_point)
             {
@@ -685,10 +724,11 @@ namespace mfe_stokes
 
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                local_rhs(i) +=
-                  - (phi_u[i] * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1)*  // phi_v_i(x_q)
-                    interface_values[q_point]) *    // Tn_i = lambda
-                    fe_face_values.JxW(q_point);    // dx
+                for (unsigned int s = 0; s < dim; ++s)
+                  local_rhs(i) +=
+                    - (phi_u[i][s] * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1)*  // phi_v_i(x_q)
+                      interface_values[s][q_point]) *    // Tn_i = lambda
+                      fe_face_values.JxW(q_point);    // dx
               }
             }
           }  
@@ -810,7 +850,8 @@ namespace mfe_stokes
   */
   template <int dim>
   void
-  MixedStokesProblem<dim>::interface_operator(std::vector<std::vector<double>> &interface_data,
+  MixedStokesProblem<dim>::interface_operator(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                              std::vector<std::vector<double>> &interface_data,
                                               std::vector<std::vector<double>> &interface_data_send,
                                               std::vector<std::vector<double>> &interface_data_receive,
                                               FEFaceValues<dim>                &fe_face_values,
@@ -824,7 +865,8 @@ namespace mfe_stokes
           interface_data[side][i];
 
     // interface_fe_function.block(1) = 0;
-    assemble_rhs_star(fe_face_values);
+    assemble_rhs_star(interface_function,
+                      fe_face_values);
     solve_star();
     
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
@@ -862,7 +904,8 @@ namespace mfe_stokes
   // computing the residual over all sides
   template <int dim>
   void
-  MixedStokesProblem<dim>::compute_residual(FEFaceValues<dim>                &fe_face_values,
+  MixedStokesProblem<dim>::compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                            FEFaceValues<dim>                &fe_face_values,
                                             std::vector<std::vector<double>> &interface_data,
                                             std::vector<std::vector<double>> &r,
                                             double                           &r_norm,
@@ -881,7 +924,8 @@ namespace mfe_stokes
           interface_data[side][i];
 
     // interface_fe_function.block(1) = 0;
-    assemble_rhs_star(fe_face_values);
+    assemble_rhs_star(interface_function,
+                      fe_face_values);
     solve_star();
 
     //for computing rhs b for
@@ -976,7 +1020,8 @@ namespace mfe_stokes
   // Arnoldi algorithm
   template <int dim>
   void
-  MixedStokesProblem<dim>::arnoldi(unsigned int                      &k_counter, 
+  MixedStokesProblem<dim>::arnoldi(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                    unsigned int                      &k_counter, 
                                     std::vector<std::vector<double>> &interface_data,
                                     std::vector<std::vector<double>> &interface_data_send,
                                     std::vector<std::vector<double>> &interface_data_receive,
@@ -993,7 +1038,8 @@ namespace mfe_stokes
         interface_data[side]=Q_side[side][k_counter];
     
     //////------solving the  star problem to find AQ(k)---------------------
-    interface_operator(interface_data,
+    interface_operator(interface_function,
+                        interface_data,
                         interface_data_send,
                         interface_data_receive,
                         fe_face_values,
@@ -1091,6 +1137,17 @@ namespace mfe_stokes
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
     quad = QGauss<dim - 1>(qdegree);
+    // std::vector<BlockVector<double>> in_vec_lambda(n_faces_per_cell, BlockVector<double>(mortar_vec));
+    // std::vector<Functions::FEFieldFunction<dim, BlockVector<double>>>
+    //       interface_function;
+    // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    // {
+    //   interface_function.push_back(
+    //     Functions::FEFieldFunction<dim, BlockVector<double>>
+    //                               (dof_handler, in_vec_lambda[side]));
+    // }
+    // Functions::FEFieldFunction<dim, BlockVector<double>> 
+    //       stokes_vector(dof_handler, in_vec_stokes);
 
 
     // dealii::AffineConstraints<double>   constraints;
@@ -1125,7 +1182,7 @@ namespace mfe_stokes
                                             0);
         interface_data_send[side].resize(interface_dofs[side].size(), 0);
         interface_data[side].resize(interface_dofs[side].size(), initial_val);
-        interface_fe_function[side].reinit(solution_bar);
+        interface_fe_function[side].reinit(mortar_vec);
 
         Ap[side].resize(interface_dofs[side].size(), 0);
         lambda[side].resize(interface_dofs[side].size(), initial_val);
@@ -1135,11 +1192,19 @@ namespace mfe_stokes
         r_b[side].resize(interface_dofs[side].size(), 0);
       }
 
+    // std::vector<BlockVector<double>> in_vec_lambda(n_faces_per_cell, BlockVector<double>(mortar_vec));
+    std::vector<std::unique_ptr<FEFunction>> interface_function;
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    {
+      interface_function.emplace_back(
+        std::make_unique<FEFunction>(dof_handler_mortar, interface_fe_function[side]));
+    }
     //Calculating r-norm(same as b-norm)-----
     double r_norm =0;
     double b_norm =0;
     //computing the residual r=b-Ax
-    compute_residual(fe_face_values,
+    compute_residual(interface_function,
+                     fe_face_values,
                      interface_data,
                      r,
                      r_norm,
@@ -1168,7 +1233,8 @@ namespace mfe_stokes
     {
       gmres_iteration++;
       //Performing the Arnoldi algorithm
-      arnoldi(k_counter,
+      arnoldi(interface_function,
+              k_counter,
               interface_data,
               interface_data_send,
               interface_data_receive,
@@ -1247,7 +1313,8 @@ namespace mfe_stokes
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         interface_fe_function[side][interface_dofs[side][i]] = interface_data[side][i];
 
-    assemble_rhs_star(fe_face_values);
+    assemble_rhs_star(interface_function,
+                      fe_face_values);
     solve_star();
     solution.reinit(solution_bar);
     solution = solution_bar;
@@ -1263,7 +1330,7 @@ namespace mfe_stokes
       +Utilities::int_to_string(this_mpi)
         +Utilities::int_to_string(cycle)
           +".gnuplot");
-    GridOut().write_gnuplot(triangulation, mesh_file);
+    GridOut().write_gnuplot(triangulation_mortar, mesh_file);
   }
 
   template <int dim>
@@ -1753,13 +1820,13 @@ namespace mfe_stokes
 
     Assert(reps[0].size() == dim, ExcDimensionMismatch(reps[0].size(), dim));
 
-    if (mortar_flag)
-      {
-        Assert(n_processes > 1,
-               ExcMessage("Mortar MFEM is impossible with 1 subdomain"));
-        Assert(reps.size() >= n_processes + 1,
-               ExcMessage("Some of the mesh parameters were not provided"));
-      }
+    // if (mortar_flag)
+    //   {
+    //     Assert(n_processes > 1,
+    //            ExcMessage("Mortar MFEM is impossible with 1 subdomain"));
+    //     Assert(reps.size() >= n_processes + 1,
+    //            ExcMessage("Some of the mesh parameters were not provided"));
+    //   }
     
     if (cycle == 0)
     {
@@ -1773,22 +1840,22 @@ namespace mfe_stokes
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
 
-      if (mortar_flag)
-        GridGenerator::subdivided_hyper_rectangle(triangulation,
-                                                  reps[this_mpi],
-                                                  p1,
-                                                  p2);
-      else
+      // if (mortar_flag)
+      //   GridGenerator::subdivided_hyper_rectangle(triangulation,
+      //                                             reps[this_mpi],
+      //                                             p1,
+      //                                             p2);
+      // else
         GridGenerator::subdivided_hyper_rectangle(triangulation,
                                                   reps[0],
                                                   p1,
                                                   p2);
 
       // if (mortar_flag)
-      //   GridGenerator::subdivided_hyper_rectangle(triangulation_mortar,
-      //                                             reps[n_processes],
-      //                                             p1,
-      //                                             p2);
+        GridGenerator::subdivided_hyper_rectangle(triangulation_mortar,
+                                                  reps[n_processes],
+                                                  p1,
+                                                  p2);
       for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
         {
           if (neighbor_type[side] == 1)
@@ -1805,7 +1872,7 @@ namespace mfe_stokes
     }
     else {
       triangulation.refine_global();
-
+      triangulation_mortar.refine_global();
     }
 
     // for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)

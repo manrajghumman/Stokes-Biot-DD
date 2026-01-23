@@ -40,7 +40,6 @@ namespace mfe_biot
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
                       MPI_Comm mpi_communicator_biot,
-                      const bool mortar_flag,
                       const unsigned int mortar_degree);
 
     void run(unsigned int cycle);

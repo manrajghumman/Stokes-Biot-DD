@@ -209,27 +209,21 @@ namespace dd_stokes_biot
           // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
           MPI_Comm_split(mpi_communicator, 1, this_mpi, &mpi_communicator_stokes);
           unsigned int degree, mortar_degree;
-          bool mortar_flag, cont_mortar_flag;
+          bool cont_mortar_flag;
           prm.enter_subsection("Stokes Parameters");
           {
-              degree   = prm.get_integer("degree");
-              mortar_flag = prm.get("mortar") == "yes" ? 1 : 0;
-              if (mortar_flag)
-              {
-                  cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
-                  mortar_degree = prm.get_integer("mortar_degree");
-              }
-              else
-              {
-                  cont_mortar_flag = 1; // if no mortar, continuous mortar is default
-                  mortar_degree = 0; // if no mortar, mortar degree is 0
-              }
+            degree   = prm.get_integer("degree");
+            cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
+            mortar_degree = prm.get_integer("mortar_degree");
+            // std::cout << "cont_mortar_flag: " << cont_mortar_flag
+            //           << ", mortar_degree: " << mortar_degree 
+            //           << ", degree: " << degree << std::endl;
           }
           prm.leave_subsection();
           unsigned int degree_biot;
           prm.enter_subsection("Biot Parameters");
           {
-              degree_biot = prm.get_integer("degree");
+            degree_biot = prm.get_integer("degree");
           }
           prm.leave_subsection();
           stokes = new MixedStokesProblem<dim>(prm,
@@ -240,9 +234,8 @@ namespace dd_stokes_biot
                                               neighbors,
                                               neighbor_type,
                                               mpi_communicator_stokes,
-                                              mortar_flag,
-                                              cont_mortar_flag,
-                                              mortar_degree);
+                                              mortar_degree,
+                                              cont_mortar_flag);
           stokes->run(cycle);
         
         }
@@ -251,15 +244,10 @@ namespace dd_stokes_biot
           // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
           MPI_Comm_split(mpi_communicator, 2, this_mpi, &mpi_communicator_biot);
           unsigned int degree, mortar_degree;
-          bool mortar_flag;
           prm.enter_subsection("Biot Parameters");
           {
               degree   = prm.get_integer("degree");
-              mortar_flag = prm.get("mortar") == "yes" ? 1 : 0;
-              if (mortar_flag)
-                  mortar_degree = prm.get_integer("mortar_degree");
-              else
-                  mortar_degree = 0; // if no mortar, mortar degree is 0
+              mortar_degree = prm.get_integer("mortar_degree");
           }
           prm.leave_subsection();
 
@@ -270,7 +258,6 @@ namespace dd_stokes_biot
                                           neighbors,
                                           neighbor_type,
                                           mpi_communicator_biot,
-                                          mortar_flag,
                                           mortar_degree);
           biot->run(cycle);
         }

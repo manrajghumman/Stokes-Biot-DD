@@ -54,8 +54,6 @@ class StokesBiotParameterReader : public Subscriptor
         prm.declare_entry("quad_degree", "11",
                       Patterns::Integer(),
                       "Quadrature degree for Stokes");
-        prm.declare_entry("mortar", "no",
-                      Patterns::Selection("yes|no"));
         prm.declare_entry("continuous_mortar", "yes",
                       Patterns::Selection("yes|no"));
         prm.declare_entry("mortar_degree", "2",
@@ -74,10 +72,8 @@ class StokesBiotParameterReader : public Subscriptor
         prm.declare_entry("quad_degree", "11",
                       Patterns::Integer(),
                       "Quadrature degree for Biot");
-        prm.declare_entry("mortar", "no",
-                      Patterns::Selection("yes|no"));
-        prm.declare_entry("continuous_mortar", "yes",
-                      Patterns::Selection("yes|no"));
+        prm.declare_entry("mortar_type", "1",
+                      Patterns::Integer(), "1");
         prm.declare_entry("mortar_degree", "2",
                       Patterns::Integer());
         prm.declare_entry("s_0", "1.0",
