@@ -282,8 +282,8 @@ namespace mfe_stokes
     mortar_vec.collect_sizes();
     mortar_vec = 0;
 
-    solution_bar_mortar.reinit(mortar_vec);
-    solution_star_mortar.reinit(mortar_vec);
+    // solution_bar_mortar.reinit(mortar_vec);
+    // solution_star_mortar.reinit(mortar_vec);
   }
 
   // MixedStokesProblemDD - setup system for biot
@@ -898,7 +898,7 @@ namespace mfe_stokes
       {
         // Create vector of u\dot n to send
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          interface_data_send[side][i] = solution_star_mortar[interface_dofs[side][i]];
+          interface_data_send[side][i] = solution_star_mortar[side][interface_dofs[side][i]];
 
         MPI_Sendrecv(interface_data_send[side].data(),
                       static_cast<int>(interface_dofs[side].size()),
@@ -972,9 +972,9 @@ namespace mfe_stokes
 
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         {
-          r_b[side][i] = solution_bar_mortar[interface_dofs[side][i]];
-          r[side][i] =  solution_bar_mortar[interface_dofs[side][i]]+
-                        solution_star_mortar[interface_dofs[side][i]];
+          r_b[side][i] = solution_bar_mortar[side][interface_dofs[side][i]];
+          r[side][i] =  solution_bar_mortar[side][interface_dofs[side][i]]+
+                        solution_star_mortar[side][interface_dofs[side][i]];
         }
 
         MPI_Sendrecv(r_b[side].data(),
@@ -1053,8 +1053,13 @@ namespace mfe_stokes
                                                   FEFaceValues<dim>                 &fe_face_values_mortar)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
-    solution_bar_mortar = 0;
-    solution_star_mortar = 0;
+    
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        solution_bar_mortar[side] = 0;
+        solution_star_mortar[side] = 0;
+      }
     
     const unsigned int n_face_q_points = fe_face_values_mortar.get_quadrature().size();
     const unsigned int dofs_per_cell   = fe_mortar.dofs_per_cell;
@@ -1123,12 +1128,12 @@ namespace mfe_stokes
               {   
                 for (unsigned int s = 0; s < dim; ++s)
                 {
-                  local_rhs_bar(i) +=
+                  solution_bar_mortar[side](local_dof_indices[i]) +=
                     (phi_mu[i][s] * get_normal_direction<dim>(side) *  // mu(x_q)
                       bar_values[s][q_point]) *    // u_bar
                       fe_face_values_mortar.JxW(q_point);    // dx
 
-                  local_rhs_star(i) +=
+                  solution_star_mortar[side](local_dof_indices[i]) +=
                     (phi_mu[i][s] * get_normal_direction<dim>(side) *  // mu(x_q)
                       star_values[s][q_point]) *    // u_star
                       fe_face_values_mortar.JxW(q_point);    // dx
@@ -1138,11 +1143,11 @@ namespace mfe_stokes
           }
         }
       }
-      for (unsigned int i = 0; i < dofs_per_cell; ++i)
-      {
-        solution_bar_mortar(local_dof_indices[i]) += local_rhs_bar(i);        
-        solution_star_mortar(local_dof_indices[i]) += local_rhs_star(i);
-      }
+      // for (unsigned int i = 0; i < dofs_per_cell; ++i)
+      // {
+      //   solution_bar_mortar(local_dof_indices[i]) += local_rhs_bar(i);        
+      //   solution_star_mortar(local_dof_indices[i]) += local_rhs_star(i);
+      // }
     }
     // if (this_mpi == 0)
     // {
@@ -1292,6 +1297,8 @@ namespace mfe_stokes
     std::vector<std::vector<double>> interface_data_send(n_faces_per_cell);
     std::vector<std::vector<double>> interface_data(n_faces_per_cell);
     interface_fe_function.resize(n_faces_per_cell);
+    solution_bar_mortar.resize(n_faces_per_cell);
+    solution_star_mortar.resize(n_faces_per_cell);
     double initial_val = 0.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
@@ -1349,6 +1356,9 @@ namespace mfe_stokes
         interface_data_send[side].resize(interface_dofs[side].size(), 0);
         interface_data[side].resize(interface_dofs[side].size(), initial_val);
         interface_fe_function[side].reinit(mortar_vec);
+
+        solution_bar_mortar[side].reinit(mortar_vec);
+        solution_star_mortar[side].reinit(mortar_vec);
 
         Ap[side].resize(interface_dofs[side].size(), 0);
         lambda[side].resize(interface_dofs[side].size(), initial_val);

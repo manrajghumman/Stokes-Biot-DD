@@ -299,8 +299,8 @@ namespace mfe_stokes
     // Mortar data structures
     std::vector<BlockVector<double>>   interface_fe_function_mortar;
     std::vector<BlockVector<double>>   interface_fe_function_mortar_fe;
-    BlockVector<double>                solution_bar_mortar;
-    BlockVector<double>                solution_star_mortar;
+    std::vector<BlockVector<double>>   solution_bar_mortar;
+    std::vector<BlockVector<double>>   solution_star_mortar;
     BlockVector<double>                mortar_vec;
     std::vector<BlockVector<double>>   multiscale_basis;
 
