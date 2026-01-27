@@ -63,6 +63,9 @@ namespace mfe_stokes
     void
     solve_star();
 
+    void 
+    write_dof_locations(const std::string &  filename) const;
+
     void
     output_dof_results(const unsigned int cycle) const;
 
@@ -151,8 +154,16 @@ namespace mfe_stokes
                const unsigned int                     &k);
 
     void
+    interface_inner_product(std::unique_ptr<FEFunction>      &solution_bar_function,
+                            std::unique_ptr<FEFunction>      &solution_star_function,
+                            FEFaceValues<dim>                &fe_face_values);
+
+    void
     compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                    std::unique_ptr<FEFunction>      &solution_bar_function,
+                    std::unique_ptr<FEFunction>      &solution_star_function,
                     FEFaceValues<dim>               &fe_face_values,
+                    FEFaceValues<dim>               &fe_face_values_mortar,
                     std::vector<std::vector<double>> &interface_data,
                     std::vector<std::vector<double>> &r,
                     double                           &r_norm,
@@ -161,19 +172,25 @@ namespace mfe_stokes
 
     void 
     interface_operator(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                       std::unique_ptr<FEFunction>       &solution_bar_function,
+                       std::unique_ptr<FEFunction>       &solution_star_function,
                        std::vector<std::vector<double>> &interface_data,
                        std::vector<std::vector<double>> &interface_data_send,
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
+                       FEFaceValues<dim>                &fe_face_values_mortar,
                        std::vector<std::vector<double>> &Ap);
               
     void
     arnoldi(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+            std::unique_ptr<FEFunction>       &solution_bar_function,
+            std::unique_ptr<FEFunction>       &solution_star_function,
             unsigned int                      &k_counter, 
             std::vector<std::vector<double>> &interface_data,
             std::vector<std::vector<double>> &interface_data_send,
             std::vector<std::vector<double>> &interface_data_receive,
             FEFaceValues<dim>                &fe_face_values,
+            FEFaceValues<dim>                &fe_face_values_mortar,
             std::vector<std::vector<double>> &Ap,
             std::vector<std::vector<double>> &q,
             std::vector<std::vector<std::vector<double>>>	&Q_side,
@@ -236,6 +253,11 @@ namespace mfe_stokes
     FESystem<dim>      fe;
     DoFHandler<dim>    dof_handler;
 
+    // Mortar triangulation
+    Triangulation<dim> triangulation_mortar;
+    FESystem<dim>      fe_mortar;
+    DoFHandler<dim>    dof_handler_mortar;
+
     // The fe space of Biot stress in the meaning of displacement
     FESystem<dim>      fe_biot_stress;
     DoFHandler<dim>    dof_handler_biot_stress;
@@ -243,11 +265,6 @@ namespace mfe_stokes
     // The fe space of Biot velocity in the meaning of pressure
     FESystem<dim>      fe_darcy_vel;
     DoFHandler<dim>    dof_handler_darcy_vel;
-
-    // Mortar triangulation
-    Triangulation<dim> triangulation_mortar;
-    FESystem<dim>      fe_mortar;
-    DoFHandler<dim>    dof_handler_mortar;
 
     // Star and bar problem data structures
     BlockSparsityPattern      sparsity_pattern;

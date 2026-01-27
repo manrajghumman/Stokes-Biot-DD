@@ -611,14 +611,15 @@ namespace mfe_biot
             Assert(dim == 2,
                     ExcMessage("This function is only implemented for dim = 2."));
             fe_face_values.reinit(cell, face_n);
-            if (face_n == 0)
-              side = 3;
-            else if (face_n == 1)
-              side = 1;
-            else if (face_n == 2)
-              side = 0;
-            else 
-              side = 2;
+            // if (face_n == 0)
+            //   side = 3;
+            // else if (face_n == 1)
+            //   side = 1;
+            // else if (face_n == 2)
+            //   side = 0;
+            // else 
+            //   side = 2;
+            side = cell->face(face_n)->boundary_id() - 1;
             // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side, face_n = " << this_mpi << ", " << side << ", " << face_n << std::endl;
             // std::cout << "\ninterface_values = " << interface_values.size() << std::endl;
 
@@ -1179,7 +1180,10 @@ namespace mfe_biot
         break;
       }
       else if(k_counter>maxiter-2)
-        pcout << "\n  GMRES doesn't converge after  " << k_counter << " iterations!\n";
+      {
+        pcout << "\n  GMRES doesn't converge after  " << k_counter + 1 << " iterations!\n";
+        break;
+      }
       else if(k_counter == interface_dofs_size-1)
       {
         pcout << "\n  GMRES doesn't converge after " << interface_dofs_size << " iterations!\n";
