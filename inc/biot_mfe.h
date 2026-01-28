@@ -233,9 +233,9 @@ namespace mfe_biot
     DoFHandler <dim> dof_handler;
 
     // Mortar triangulation
-    // Triangulation <dim> triangulation_mortar;
-    // FESystem <dim> fe_mortar;
-    // DoFHandler <dim> dof_handler_mortar;
+    Triangulation <dim> triangulation_mortar;
+    FESystem <dim> fe_mortar;
+    DoFHandler <dim> dof_handler_mortar;
 
     // Star and bar problem data structures
     BlockSparsityPattern sparsity_pattern;
@@ -266,8 +266,8 @@ namespace mfe_biot
 
     // Mortar data structures
     BlockVector<double> interface_fe_function_mortar;
-    BlockVector<double> solution_bar_mortar;
-    BlockVector<double> solution_star_mortar;
+    std::vector<BlockVector<double>> solution_bar_mortar;
+    std::vector<BlockVector<double>> solution_star_mortar;
     std::vector <BlockVector<double>> multiscale_basis;
 
     // Output extra

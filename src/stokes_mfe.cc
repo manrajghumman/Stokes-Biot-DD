@@ -434,8 +434,8 @@ namespace mfe_stokes
       {
         std::cout << "Stokes Part:\n Number of interface dofs on face " << side
               << " : " << interface_dofs[side].size() << ", interface dofs: ";
-        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          std::cout << interface_dofs[side][i] << " ";
+        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        //   std::cout << interface_dofs[side][i] << " ";
         std::cout << std::endl;
       }
     }

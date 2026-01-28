@@ -94,6 +94,12 @@ namespace mfe_biot
           FE_BDM<dim>(degree), 1,                  // flux
           FE_DGQ<dim>(degree-1), 1),               // pressure
       dof_handler (triangulation),
+      fe_mortar (FE_BDM<dim>(mortar_degree), 1,    // displacement lagrange multiplier on mortar
+                 FE_Nothing<dim>(), dim,
+                 FE_Nothing<dim>(), 0.5*dim*(dim-1), 
+                 FE_BDM<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
+                 FE_Nothing<dim>(), 1),
+      dof_handler_mortar (triangulation_mortar),
       pcout (std::cout,
               (Utilities::MPI::this_mpi_process(mpi_communicator_biot) == 0))
       // computing_timer (mpi_communicator,
@@ -120,8 +126,8 @@ namespace mfe_biot
     // Label interface faces and count how many of them there are per interface
     mark_interface_faces<dim>(triangulation, neighbors, p1, p2, faces_on_interface);
     // if (mortar_flag)
-    //   mark_interface_faces(
-    //     triangulation_mortar, neighbors, p1, p2, faces_on_interface_mortar);
+    // mark_interface_faces(
+    //   triangulation_mortar, neighbors, p1, p2, faces_on_interface_mortar);
     // //this is a function in utilities.h
 
     pcout << "Biot Part:\n boundary condition:";
@@ -165,14 +171,14 @@ namespace mfe_biot
     unsigned int n_s=0, n_u=0, n_g=0, n_z = 0, n_p = 0;
     for (unsigned int i=0; i<dim; ++i)
     {
-        n_s += dofs_per_component[i*dim];
-        n_u += dofs_per_component[dim*dim + i];
+      n_s += dofs_per_component[i*dim];
+      n_u += dofs_per_component[dim*dim + i];
 
-        // Rotation is scalar in 2d and vector in 3d, so this:
-        if (dim == 2)
-            n_g = dofs_per_component[dim*dim + dim];
-        else if (dim == 3)
-            n_g += dofs_per_component[dim*dim + dim + i];
+      // Rotation is scalar in 2d and vector in 3d, so this:
+      if (dim == 2)
+          n_g = dofs_per_component[dim*dim + dim];
+      else if (dim == 3)
+          n_g += dofs_per_component[dim*dim + dim + i];
     }
 
     n_z = dofs_per_component[dim*dim + dim + 0.5*dim*(dim-1)];
@@ -192,80 +198,100 @@ namespace mfe_biot
           << "\n N pressure dofs: " << n_p << std::endl;
 
     BlockDynamicSparsityPattern dsp(5, 5);
-			dsp.block(0, 0).reinit (n_s, n_s);
-			dsp.block(0, 1).reinit (n_s, n_u);
-			dsp.block(0, 2).reinit (n_s, n_g);
-			dsp.block(0, 3).reinit (n_s, n_z);
-			dsp.block(0, 4).reinit (n_s, n_p);
+    dsp.block(0, 0).reinit (n_s, n_s);
+    dsp.block(0, 1).reinit (n_s, n_u);
+    dsp.block(0, 2).reinit (n_s, n_g);
+    dsp.block(0, 3).reinit (n_s, n_z);
+    dsp.block(0, 4).reinit (n_s, n_p);
 
-			dsp.block(1, 0).reinit (n_u, n_s);
-			dsp.block(1, 1).reinit (n_u, n_u);
-			dsp.block(1, 2).reinit (n_u, n_g);
-			dsp.block(1, 3).reinit (n_u, n_z);
-			dsp.block(1, 4).reinit (n_u, n_p);
+    dsp.block(1, 0).reinit (n_u, n_s);
+    dsp.block(1, 1).reinit (n_u, n_u);
+    dsp.block(1, 2).reinit (n_u, n_g);
+    dsp.block(1, 3).reinit (n_u, n_z);
+    dsp.block(1, 4).reinit (n_u, n_p);
 
-			dsp.block(2, 0).reinit (n_g, n_s);
-			dsp.block(2, 1).reinit (n_g, n_u);
-			dsp.block(2, 2).reinit (n_g, n_g);
-			dsp.block(2, 3).reinit (n_g, n_z);
-			dsp.block(2, 4).reinit (n_g, n_p);
+    dsp.block(2, 0).reinit (n_g, n_s);
+    dsp.block(2, 1).reinit (n_g, n_u);
+    dsp.block(2, 2).reinit (n_g, n_g);
+    dsp.block(2, 3).reinit (n_g, n_z);
+    dsp.block(2, 4).reinit (n_g, n_p);
 
-			dsp.block(3, 0).reinit (n_z, n_s);
-			dsp.block(3, 1).reinit (n_z, n_u);
-			dsp.block(3, 2).reinit (n_z, n_g);
-			dsp.block(3, 3).reinit (n_z, n_z);
-			dsp.block(3, 4).reinit (n_z, n_p);
+    dsp.block(3, 0).reinit (n_z, n_s);
+    dsp.block(3, 1).reinit (n_z, n_u);
+    dsp.block(3, 2).reinit (n_z, n_g);
+    dsp.block(3, 3).reinit (n_z, n_z);
+    dsp.block(3, 4).reinit (n_z, n_p);
 
-			dsp.block(4, 0).reinit (n_p, n_s);
-			dsp.block(4, 1).reinit (n_p, n_u);
-			dsp.block(4, 2).reinit (n_p, n_g);
-			dsp.block(4, 3).reinit (n_p, n_z);
-			dsp.block(4, 4).reinit (n_p, n_p);
+    dsp.block(4, 0).reinit (n_p, n_s);
+    dsp.block(4, 1).reinit (n_p, n_u);
+    dsp.block(4, 2).reinit (n_p, n_g);
+    dsp.block(4, 3).reinit (n_p, n_z);
+    dsp.block(4, 4).reinit (n_p, n_p);
 
-			dsp.collect_sizes ();
-			DoFTools::make_sparsity_pattern (dof_handler, dsp);
+    dsp.collect_sizes ();
+    DoFTools::make_sparsity_pattern (dof_handler, dsp);
 
-			// Initialize system matrix
-			sparsity_pattern.copy_from(dsp);
-			system_matrix.reinit (sparsity_pattern);
+    // Initialize system matrix
+    sparsity_pattern.copy_from(dsp);
+    system_matrix.reinit (sparsity_pattern);
 
-			// Reinit solution and RHS vectors
-			solution_bar.reinit (5);
-			solution_bar.block(0).reinit (n_s);
-			solution_bar.block(1).reinit (n_u);
-			solution_bar.block(2).reinit (n_g);
-			solution_bar.block(3).reinit (n_z);
-			solution_bar.block(4).reinit (n_p);
-			solution_bar.collect_sizes ();
-			solution_bar = 0;
+    // Reinit solution and RHS vectors
+    solution_bar.reinit (5);
+    solution_bar.block(0).reinit (n_s);
+    solution_bar.block(1).reinit (n_u);
+    solution_bar.block(2).reinit (n_g);
+    solution_bar.block(3).reinit (n_z);
+    solution_bar.block(4).reinit (n_p);
+    solution_bar.collect_sizes ();
 
-			// Reinit solution and RHS vectors
-			solution_star.reinit (5);
-			solution_star.block(0).reinit (n_s);
-			solution_star.block(1).reinit (n_u);
-			solution_star.block(2).reinit (n_g);
-			solution_star.block(3).reinit (n_z);
-			solution_star.block(4).reinit (n_p);
-			solution_star.collect_sizes ();
-			solution_star = 0;
+    solution_star.reinit(solution_bar);
+    system_rhs_bar.reinit(solution_bar);
+    system_rhs_star.reinit(solution_bar);
 
-			system_rhs_bar.reinit (5);
-			system_rhs_bar.block(0).reinit (n_s);
-			system_rhs_bar.block(1).reinit (n_u);
-			system_rhs_bar.block(2).reinit (n_g);
-			system_rhs_bar.block(3).reinit (n_z);
-			system_rhs_bar.block(4).reinit (n_p);
-			system_rhs_bar.collect_sizes ();
-			system_rhs_bar = 0;
+    solution_bar = 0;
+    solution_star = 0;
+    system_rhs_bar = 0;
+    system_rhs_star = 0;
 
-			system_rhs_star.reinit (5);
-			system_rhs_star.block(0).reinit (n_s);
-			system_rhs_star.block(1).reinit (n_u);
-			system_rhs_star.block(2).reinit (n_g);
-			system_rhs_star.block(3).reinit (n_z);
-			system_rhs_star.block(4).reinit (n_p);
-			system_rhs_star.collect_sizes ();
-			system_rhs_star = 0;
+    // Mortar spaces setup
+    faces_on_interface_mortar.resize(GeometryInfo<dim>::faces_per_cell, 0);
+    mark_interface_faces(
+      triangulation_mortar, neighbors, p1, p2, faces_on_interface_mortar);
+
+    dof_handler_mortar.distribute_dofs(fe_mortar);
+    DoFRenumbering::component_wise(dof_handler_mortar);
+
+    std::vector<types::global_dof_index> dofs_per_component_mortar =
+            DoFTools::count_dofs_per_fe_component (dof_handler_mortar);
+    unsigned int n_s_mortar=0, n_u_mortar=0, n_g_mortar=0, n_z_mortar = 0, n_p_mortar = 0;
+    for (unsigned int i=0; i<dim; ++i)
+    {
+      // n_s_mortar += dofs_per_component_mortar[i];
+      n_u_mortar += dofs_per_component_mortar[dim + i];
+
+      // Rotation is scalar in 2d and vector in 3d, so this:
+      if (dim == 2)
+          n_g_mortar = dofs_per_component_mortar[2*dim];
+      else if (dim == 3)
+          n_g_mortar += dofs_per_component_mortar[2*dim + i];
+    }
+    n_s_mortar += dofs_per_component_mortar[0];
+    n_z_mortar = dofs_per_component_mortar[2*dim + 0.5*dim*(dim-1)];
+    n_p_mortar = dofs_per_component_mortar[2*dim +0.5*dim*(dim-1) + dim];
+
+    n_stress_mortar = n_s_mortar;
+    n_disp_mortar = n_u_mortar;
+    n_rot_mortar = n_g_mortar;
+    n_flux_mortar = n_z_mortar;
+    n_pressure_mortar = n_p_mortar;
+    // n_Elast= n_s+n_u+n_g;
+
+    pcout << "Biot mortar part:\n N stress mortar dofs: " << n_s_mortar
+          << "\n N displacement mortar dofs: " << n_u_mortar
+          << "\n N rotation mortar dofs: " << n_g_mortar
+          << "\n N flux mortar dofs: " << n_z_mortar
+          << "\n N pressure mortar dofs: " << n_p_mortar << std::endl;
+			
   }
 
   // MixedBiotProblemDD - initialize the interface data structure for coupled monolithic sheme
@@ -281,9 +307,9 @@ namespace mfe_biot
 
     unsigned int side = 0;
 
-    local_face_dof_indices.resize(fe.dofs_per_face);
+    local_face_dof_indices.resize(fe_mortar.dofs_per_face);
 
-    for (const auto &cell : dof_handler.active_cell_iterators())
+    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
       for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
         if (cell->at_boundary(face_n) &&
               (cell->face(face_n)->boundary_id() != 0 && 
@@ -294,11 +320,11 @@ namespace mfe_biot
           // if (neighbor_type[side] == subdomain_type) // Stokes-Stokes interface -> don't have to do this for Biot subdomains
           for (auto el : local_face_dof_indices)
           {
-            if (el < n_stress){
+            if (el < n_stress_mortar){
               interface_dofs[side].push_back(el);
               interface_dofs_total.push_back(el);                                                    
             }
-            else if(el >= n_stress+n_disp+n_rot && el < n_stress+n_disp+n_rot+n_flux)
+            else if(el >= n_stress_mortar+n_disp_mortar+n_rot_mortar && el < n_stress_mortar+n_disp_mortar+n_rot_mortar+n_flux_mortar)
             {
               interface_dofs[side].push_back(el);
               interface_dofs_total.push_back(el);        
@@ -800,7 +826,7 @@ namespace mfe_biot
       {
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
-            if (interface_dofs[side][i] < n_stress) //monolithic-Elascitiy part (coupled)
+            if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
               interface_data_send[side][i] = get_normal_direction<dim>(side) *
                                               solution_star[interface_dofs[side][i]];
             else //monolithic-darcy part (coupled)
@@ -869,7 +895,7 @@ namespace mfe_biot
 
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         {
-          if (interface_dofs[side][i] < n_stress) //monolithic-Elascitiy part (coupled)
+          if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
           {
             r_b[side][i] = - get_normal_direction<dim>(side) * 
                             solution_bar[interface_dofs[side][i]];
@@ -2043,22 +2069,22 @@ namespace mfe_biot
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
 
-      if (mortar_flag)
-        GridGenerator::subdivided_hyper_rectangle(triangulation,
-                                                  reps[this_mpi],
-                                                  p1,
-                                                  p2);
-      else
-        GridGenerator::subdivided_hyper_rectangle(triangulation,
-                                                  reps[0],
-                                                  p1,
-                                                  p2);
-
       // if (mortar_flag)
-      //   GridGenerator::subdivided_hyper_rectangle(triangulation_mortar,
-      //                                             reps[n_processes],
+      //   GridGenerator::subdivided_hyper_rectangle(triangulation,
+      //                                             reps[this_mpi],
       //                                             p1,
       //                                             p2);
+      // else
+      GridGenerator::subdivided_hyper_rectangle(triangulation,
+                                                reps[0],
+                                                p1,
+                                                p2);
+
+      // if (mortar_flag)
+        GridGenerator::subdivided_hyper_rectangle(triangulation_mortar,
+                                                  reps[n_processes],
+                                                  p1,
+                                                  p2);
       for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
       {
         if (neighbor_type[side] == 1)
@@ -2075,6 +2101,7 @@ namespace mfe_biot
     }
     else {
       triangulation.refine_global();
+      triangulation_mortar.refine_global();
     }
 
     // for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
