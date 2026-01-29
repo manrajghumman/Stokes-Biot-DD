@@ -32,6 +32,7 @@ namespace mfe_biot
   template<int dim>
   class MixedBiotProblem
   {
+    using FEFunction = Functions::FEFieldFunction<dim, BlockVector<double>>;
     public:
     MixedBiotProblem(ParameterHandler &prm,
                       unsigned int &degree,
@@ -99,7 +100,8 @@ namespace mfe_biot
     void solve_star();
 
     void 
-    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
+    assemble_rhs_star(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                      FEFaceValues<dim> &fe_face_values);
 
     double
     vect_norm(std::vector<double> v);
@@ -120,7 +122,8 @@ namespace mfe_biot
                const unsigned int                     &k);
 
     void
-    compute_residual(FEFaceValues<dim>                &fe_face_values,
+    compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                    FEFaceValues<dim>                &fe_face_values,
                     std::vector<std::vector<double>> &interface_data,
                     std::vector<std::vector<double>>  &r,
                     double                            &r_norm,
@@ -128,14 +131,16 @@ namespace mfe_biot
                     double                            &b_norm);
 
     void 
-    interface_operator(std::vector<std::vector<double>> &interface_data,
+    interface_operator(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                       std::vector<std::vector<double>> &interface_data,
                        std::vector<std::vector<double>> &interface_data_send,
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
                        std::vector<std::vector<double>> &Ap);
 
     void
-    arnoldi(unsigned int                      &k_counter, 
+    arnoldi(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+            unsigned int                      &k_counter, 
             std::vector<std::vector<double>> &interface_data,
             std::vector<std::vector<double>> &interface_data_send,
             std::vector<std::vector<double>> &interface_data_receive,
@@ -265,7 +270,8 @@ namespace mfe_biot
     std::vector<std::vector<double>> Alambda_guess;
 
     // Mortar data structures
-    BlockVector<double> interface_fe_function_mortar;
+    // BlockVector<double> interface_fe_function_mortar;
+    BlockVector<double> mortar_vec;
     std::vector<BlockVector<double>> solution_bar_mortar;
     std::vector<BlockVector<double>> solution_star_mortar;
     std::vector <BlockVector<double>> multiscale_basis;

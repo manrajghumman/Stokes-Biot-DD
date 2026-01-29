@@ -703,23 +703,9 @@ namespace mfe_stokes
         if (cell->at_boundary(face_n) &&
           (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
           {
+            fe_face_values.reinit(cell, face_n);
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem ... only works for 2D
-            // Assert(dim == 2,
-            //         ExcMessage("This function is only implemented for dim = 2."));
-            fe_face_values.reinit(cell, face_n);
-            // if (face_n == 0)
-            //   side = 3;
-            // else if (face_n == 1)
-            //   side = 1;
-            // else if (face_n == 2)
-            //   side = 0;
-            // else if (face_n == 3)
-            //   side = 2;
-            // else if (face_n == 4)
-            //   side = 4; // only for 3D
-            // else if (face_n == 5)
-            //   side = 5; // only for 3D
             side = cell->face(face_n)->boundary_id() - 1;
             // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side, face_n = " << this_mpi << ", " << side << ", " << face_n << std::endl;
             // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side = " << this_mpi << ", " << side << std::endl;

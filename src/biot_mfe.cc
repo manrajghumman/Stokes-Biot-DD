@@ -94,7 +94,7 @@ namespace mfe_biot
           FE_BDM<dim>(degree), 1,                  // flux
           FE_DGQ<dim>(degree-1), 1),               // pressure
       dof_handler (triangulation),
-      fe_mortar (FE_BDM<dim>(mortar_degree), 1,    // displacement lagrange multiplier on mortar
+      fe_mortar (FE_BDM<dim>(mortar_degree), dim,    // displacement lagrange multiplier on mortar
                  FE_Nothing<dim>(), dim,
                  FE_Nothing<dim>(), 0.5*dim*(dim-1), 
                  FE_BDM<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
@@ -264,20 +264,34 @@ namespace mfe_biot
     std::vector<types::global_dof_index> dofs_per_component_mortar =
             DoFTools::count_dofs_per_fe_component (dof_handler_mortar);
     unsigned int n_s_mortar=0, n_u_mortar=0, n_g_mortar=0, n_z_mortar = 0, n_p_mortar = 0;
+    // for (unsigned int i=0; i<dim; ++i)
+    // {
+    //   // n_s_mortar += dofs_per_component_mortar[i];
+    //   n_u_mortar += dofs_per_component_mortar[dim + i];
+
+    //   // Rotation is scalar in 2d and vector in 3d, so this:
+    //   if (dim == 2)
+    //       n_g_mortar = dofs_per_component_mortar[2*dim];
+    //   else if (dim == 3)
+    //       n_g_mortar += dofs_per_component_mortar[2*dim + i];
+    // }
+    // n_s_mortar += dofs_per_component_mortar[0];
+    // n_z_mortar = dofs_per_component_mortar[2*dim + 0.5*dim*(dim-1)];
+    // n_p_mortar = dofs_per_component_mortar[2*dim +0.5*dim*(dim-1) + dim];
+
     for (unsigned int i=0; i<dim; ++i)
     {
-      // n_s_mortar += dofs_per_component_mortar[i];
-      n_u_mortar += dofs_per_component_mortar[dim + i];
+      n_s_mortar += dofs_per_component_mortar[i*dim];
+      n_u_mortar += dofs_per_component_mortar[dim*dim + i];
 
       // Rotation is scalar in 2d and vector in 3d, so this:
       if (dim == 2)
-          n_g_mortar = dofs_per_component_mortar[2*dim];
+          n_g_mortar = dofs_per_component_mortar[dim*dim + dim];
       else if (dim == 3)
-          n_g_mortar += dofs_per_component_mortar[2*dim + i];
+          n_g_mortar += dofs_per_component_mortar[dim*dim + dim + i];
     }
-    n_s_mortar += dofs_per_component_mortar[0];
-    n_z_mortar = dofs_per_component_mortar[2*dim + 0.5*dim*(dim-1)];
-    n_p_mortar = dofs_per_component_mortar[2*dim +0.5*dim*(dim-1) + dim];
+    n_z_mortar = dofs_per_component_mortar[dim*dim + dim + 0.5*dim*(dim-1)];
+    n_p_mortar = dofs_per_component_mortar[dim*dim + dim +0.5*dim*(dim-1) + dim];
 
     n_stress_mortar = n_s_mortar;
     n_disp_mortar = n_u_mortar;
@@ -291,7 +305,14 @@ namespace mfe_biot
           << "\n N rotation mortar dofs: " << n_g_mortar
           << "\n N flux mortar dofs: " << n_z_mortar
           << "\n N pressure mortar dofs: " << n_p_mortar << std::endl;
-			
+
+    mortar_vec.reinit(5);
+    mortar_vec.block(0).reinit (n_s_mortar);
+    mortar_vec.block(1).reinit (n_u_mortar);
+    mortar_vec.block(2).reinit (n_g_mortar);
+    mortar_vec.block(3).reinit (n_z_mortar);
+    mortar_vec.block(4).reinit (n_p_mortar);
+    mortar_vec.collect_sizes ();
   }
 
   // MixedBiotProblemDD - initialize the interface data structure for coupled monolithic sheme
@@ -344,6 +365,15 @@ namespace mfe_biot
                                      mpi_communicator, 
                                      this_mpi, 
                                      interface_dofs_size);
+    if (this_mpi == 0)
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          pcout << "\ninterface_dofs[" << side << "] = ";
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            pcout << interface_dofs[side][i] << " ";
+        }
+      pcout << std::endl;
   }
 
   // MixedBiotProblem - assemble_system
@@ -594,7 +624,8 @@ namespace mfe_biot
 
   // MixedBiotProblem - assemble RHS of star problems
   template <int dim>
-  void MixedBiotProblem<dim>::assemble_rhs_star (FEFaceValues<dim> &fe_face_values)
+  void MixedBiotProblem<dim>::assemble_rhs_star (std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                                 FEFaceValues<dim> &fe_face_values)
   {
     // TimerOutput::Scope t(computing_timer, "Assemble RHS star");
     system_rhs_star = 0;
@@ -615,64 +646,76 @@ namespace mfe_biot
 
     const FEValuesExtractors::Vector velocity (dim*dim + dim + 0.5*dim*(dim-1));
 
-    std::vector<std::vector<Tensor<1, dim>>> interface_values(dim, std::vector<Tensor<1, dim>> (n_face_q_points));
-    std::vector<Tensor<1, dim>> interface_values_flux(n_face_q_points);
+    // std::vector<std::vector<Tensor<1, dim>>> interface_values(dim, std::vector<Tensor<1, dim>> (n_face_q_points));
+    // std::vector<Tensor<1, dim>> interface_values_flux(n_face_q_points);
+    std::vector<std::vector<double>> interface_values_flux(dim, std::vector<double> (n_face_q_points));
+    std::vector<std::vector<std::vector<double>>> interface_values_stress(dim, 
+                                                    std::vector<std::vector<double>>(
+                                                    dim, std::vector<double>(n_face_q_points)));
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+
+    std::vector<double> phi_v_dot_n(dofs_per_cell);
+    double theta_p;
 
     int side;
     for (const auto &cell : dof_handler.active_cell_iterators())
     {
       local_rhs = 0;
-
-      // Tensor<2,dim> sigma;
-      // Tensor<2,dim> interface_lambda;
-      // Tensor<1,dim> sigma_n;
       for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
         if (cell->at_boundary(face_n) && 
           (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7))
           {
             fe_face_values.reinit (cell, face_n);
-            //Need to reorder faces deal.ii iterators 
-            //use a different ordering from freefem ... only works for 2D
-            Assert(dim == 2,
-                    ExcMessage("This function is only implemented for dim = 2."));
-            fe_face_values.reinit(cell, face_n);
-            // if (face_n == 0)
-            //   side = 3;
-            // else if (face_n == 1)
-            //   side = 1;
-            // else if (face_n == 2)
-            //   side = 0;
-            // else 
-            //   side = 2;
             side = cell->face(face_n)->boundary_id() - 1;
             // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side, face_n = " << this_mpi << ", " << side << ", " << face_n << std::endl;
             // std::cout << "\ninterface_values = " << interface_values.size() << std::endl;
 
-            for (unsigned int d_i=0; d_i<dim; ++d_i)
-              fe_face_values[stresses[d_i]].get_function_values (interface_fe_function[side], interface_values[d_i]);
+            // for (unsigned int d_i=0; d_i<dim; ++d_i)
+            //   fe_face_values[stresses[d_i]].get_function_values (interface_fe_function[side], interface_values[d_i]);
 
-            fe_face_values[velocity].get_function_values (interface_fe_function[side], interface_values_flux);
+            // fe_face_values[velocity].get_function_values (interface_fe_function[side], interface_values_flux);
+
+            for (unsigned int s = 0; s < dim; ++s)
+              interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
+                                                   interface_values_flux[s], dim*dim + dim + 0.5*dim*(dim-1)+s);
+
+            for (unsigned int s = 0 ; s < dim*dim; ++s)
+              interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
+                                             interface_values_stress[s/dim][s%dim], s);
 
             for (unsigned int q=0; q<n_face_q_points; ++q)
+            {
+              // for (unsigned int k = 0; k < dofs_per_cell; ++k)
+              // {
+              //   phi_v_dot_n[k] = fe_face_values[velocity].value (k, q) 
+              //                    * fe_face_values.normal_vector(q)
+              //                    * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1); 
+              // }
+              // for (unsigned int s = 0; s < dim; ++s)
+              //   for (unsigned int l = 0; l < dim; ++l)
+              //     theta_p = interface_values_stress[s][l][q] * fe_face_values.normal_vector(q)[l];
               for (unsigned int i=0; i<dofs_per_cell; ++i)
               {
-                local_rhs(i) += -(fe_face_values[velocity].value (i, q) *
-                                  fe_face_values.normal_vector(q) *  // - <v.n, lambda_p>
-                                  interface_values_flux[q] * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1) *
-                                  fe_face_values.normal_vector(q) *
-                                  fe_face_values.JxW(q));
+                for (unsigned int s=0; s<dim; ++s)
+                {
+                  theta_p = 0.0;
+                  for (unsigned int l=0; l<dim; ++l)
+                    theta_p += interface_values_stress[s][l][q] * fe_face_values.normal_vector(q)[l];
 
-                // for (unsigned int d_i=0; d_i<dim; ++d_i)
-                //   sigma[d_i] = fe_face_values[stresses[d_i]].value (i, q);
-
-                for (unsigned int d_i=0; d_i<dim; ++d_i)
-                  local_rhs(i) += fe_face_values[stresses[d_i]].value (i, q) *
-                                  fe_face_values.normal_vector(q) *  // <tau.n, theta_p>
-                                  interface_values[d_i][q] * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1) *
-                                  fe_face_values.normal_vector(q) *
-                                  fe_face_values.JxW(q);
+                  local_rhs(i) += fe_face_values[stresses[s]].value (i, q)
+                                  * fe_face_values.normal_vector(q)  // <tau.n, theta_p>
+                                  * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1)
+                                  * theta_p
+                                  * fe_face_values.JxW(q);
+                  // lambda_p = interface_values_flux[s][q] * fe_face_values.normal_vector(q)[s];
+                  local_rhs(i) += fe_face_values[velocity].value (i, q) 
+                                 * fe_face_values.normal_vector(q)
+                                 * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1)
+                                 * interface_values_flux[s][q] * fe_face_values.normal_vector(q)[s] 
+                                 * fe_face_values.JxW(q); // <v.n, lambda_p>                                 
+                }
               }
+            }
           }
 
       cell->get_dof_indices (local_dof_indices);
@@ -804,35 +847,43 @@ namespace mfe_biot
   */
   template <int dim>
   void
-  MixedBiotProblem<dim>::interface_operator(std::vector<std::vector<double>>   &interface_data,
-                                              std::vector<std::vector<double>> &interface_data_send,
-                                              std::vector<std::vector<double>> &interface_data_receive,
-                                              FEFaceValues<dim>                &fe_face_values,
-                                              std::vector<std::vector<double>> &Ap)
+  MixedBiotProblem<dim>::interface_operator(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                            std::vector<std::vector<double>>   &interface_data,
+                                            std::vector<std::vector<double>> &interface_data_send,
+                                            std::vector<std::vector<double>> &interface_data_receive,
+                                            FEFaceValues<dim>                &fe_face_values,
+                                            std::vector<std::vector<double>> &Ap)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
 
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-        interface_fe_function[side][interface_dofs[side][i]] = 
-          interface_data[side][i];
+      {
+        if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)  
+          interface_fe_function[side][interface_dofs[side][i]] = 
+              interface_data[side][i];
+        else //monolithic-darcy part (coupled)
+          interface_fe_function[side][interface_dofs[side][i]+n_disp+n_rot] =
+            interface_data[side][i];
+      }
 
     // interface_fe_function.block(1) = 0;
-    assemble_rhs_star(fe_face_values);
+    assemble_rhs_star(interface_function,
+                      fe_face_values);
     solve_star();
     
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
       {
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          {
-            if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
-              interface_data_send[side][i] = get_normal_direction<dim>(side) *
-                                              solution_star[interface_dofs[side][i]];
-            else //monolithic-darcy part (coupled)
-              interface_data_send[side][i] = - get_normal_direction<dim>(side) *
-                                                solution_star[interface_dofs[side][i]];
-          }                                  
+        {
+          if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+            interface_data_send[side][i] = get_normal_direction<dim>(side) *
+                                            solution_star[interface_dofs[side][i]];
+          else //monolithic-darcy part (coupled)
+            interface_data_send[side][i] = - get_normal_direction<dim>(side) *
+                                              solution_star[interface_dofs[side][i]+n_disp+n_rot];
+        }                                  
 
         MPI_Sendrecv(interface_data_send[side].data(),
                       interface_dofs[side].size(),
@@ -861,7 +912,8 @@ namespace mfe_biot
   // computing the residual over all sides
   template <int dim>
   void
-  MixedBiotProblem<dim>::compute_residual(FEFaceValues<dim>                &fe_face_values,
+  MixedBiotProblem<dim>::compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                          FEFaceValues<dim>                &fe_face_values,
                                           std::vector<std::vector<double>> &interface_data,
                                           std::vector<std::vector<double>> &r,
                                           double                           &r_norm,
@@ -876,10 +928,18 @@ namespace mfe_biot
     //compute Ax from x = initial_val
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-        interface_fe_function[side][interface_dofs[side][i]] = 
-          interface_data[side][i];
+      {
+        if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)  
+          interface_fe_function[side][interface_dofs[side][i]] = 
+              interface_data[side][i];
+        else //monolithic-darcy part (coupled)
+          interface_fe_function[side][interface_dofs[side][i]+n_disp+n_rot] =
+            interface_data[side][i];
+      }
+          
     // interface_fe_function.block(1) = 0;
-    assemble_rhs_star(fe_face_values);
+    assemble_rhs_star(interface_function,
+                      fe_face_values);
     solve_star();
 
     //for computing rhs b for
@@ -907,10 +967,10 @@ namespace mfe_biot
           else //monolithic-darcy part (coupled)
           {
             r_b[side][i] = get_normal_direction<dim>(side) * 
-                          solution_bar[interface_dofs[side][i]];
+                          solution_bar[interface_dofs[side][i]+n_disp+n_rot];
             r[side][i] = get_normal_direction<dim>(side) * 
-                          solution_bar[interface_dofs[side][i]]
-                        + get_normal_direction<dim>(side) * solution_star[interface_dofs[side][i]];
+                          solution_bar[interface_dofs[side][i]+n_disp+n_rot]
+                        + get_normal_direction<dim>(side) * solution_star[interface_dofs[side][i]+n_disp+n_rot];
           }                
         }
 
@@ -982,7 +1042,8 @@ namespace mfe_biot
   // Arnoldi algorithm
   template <int dim>
   void
-  MixedBiotProblem<dim>::arnoldi(unsigned int                      &k_counter, 
+  MixedBiotProblem<dim>::arnoldi(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                  unsigned int                      &k_counter, 
                                   std::vector<std::vector<double>> &interface_data,
                                   std::vector<std::vector<double>> &interface_data_send,
                                   std::vector<std::vector<double>> &interface_data_receive,
@@ -999,7 +1060,8 @@ namespace mfe_biot
         interface_data[side]=Q_side[side][k_counter];
     
     //////------solving the  star problem to find AQ(k)---------------------
-    interface_operator(interface_data,
+    interface_operator(interface_function,
+                        interface_data,
                         interface_data_send,
                         interface_data_receive,
                         fe_face_values,
@@ -1084,6 +1146,8 @@ namespace mfe_biot
     std::vector<std::vector<double>> interface_data(n_faces_per_cell);
     double initial_val = 1.0; //initial guess for gmres
     interface_fe_function.resize(n_faces_per_cell);
+    solution_bar_mortar.resize(n_faces_per_cell);
+    solution_star_mortar.resize(n_faces_per_cell);
 
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
@@ -1114,6 +1178,9 @@ namespace mfe_biot
         interface_data[side].resize(interface_dofs[side].size(), initial_val);
         interface_fe_function[side].reinit(solution_bar);
 
+        solution_bar_mortar[side].reinit(mortar_vec);
+        solution_star_mortar[side].reinit(mortar_vec);
+
         Ap[side].resize(interface_dofs[side].size(), 0);
         lambda[side].resize(interface_dofs[side].size(), initial_val);
 
@@ -1121,6 +1188,17 @@ namespace mfe_biot
         r[side].resize(interface_dofs[side].size(), 0);
         r_b[side].resize(interface_dofs[side].size(), 0);
       }
+
+    std::vector<std::unique_ptr<FEFunction>> interface_function;
+    std::unique_ptr<FEFunction> solution_bar_function;
+    std::unique_ptr<FEFunction> solution_star_function;
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    {
+      interface_function.emplace_back(
+        std::make_unique<FEFunction>(dof_handler, interface_fe_function[side]));
+    }
+    solution_bar_function = std::make_unique<FEFunction>(dof_handler, solution_bar);
+    solution_star_function = std::make_unique<FEFunction>(dof_handler, solution_star);
 
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
@@ -1139,7 +1217,8 @@ namespace mfe_biot
     double r_norm =0;
     double b_norm =0;
     //computing the residual r=b-Ax
-    compute_residual(fe_face_values,
+    compute_residual(interface_function,
+                     fe_face_values,
                      interface_data,
                      r,
                      r_norm,
@@ -1168,7 +1247,8 @@ namespace mfe_biot
     {
       gmres_iteration++;
       //Performing the Arnoldi algorithm
-      arnoldi(k_counter,
+      arnoldi(interface_function,
+              k_counter,
               interface_data,
               interface_data_send,
               interface_data_receive,
@@ -1247,9 +1327,17 @@ namespace mfe_biot
     interface_data = lambda;
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-        interface_fe_function[side][interface_dofs[side][i]] = interface_data[side][i];
+      {
+        if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)  
+          interface_fe_function[side][interface_dofs[side][i]] = 
+              interface_data[side][i];
+        else //monolithic-darcy part (coupled)
+          interface_fe_function[side][interface_dofs[side][i]+n_disp+n_rot] =
+            interface_data[side][i];
+      }
 
-    assemble_rhs_star(fe_face_values);
+    assemble_rhs_star(interface_function,
+                      fe_face_values);
     solve_star();
     solution.reinit(solution_bar);
     solution = solution_bar;
