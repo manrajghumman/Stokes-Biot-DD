@@ -116,14 +116,22 @@ namespace mfe_biot
     							        unsigned int k_iteration);
 
    void
-	  back_solve(const std::vector<std::vector<double>> &H, 
-               const std::vector<double>              &beta, 
-               std::vector<double>                    &y,
-               const unsigned int                     &k);
+	 back_solve(const std::vector<std::vector<double>> &H, 
+              const std::vector<double>              &beta, 
+              std::vector<double>                    &y,
+              const unsigned int                     &k);
 
     void
-    compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+    interface_inner_product(std::unique_ptr<FEFunction> &solution_bar_function,
+                            std::unique_ptr<FEFunction> &solution_star_function,
+                            FEFaceValues<dim> &fe_face_values_mortar);
+
+    void
+    compute_residual(std::unique_ptr<FEFunction> &solution_bar_function,
+                    std::unique_ptr<FEFunction> &solution_star_function,
+                    std::vector<std::unique_ptr<FEFunction>> &interface_function,
                     FEFaceValues<dim>                &fe_face_values,
+                    FEFaceValues<dim>                &fe_face_values_mortar,
                     std::vector<std::vector<double>> &interface_data,
                     std::vector<std::vector<double>>  &r,
                     double                            &r_norm,
@@ -131,20 +139,26 @@ namespace mfe_biot
                     double                            &b_norm);
 
     void 
-    interface_operator(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+    interface_operator(std::unique_ptr<FEFunction> &solution_bar_function,
+                       std::unique_ptr<FEFunction> &solution_star_function,
+                       std::vector<std::unique_ptr<FEFunction>> &interface_function,
                        std::vector<std::vector<double>> &interface_data,
                        std::vector<std::vector<double>> &interface_data_send,
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
+                       FEFaceValues<dim>                &fe_face_values_mortar,
                        std::vector<std::vector<double>> &Ap);
 
     void
-    arnoldi(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+    arnoldi(std::unique_ptr<FEFunction> &solution_bar_function,
+            std::unique_ptr<FEFunction> &solution_star_function,
+            std::vector<std::unique_ptr<FEFunction>> &interface_function,
             unsigned int                      &k_counter, 
             std::vector<std::vector<double>> &interface_data,
             std::vector<std::vector<double>> &interface_data_send,
             std::vector<std::vector<double>> &interface_data_receive,
             FEFaceValues<dim>                &fe_face_values,
+            FEFaceValues<dim>                &fe_face_values_mortar,
             std::vector<std::vector<double>> &Ap,
             std::vector<std::vector<double>> &q,
             std::vector<std::vector<std::vector<double>>>	&Q_side,

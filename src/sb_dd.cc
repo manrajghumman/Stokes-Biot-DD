@@ -303,7 +303,8 @@ namespace dd_stokes_biot
       {
         if (subdomain_type == 1)
         {
-          stokes->local_gmres(cycle);
+          // stokes->local_gmres(cycle);
+          stokes->local_cg();
           stokes->output_results(cycle);
           stokes->output_dof_results(cycle);
           stokes->compute_errors(cycle);

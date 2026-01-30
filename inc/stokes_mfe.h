@@ -88,6 +88,9 @@ namespace mfe_stokes
     print_total_convg_table_h1();
 
     void
+    local_cg();
+
+    void
     local_gmres(unsigned int &cycle);
 
 

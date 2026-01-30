@@ -1483,7 +1483,7 @@ namespace mfe_stokes
             lambda[side][i] += Q_side[side][j][i]*y[j];
 
 
-    //we can replace lambda here and just add interface_data(skip one step below)
+    //we can replace interface_data here and just add lambda(skip one step below)
     interface_data = lambda;
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
@@ -1496,6 +1496,248 @@ namespace mfe_stokes
     solution = solution_bar;
     solution.sadd(1.0, solution_star);
     pcout<<"finished local_gmres"<<"\n";
+  }
+
+  template <int dim>
+  void
+  MixedStokesProblem<dim>::local_cg()
+  {
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+    std::vector<std::vector<double>> interface_data_receive(n_faces_per_cell);
+    std::vector<std::vector<double>> interface_data_send(n_faces_per_cell);
+    std::vector<std::vector<double>> interface_data(n_faces_per_cell);
+    interface_fe_function.resize(n_faces_per_cell);
+    solution_bar_mortar.resize(n_faces_per_cell);
+    solution_star_mortar.resize(n_faces_per_cell);
+    double initial_val = 0.0; //initial guess for gmres
+    std::vector<std::vector<double>> lambda(n_faces_per_cell);
+
+    // Extra for projections from mortar to fine grid and RHS assembly
+    Quadrature<dim - 1> quad;
+    quad = QGauss<dim - 1>(qdegree);
+
+    FEFaceValues<dim> fe_face_values(fe,
+                                    quad,
+                                    update_values | update_normal_vectors |
+                                      update_quadrature_points |
+                                      update_JxW_values);
+
+    FEFaceValues<dim> fe_face_values_mortar(fe_mortar,
+                                          quad,
+                                          update_values | update_normal_vectors |
+                                            update_quadrature_points |
+                                            update_JxW_values);                                  
+
+    // CG structures and parameters
+    std::vector<double> alpha_side(n_faces_per_cell, 0),
+    alpha_side_d(n_faces_per_cell, 0), beta_side(n_faces_per_cell, 0),
+    beta_side_d(n_faces_per_cell, 0);
+    std::vector<double> alpha(2, 0), beta(2, 0);                                  
+
+    std::vector<std::vector<double>> r(n_faces_per_cell); //to be deleted probably: p?
+    std::vector<std::vector<double>> r_b(n_faces_per_cell); //RHS
+    std::vector<std::vector<double>> p(n_faces_per_cell); //search direction
+    std::vector<std::vector<double>> Ap(n_faces_per_cell); // A*p matrix vector product       
+    
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        interface_data_receive[side].resize(interface_dofs[side].size(),
+                                            0);
+        interface_data_send[side].resize(interface_dofs[side].size(), 0);
+        interface_data[side].resize(interface_dofs[side].size(), initial_val);
+        interface_fe_function[side].reinit(mortar_vec);
+
+        solution_bar_mortar[side].reinit(mortar_vec);
+        solution_star_mortar[side].reinit(mortar_vec);
+
+        Ap[side].resize(interface_dofs[side].size(), 0);
+        lambda[side].resize(interface_dofs[side].size(), initial_val);
+
+        r[side].resize(interface_dofs[side].size(), 0);
+        r_b[side].resize(interface_dofs[side].size(), 0);
+      }
+
+    std::vector<std::unique_ptr<FEFunction>> interface_function;
+    std::unique_ptr<FEFunction> solution_bar_function;
+    std::unique_ptr<FEFunction> solution_star_function;
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    {
+      interface_function.emplace_back(
+        std::make_unique<FEFunction>(dof_handler_mortar, interface_fe_function[side]));
+    }
+    solution_bar_function = std::make_unique<FEFunction>(dof_handler, solution_bar);
+    solution_star_function = std::make_unique<FEFunction>(dof_handler, solution_star);
+    //Calculating r-norm(same as b-norm)-----
+    double r_norm =0;
+    double b_norm =0;
+    //computing the residual r=b-Ax
+    compute_residual(interface_function,
+                     solution_bar_function,
+                     solution_star_function,
+                     fe_face_values,
+                     fe_face_values_mortar,
+                     interface_data,
+                     r,
+                     r_norm,
+                     r_b,
+                     b_norm);
+    //end -----------of calculating r-norm and b_norm------------------
+
+    p = r;
+
+    double normB    = 0;
+    double normRold = 0;
+
+    unsigned int iteration_counter = 0;
+    gmres_iteration = 0;
+    while (iteration_counter < maxiter)
+    {
+      iteration_counter++;
+      interface_data = p;
+
+      // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      //   for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+      //     interface_fe_function[side][interface_dofs[side][i]] = 
+      //       interface_data[side][i];
+
+      gmres_iteration++;
+
+      // computing Ap = A*p
+      interface_operator(interface_function,
+                          solution_bar_function,
+                          solution_star_function,
+                          interface_data,
+                          interface_data_send,
+                          interface_data_receive,
+                          fe_face_values,
+                          fe_face_values_mortar,
+                          Ap);
+
+      // CG algorithm steps to compute alpha, beta, update r, p, lambda
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+          {
+            alpha_side[side]   = 0;
+            alpha_side_d[side] = 0;
+            beta_side[side]    = 0;
+            beta_side_d[side]  = 0;
+
+            // From Ap and with it compute alpha
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            { 
+              alpha_side[side] += r[side][i] * r[side][i];
+              alpha_side_d[side] += p[side][i] * Ap[side][i];
+            }
+          }
+
+      // Fancy some lambdas, huh?
+      std::for_each(alpha_side.begin(), alpha_side.end(), [&](double n) {
+        alpha[0] += n;
+      });
+      std::for_each(alpha_side_d.begin(), alpha_side_d.end(), [&](double n) {
+        alpha[1] += n;
+      });
+      std::vector<double> alpha_buffer(2, 0);
+
+      MPI_Allreduce(&alpha[0], //sending this data
+                    &alpha_buffer[0], //receiving the result here
+                    2, //number of elements in alpha and alpha_buffer = 1+1
+                    MPI_DOUBLE, //type of each element
+                    MPI_SUM, //adding all elements received
+                    mpi_communicator);
+
+
+      alpha = alpha_buffer;
+
+      if (gmres_iteration == 1)
+        normB = alpha[0];
+
+      normRold = alpha[0];
+
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            {
+              lambda[side][i] += (alpha[0] * p[side][i]) / alpha[1];
+              r[side][i] -= (alpha[0] * Ap[side][i]) / alpha[1];
+            }
+
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            beta_side[side] += r[side][i] * r[side][i];
+        }
+
+      pcout << "\r  ..." << gmres_iteration
+            << " iterations completed, (residual = " << fabs(alpha[0] / normB)
+            << ")..." << std::flush;
+      residual = fabs(alpha[0] / normB);
+      
+      // residual_vector.push_back(residual);
+      // Exit criterion
+      if (fabs(alpha[0]) / normB < tol)
+        {
+          residual = fabs(alpha[0] / normB);
+          pcout << "\n  CG converges in " << gmres_iteration << " iterations!\n";
+          break;
+        }
+      
+      if (std::isnan(fabs(alpha[0]) / normB))
+      {
+        residual = fabs(alpha[0] / normB);
+        pcout << "\n  residual is not a number! at " << gmres_iteration << " iteration\n";
+        break;
+      }
+      
+      if ((fabs(alpha[0]) / normB >= tol) && gmres_iteration == maxiter)
+      {
+        residual = fabs(alpha[0] / normB);
+        pcout << "\n  CG exceeds maxiter = " << gmres_iteration << " iterations!\n";
+        break;
+      }
+
+      if(iteration_counter == interface_dofs_size)
+      {
+        pcout << "\n  CG doesn't converge after  " << interface_dofs_size << " iterations!\n";
+        break;
+      }
+
+      std::for_each(beta_side.begin(), beta_side.end(), [&](double n) {
+        beta[0] += n;
+      });
+      double beta_buffer = 0;
+
+      MPI_Allreduce(
+        &beta[0], &beta_buffer, 1, MPI_DOUBLE, MPI_SUM, mpi_communicator);
+
+      beta[0] = beta_buffer;
+      beta[1] = normRold;
+
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        if (neighbors[side] >= 0)
+          for (unsigned int i = 0; i < interface_data[side].size(); ++i)
+            p[side][i] = r[side][i] + (beta[0] / beta[1]) * p[side][i];
+
+        interface_data_receive[side].resize(interface_dofs[side].size(), 0);
+        interface_data_send[side].resize(interface_dofs[side].size(), 0);
+
+        Ap.resize(n_faces_per_cell);
+      }
+    }
+
+    //we can replace interface_data here and just add lambda(skip one step below)
+    interface_data = lambda;
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        interface_fe_function[side][interface_dofs[side][i]] = interface_data[side][i];
+
+    assemble_rhs_star(interface_function,
+                      fe_face_values);
+    solve_star();
+    solution.reinit(solution_bar);
+    solution = solution_bar; // u = u_bar
+    solution.sadd(1.0, solution_star); // u = 1*u+u_star
   }
 
   template <int dim>

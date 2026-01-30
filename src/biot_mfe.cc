@@ -630,6 +630,7 @@ namespace mfe_biot
     // TimerOutput::Scope t(computing_timer, "Assemble RHS star");
     system_rhs_star = 0;
 
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     const unsigned int n_face_q_points = fe_face_values.get_quadrature().size();
     const unsigned int dofs_per_cell = fe.dofs_per_cell;
 
@@ -652,7 +653,8 @@ namespace mfe_biot
     std::vector<std::vector<std::vector<double>>> interface_values_stress(dim, 
                                                     std::vector<std::vector<double>>(
                                                     dim, std::vector<double>(n_face_q_points)));
-    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+    // std::vector<std::vector<Tensor<1, dim>>> interface_values_stress(dim, std::vector<Tensor<1,dim>> (n_face_q_points));
+    
 
     std::vector<double> phi_v_dot_n(dofs_per_cell);
     double theta_p;
@@ -682,6 +684,9 @@ namespace mfe_biot
             for (unsigned int s = 0 ; s < dim*dim; ++s)
               interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
                                              interface_values_stress[s/dim][s%dim], s);
+            // for (unsigned int s = 0; s < dim; ++s)
+            //   interface_function[side]->vector_value_list(fe_face_values.get_quadrature_points(),
+            //                                               interface_values_stress[s], s*dim);
 
             for (unsigned int q=0; q<n_face_q_points; ++q)
             {
@@ -847,30 +852,33 @@ namespace mfe_biot
   */
   template <int dim>
   void
-  MixedBiotProblem<dim>::interface_operator(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+  MixedBiotProblem<dim>::interface_operator(std::unique_ptr<FEFunction> &solution_bar_function,
+                                            std::unique_ptr<FEFunction> &solution_star_function,
+                                            std::vector<std::unique_ptr<FEFunction>> &interface_function,
                                             std::vector<std::vector<double>>   &interface_data,
                                             std::vector<std::vector<double>> &interface_data_send,
                                             std::vector<std::vector<double>> &interface_data_receive,
                                             FEFaceValues<dim>                &fe_face_values,
+                                            FEFaceValues<dim>                &fe_face_values_mortar,
                                             std::vector<std::vector<double>> &Ap)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
 
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-      {
-        if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)  
-          interface_fe_function[side][interface_dofs[side][i]] = 
-              interface_data[side][i];
-        else //monolithic-darcy part (coupled)
-          interface_fe_function[side][interface_dofs[side][i]+n_disp+n_rot] =
+        interface_fe_function[side][interface_dofs[side][i]] = 
             interface_data[side][i];
-      }
 
     // interface_fe_function.block(1) = 0;
     assemble_rhs_star(interface_function,
                       fe_face_values);
     solve_star();
+
+    //for computing the inner products
+    //in the mortar space
+    interface_inner_product(solution_bar_function,
+                            solution_star_function,
+                            fe_face_values_mortar);
     
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
@@ -878,11 +886,9 @@ namespace mfe_biot
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         {
           if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
-            interface_data_send[side][i] = get_normal_direction<dim>(side) *
-                                            solution_star[interface_dofs[side][i]];
+            interface_data_send[side][i] = solution_star_mortar[side][interface_dofs[side][i]];
           else //monolithic-darcy part (coupled)
-            interface_data_send[side][i] = - get_normal_direction<dim>(side) *
-                                              solution_star[interface_dofs[side][i]+n_disp+n_rot];
+            interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
         }                                  
 
         MPI_Sendrecv(interface_data_send[side].data(),
@@ -912,8 +918,11 @@ namespace mfe_biot
   // computing the residual over all sides
   template <int dim>
   void
-  MixedBiotProblem<dim>::compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+  MixedBiotProblem<dim>::compute_residual(std::unique_ptr<FEFunction> &solution_bar_function,
+                                          std::unique_ptr<FEFunction> &solution_star_function,
+                                          std::vector<std::unique_ptr<FEFunction>> &interface_function,
                                           FEFaceValues<dim>                &fe_face_values,
+                                          FEFaceValues<dim>                &fe_face_values_mortar,
                                           std::vector<std::vector<double>> &interface_data,
                                           std::vector<std::vector<double>> &r,
                                           double                           &r_norm,
@@ -928,14 +937,8 @@ namespace mfe_biot
     //compute Ax from x = initial_val
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-      {
-        if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)  
-          interface_fe_function[side][interface_dofs[side][i]] = 
-              interface_data[side][i];
-        else //monolithic-darcy part (coupled)
-          interface_fe_function[side][interface_dofs[side][i]+n_disp+n_rot] =
+        interface_fe_function[side][interface_dofs[side][i]] = 
             interface_data[side][i];
-      }
           
     // interface_fe_function.block(1) = 0;
     assemble_rhs_star(interface_function,
@@ -945,6 +948,12 @@ namespace mfe_biot
     //for computing rhs b for
     // Ax = b in interface problem below
     solve_bar();
+
+    //for computing the inner products
+    //in the mortar space
+    interface_inner_product(solution_bar_function,
+                            solution_star_function,
+                            fe_face_values_mortar);
     
     //compute residual r = b - A*x
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
@@ -957,20 +966,16 @@ namespace mfe_biot
         {
           if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
           {
-            r_b[side][i] = - get_normal_direction<dim>(side) * 
-                            solution_bar[interface_dofs[side][i]];
-            r[side][i] = - get_normal_direction<dim>(side) * 
-                            solution_bar[interface_dofs[side][i]]
-                         - get_normal_direction<dim>(side) * solution_star[interface_dofs[side][i]];     
+            r_b[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]];
+            r[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]]
+                         - solution_star_mortar[side][interface_dofs[side][i]];     
             // pcout << "Ax[side][i]: " << Ax[side][i] << " solution_bar: " << solution_bar[interface_dofs[side][i]] << std::endl;
           }
           else //monolithic-darcy part (coupled)
           {
-            r_b[side][i] = get_normal_direction<dim>(side) * 
-                          solution_bar[interface_dofs[side][i]+n_disp+n_rot];
-            r[side][i] = get_normal_direction<dim>(side) * 
-                          solution_bar[interface_dofs[side][i]+n_disp+n_rot]
-                        + get_normal_direction<dim>(side) * solution_star[interface_dofs[side][i]+n_disp+n_rot];
+            r_b[side][i] =solution_bar_mortar[side][interface_dofs[side][i]];
+            r[side][i] =  solution_bar_mortar[side][interface_dofs[side][i]]
+                        + solution_star_mortar[side][interface_dofs[side][i]];
           }                
         }
 
@@ -1039,19 +1044,164 @@ namespace mfe_biot
     r_norm = sqrt(r_norm_buffer);
   }
 
+  // compute inner product in mortar space
+  template <int dim>
+  void
+  MixedBiotProblem<dim>::interface_inner_product(std::unique_ptr<FEFunction> &solution_bar_function,
+                                                 std::unique_ptr<FEFunction> &solution_star_function,
+                                                 FEFaceValues<dim> &fe_face_values_mortar)
+  {
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+    unsigned int side = 0;
+
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        solution_bar_mortar[side] = 0;
+        solution_star_mortar[side] = 0;
+      }
+
+    const unsigned int n_face_q_points = fe_face_values_mortar.get_quadrature().size();
+    const unsigned int dofs_per_cell   = fe_mortar.dofs_per_cell;
+
+    Vector<double>                       local_rhs_bar(dofs_per_cell);
+    Vector<double>                       local_rhs_star(dofs_per_cell);
+    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+    //first index for dim components, 0, 1: vel, 2: pressure
+    //second for value at each quad point
+    std::vector<std::vector<double>> bar_values_flux(dim, std::vector<double>(n_face_q_points, 0.0));
+    std::vector<std::vector<double>> star_values_flux(dim, std::vector<double>(n_face_q_points, 0.0));
+    std::vector<std::vector<std::vector<double>>> bar_values_stress(dim, 
+                                                    std::vector<std::vector<double>>(dim,
+                                                    std::vector<double>(n_face_q_points, 0.0)));
+    std::vector<std::vector<std::vector<double>>> star_values_stress(dim, 
+                                                    std::vector<std::vector<double>>(dim,
+                                                    std::vector<double>(n_face_q_points, 0.0)));
+    std::vector<double> phi_p(dofs_per_cell);
+    std::vector<Tensor<1, dim>> phi_eta(dofs_per_cell, Tensor<1, dim>());
+
+    std::vector<FEValuesExtractors::Vector> stresses(dim, FEValuesExtractors::Vector());
+
+    for (unsigned int d=0; d<dim; ++d)
+    {
+      const FEValuesExtractors::Vector tmp_stress(d*dim);
+      stresses[d].first_vector_component = tmp_stress.first_vector_component;
+    }
+
+    const FEValuesExtractors::Vector velocity (dim*dim + dim + 0.5*dim*(dim-1));
+    // double sigma_bar_n;
+    // double sigma_star_n;
+    // double u_bar_dot_n;
+    // double u_star_dot_n;
+
+    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
+    {
+      // local_rhs_bar  = 0;
+      // local_rhs_star = 0;
+      cell->get_dof_indices(local_dof_indices);
+      for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
+        if (cell->at_boundary(face_n) &&
+          (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
+        {
+          //Need to reorder faces deal.ii iterators 
+          //use a different ordering from freefem, 
+          //they are ordered component wise 
+          fe_face_values_mortar.reinit(cell, face_n);
+          side = cell->face(face_n)->boundary_id() - 1;
+          for (unsigned int s = 0; s < dim; ++s)
+          {
+            solution_bar_function->value_list(fe_face_values_mortar.get_quadrature_points(),
+                                              bar_values_flux[s], dim*dim + dim + 0.5*dim*(dim-1)+s);
+            solution_star_function->value_list(fe_face_values_mortar.get_quadrature_points(),
+                                              star_values_flux[s], dim*dim + dim + 0.5*dim*(dim-1)+s);                                  
+          }
+          for (unsigned int s = 0 ; s < dim*dim; ++s)
+          {
+            solution_bar_function->value_list(fe_face_values_mortar.get_quadrature_points(),
+                                              bar_values_stress[s/dim][s%dim], s);
+            solution_star_function->value_list(fe_face_values_mortar.get_quadrature_points(),
+                                              star_values_stress[s/dim][s%dim], s);
+          }
+          for (unsigned int q_point = 0; q_point < n_face_q_points;
+                ++q_point)
+          {
+            for (unsigned int k = 0; k < dofs_per_cell; ++k)
+            {
+              if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                              local_dof_indices[k]) != interface_dofs[side].end())
+              {
+                for (unsigned int s = 0; s < dim; ++s)
+                  phi_eta[k][s] = fe_face_values_mortar[stresses[s]].value (k, q_point)
+                                * fe_face_values_mortar.normal_vector(q_point)
+                                * get_normal_direction<dim>(side);
+                phi_p[k] = fe_face_values_mortar[velocity].value (k, q_point)
+                                * fe_face_values_mortar.normal_vector(q_point)
+                                * get_normal_direction<dim>(side);
+              }
+            }
+            for (unsigned int i = 0; i < dofs_per_cell; ++i)
+            {
+              if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                              local_dof_indices[i]) != interface_dofs[side].end())
+              {   
+                if (local_dof_indices[i] < n_stress_mortar) //monolithic-Elascitiy part
+                {
+                  for (unsigned int s = 0; s < dim; ++s)
+                  {
+                    for (unsigned int l = 0; l < dim; ++l)
+                    {
+                      solution_bar_mortar[side](local_dof_indices[i]) +=
+                        (phi_eta[i][s] * 
+                          bar_values_stress[s][l][q_point] * fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
+                        * fe_face_values_mortar.JxW(q_point);    // dx
+
+                      solution_star_mortar[side](local_dof_indices[i]) +=
+                        (phi_eta[i][s] * 
+                          star_values_stress[s][l][q_point] * fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
+                        * fe_face_values_mortar.JxW(q_point);    // dx
+                    }
+                  }
+                }
+                else //monolithic-darcy part
+                {
+                  for (unsigned int s = 0; s < dim; ++s)
+                  {
+                    solution_bar_mortar[side](local_dof_indices[i]) +=
+                      (phi_p[i] * 
+                        bar_values_flux[s][q_point] * fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
+                      * fe_face_values_mortar.JxW(q_point);    // dx
+
+                    solution_star_mortar[side](local_dof_indices[i]) +=
+                      (phi_p[i] * 
+                        star_values_flux[s][q_point] * fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
+                        * fe_face_values_mortar.JxW(q_point);    // dx
+                  }
+                }
+              }
+            }
+          }
+        }
+    }
+  }
+                                              
+
   // Arnoldi algorithm
   template <int dim>
   void
-  MixedBiotProblem<dim>::arnoldi(std::vector<std::unique_ptr<FEFunction>> &interface_function,
-                                  unsigned int                      &k_counter, 
-                                  std::vector<std::vector<double>> &interface_data,
-                                  std::vector<std::vector<double>> &interface_data_send,
-                                  std::vector<std::vector<double>> &interface_data_receive,
-                                  FEFaceValues<dim>                &fe_face_values,
-                                  std::vector<std::vector<double>> &Ap,
-                                  std::vector<std::vector<double>> &q,
-                                  std::vector<std::vector<std::vector<double>>>	&Q_side,
-                                  std::vector<std::vector<double>>	            &H)
+  MixedBiotProblem<dim>::arnoldi(std::unique_ptr<FEFunction> &solution_bar_function,
+                                std::unique_ptr<FEFunction> &solution_star_function,
+                                std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                unsigned int                      &k_counter, 
+                                std::vector<std::vector<double>> &interface_data,
+                                std::vector<std::vector<double>> &interface_data_send,
+                                std::vector<std::vector<double>> &interface_data_receive,
+                                FEFaceValues<dim>                &fe_face_values,
+                                FEFaceValues<dim>                &fe_face_values_mortar,
+                                std::vector<std::vector<double>> &Ap,
+                                std::vector<std::vector<double>> &q,
+                                std::vector<std::vector<std::vector<double>>>	&Q_side,
+                                std::vector<std::vector<double>>	            &H)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     //interface data will be given as Q_side[side][k_counter];
@@ -1060,12 +1210,15 @@ namespace mfe_biot
         interface_data[side]=Q_side[side][k_counter];
     
     //////------solving the  star problem to find AQ(k)---------------------
-    interface_operator(interface_function,
-                        interface_data,
-                        interface_data_send,
-                        interface_data_receive,
-                        fe_face_values,
-                        Ap);
+    interface_operator(solution_bar_function,
+                      solution_star_function,
+                      interface_function,
+                      interface_data,
+                      interface_data_send,
+                      interface_data_receive,
+                      fe_face_values,
+                      fe_face_values_mortar,
+                      Ap);
 
     //defing q  to push_back to Q (Arnoldi algorithm)
     //defing h  to push_back to H (Arnoldi algorithm)
@@ -1176,7 +1329,8 @@ namespace mfe_biot
                                             0);
         interface_data_send[side].resize(interface_dofs[side].size(), 0);
         interface_data[side].resize(interface_dofs[side].size(), initial_val);
-        interface_fe_function[side].reinit(solution_bar);
+
+        interface_fe_function[side].reinit(mortar_vec);
 
         solution_bar_mortar[side].reinit(mortar_vec);
         solution_star_mortar[side].reinit(mortar_vec);
@@ -1195,7 +1349,7 @@ namespace mfe_biot
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
     {
       interface_function.emplace_back(
-        std::make_unique<FEFunction>(dof_handler, interface_fe_function[side]));
+        std::make_unique<FEFunction>(dof_handler_mortar, interface_fe_function[side]));
     }
     solution_bar_function = std::make_unique<FEFunction>(dof_handler, solution_bar);
     solution_star_function = std::make_unique<FEFunction>(dof_handler, solution_star);
@@ -1211,14 +1365,22 @@ namespace mfe_biot
                                     update_values | update_normal_vectors |
                                       update_quadrature_points |
                                       update_JxW_values);
+    FEFaceValues<dim> fe_face_values_mortar(fe_mortar,
+                                            quad,
+                                            update_values | update_normal_vectors |
+                                              update_quadrature_points |
+                                              update_JxW_values);
 
     
     //Calculating r-norm(same as b-norm)-----
     double r_norm =0;
     double b_norm =0;
     //computing the residual r=b-Ax
-    compute_residual(interface_function,
+    compute_residual(solution_bar_function,
+                     solution_star_function,
+                     interface_function,
                      fe_face_values,
+                     fe_face_values_mortar,
                      interface_data,
                      r,
                      r_norm,
@@ -1247,12 +1409,15 @@ namespace mfe_biot
     {
       gmres_iteration++;
       //Performing the Arnoldi algorithm
-      arnoldi(interface_function,
+      arnoldi(solution_bar_function,
+              solution_star_function,
+              interface_function,
               k_counter,
               interface_data,
               interface_data_send,
               interface_data_receive,
               fe_face_values,
+              fe_face_values_mortar,
               Ap,
               q,
               Q_side,
@@ -1327,14 +1492,8 @@ namespace mfe_biot
     interface_data = lambda;
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-      {
-        if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)  
-          interface_fe_function[side][interface_dofs[side][i]] = 
-              interface_data[side][i];
-        else //monolithic-darcy part (coupled)
-          interface_fe_function[side][interface_dofs[side][i]+n_disp+n_rot] =
+        interface_fe_function[side][interface_dofs[side][i]] = 
             interface_data[side][i];
-      }
 
     assemble_rhs_star(interface_function,
                       fe_face_values);
