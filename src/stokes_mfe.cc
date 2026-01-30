@@ -1623,7 +1623,7 @@ namespace mfe_stokes
             beta_side[side]    = 0;
             beta_side_d[side]  = 0;
 
-            // From Ap and with it compute alpha
+            // From Ap compute alpha
             for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             { 
               alpha_side[side] += r[side][i] * r[side][i];
@@ -1719,10 +1719,13 @@ namespace mfe_stokes
           for (unsigned int i = 0; i < interface_data[side].size(); ++i)
             p[side][i] = r[side][i] + (beta[0] / beta[1]) * p[side][i];
 
-        interface_data_receive[side].resize(interface_dofs[side].size(), 0);
-        interface_data_send[side].resize(interface_dofs[side].size(), 0);
+        // interface_data_receive[side].resize(interface_dofs[side].size(), 0);
+        // interface_data_send[side].resize(interface_dofs[side].size(), 0);
+        std::fill(interface_data_receive[side].begin(), interface_data_receive[side].end(), 0.0);
+        std::fill(interface_data_send[side].begin(), interface_data_send[side].end(), 0.0);
 
-        Ap.resize(n_faces_per_cell);
+        // Ap.resize(n_faces_per_cell);
+        std::fill(Ap[side].begin(), Ap[side].end(), 0.0);
       }
     }
 
