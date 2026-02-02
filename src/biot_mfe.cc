@@ -1018,18 +1018,22 @@ namespace mfe_biot
             r[side][i] += r_receive_buffer[i];
             r_b[side][i] += r_b_receive_buffer[i];
           }
-        r_norm_side[side] = vect_norm(r[side]);
-        r_b_norm_side[side] = vect_norm(r_b[side]);
+        // r_norm_side[side] = vect_norm(r[side]);
+        // r_b_norm_side[side] = vect_norm(r_b[side]);
+        // inner_product_mortar(r, r, fe_face_values_mortar);
+        // inner_product_mortar(r_b, r_b, fe_face_values_mortar);
       }
+      r_norm = inner_product_mortar(r, r, fe_face_values_mortar);
+      b_norm = inner_product_mortar(r_b, r_b, fe_face_values_mortar);
 
     //Calculating r-norm(same as b-norm)-----
     // double r_norm =0;
-    for(unsigned int side=0; side<n_faces_per_cell;++side)
-      if (neighbors[side] >= 0)
-      {
-        r_norm+=r_norm_side[side]*r_norm_side[side];
-        b_norm+=r_b_norm_side[side]*r_b_norm_side[side];
-      }
+    // for(unsigned int side=0; side<n_faces_per_cell;++side)
+    //   if (neighbors[side] >= 0)
+    //   {
+    //     r_norm+=r_norm_side[side]*r_norm_side[side];
+    //     b_norm+=r_b_norm_side[side]*r_b_norm_side[side];
+    //   }
     double r_norm_buffer =0;
     double b_norm_buffer =0;
     MPI_Allreduce(&b_norm,
@@ -1366,6 +1370,11 @@ namespace mfe_biot
     //defing h  to push_back to H (Arnoldi algorithm)
     std::vector<double> h(k_counter+2,0);
 
+    std::vector<std::vector<double>> Q_tmp(n_faces_per_cell);
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+        Q_tmp[side].resize(interface_dofs[side].size(), 0.0);
+
 
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
@@ -1374,8 +1383,14 @@ namespace mfe_biot
         assert(Ap[side].size()==Q_side[side][k_counter].size());
         q[side] = Ap[side];
         for(unsigned int i=0; i<=k_counter; ++i)
-          for(unsigned int j=0; j<q[side].size();++j)
-            h[i]+=q[side][j]*Q_side[side][i][j];
+        {
+          for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+            for (unsigned int k = 0; k < q[side].size(); ++k)
+              Q_tmp[side][k]=Q_side[side][i][k];
+          h[i] = inner_product_mortar(Q_tmp, q, fe_face_values_mortar);
+        }
+          // for(unsigned int j=0; j<q[side].size();++j)
+          //   h[i]+=q[side][j]*Q_side[side][i][j];
       } //////-----------end of loop over side, q is calculated as AQ[][k] and Arnoldi Algorithm continued-------------------------------
 
     //Arnoldi Algorithm continued
@@ -1399,9 +1414,11 @@ namespace mfe_biot
     double h_dummy = 0;
 
     //calculating h(k+1)=norm(q) as summation over side,subdomains norm_squared(q[side])
-    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-      if (neighbors[side] >= 0)
-        h_dummy+=vect_norm(q[side])*vect_norm(q[side]);
+    // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    //   if (neighbors[side] >= 0)
+    //     h_dummy+=vect_norm(q[side])*vect_norm(q[side]);
+
+    h_dummy = inner_product_mortar(q, q, fe_face_values_mortar);
     
     double h_k_buffer=0;
 
@@ -2039,7 +2056,7 @@ namespace mfe_biot
       n_dofs = interface_dofs_size;
 
     convergence_table_darcy_l2.add_value("cells", n_active_cells);
-    convergence_table_darcy_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_darcy_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
     convergence_table_darcy_l2.add_value("dofs", n_dofs);
     convergence_table_darcy_l2.add_value("||u-u_h||_L2", u_l2_error/u_l2_norm);
     convergence_table_darcy_l2.add_value("||p-p_h||_L2", p_l2_error/p_l2_norm);
@@ -2047,7 +2064,7 @@ namespace mfe_biot
     convergence_table_darcy_l2.add_value("residual", residual);
 
     convergence_table_elast_l2.add_value("cells", n_active_cells);
-    convergence_table_elast_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_elast_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
     convergence_table_elast_l2.add_value("dofs", n_dofs);
     convergence_table_elast_l2.add_value("||d-d_h||_L2", d_l2_error/d_l2_norm);
     convergence_table_elast_l2.add_value("||r-r_h||_L2", r_l2_error/r_l2_norm);
@@ -2056,7 +2073,7 @@ namespace mfe_biot
     // convergence_table_elast_l2.add_value("residual", residual);
     
     convergence_table_hdiv.add_value("cells", n_active_cells);
-    convergence_table_hdiv.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_hdiv.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
     convergence_table_hdiv.add_value("dofs", n_dofs);
     convergence_table_hdiv.add_value("||u-u_h||_Hdiv", u_hdiv_error/u_hdiv_norm);
     convergence_table_hdiv.add_value("||s-s_h||_Hdiv", s_hdiv_error/s_hdiv_norm);
@@ -2064,7 +2081,7 @@ namespace mfe_biot
     // convergence_table_hdiv.add_value("residual", residual);
 
     convergence_table_darcy_l2_total.add_value("cells", n_active_cells);
-    convergence_table_darcy_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_darcy_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
     convergence_table_darcy_l2_total.add_value("dofs", n_dofs);
     convergence_table_darcy_l2_total.add_value("||u-u_h||_L2", u_l2_error_total/u_l2_norm_total);
     convergence_table_darcy_l2_total.add_value("||p-p_h||_L2", p_l2_error_total/p_l2_norm_total);
@@ -2072,7 +2089,7 @@ namespace mfe_biot
     convergence_table_darcy_l2_total.add_value("residual", residual);
 
     convergence_table_elast_l2_total.add_value("cells", n_active_cells);
-    convergence_table_elast_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_elast_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
     convergence_table_elast_l2_total.add_value("dofs", n_dofs);
     convergence_table_elast_l2_total.add_value("||d-d_h||_L2", d_l2_error_total/d_l2_norm_total);
     convergence_table_elast_l2_total.add_value("||r-r_h||_L2", r_l2_error_total/r_l2_norm_total);
@@ -2081,7 +2098,7 @@ namespace mfe_biot
     // convergence_table_elast_l2_total.add_value("residual", residual);
     
     convergence_table_hdiv_total.add_value("cells", n_active_cells);
-    convergence_table_hdiv_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_hdiv_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
     convergence_table_hdiv_total.add_value("dofs", n_dofs);
     convergence_table_hdiv_total.add_value("||u-u_h||_Hdiv", u_hdiv_error_total/u_hdiv_norm_total);
     convergence_table_hdiv_total.add_value("||s-s_h||_Hdiv", s_hdiv_error_total/s_hdiv_norm_total);
@@ -2462,7 +2479,7 @@ namespace mfe_biot
       for (unsigned int d = 1; d < dim; ++d)
         subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
-      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
+      subdomain_dimensions[0] = 1.0 / double(n_domains[0]);
       
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);

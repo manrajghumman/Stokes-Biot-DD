@@ -4,17 +4,17 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 7
+set refinements  = 6
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
-set initial_grid_2D  = 1, 1
+set initial_grid_2D  = 2, 2
 set initial_grid_3D  = 1, 1, 1
 
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
 # Note: Total subdomains should equal number of processes for mpirun
-set grid = 2, 2
+set grid = 2, 2; 2, 2
 
 
 #################################################################################
@@ -60,5 +60,5 @@ end
 
 subsection Solver
 	set max_iter = 5000
-	set tol      = 1e-9
+	set tol      = 1e-6
 end
