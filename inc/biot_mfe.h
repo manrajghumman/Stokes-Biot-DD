@@ -84,8 +84,9 @@ namespace mfe_biot
     const unsigned int this_mpi_biot;
     const unsigned int n_processes_biot;
 
-    Projector::Projector <dim> P_coarse2fine;
-    Projector::Projector <dim> P_fine2coarse;
+    // Projector::Projector <dim> P_coarse2fine;
+    // Projector::Projector <dim> P_fine2coarse;
+    // Projector::Projector <dim> P_mortar;
 
     void interpret_parameters();
 
@@ -124,8 +125,13 @@ namespace mfe_biot
     void
     interface_inner_product(std::unique_ptr<FEFunction> &solution_bar_function,
                             std::unique_ptr<FEFunction> &solution_star_function,
-                            FEFaceValues<dim> &fe_face_values_mortar);
+                            FEFaceValues<dim> &fe_face_values_mortar,
+                            Projector::Projector<dim> &P_mortar);
 
+    double
+    inner_product_mortar(std::vector<std::vector<double>> &v_1,
+                         std::vector<std::vector<double>> &v_2,
+                         FEFaceValues<dim> &fe_face_values_mortar);
     void
     compute_residual(std::unique_ptr<FEFunction> &solution_bar_function,
                     std::unique_ptr<FEFunction> &solution_star_function,
@@ -133,6 +139,7 @@ namespace mfe_biot
                     FEFaceValues<dim>                &fe_face_values,
                     FEFaceValues<dim>                &fe_face_values_mortar,
                     std::vector<std::vector<double>> &interface_data,
+                    Projector::Projector<dim> &P_mortar,
                     std::vector<std::vector<double>>  &r,
                     double                            &r_norm,
                     std::vector<std::vector<double>>  &r_b,
@@ -147,6 +154,7 @@ namespace mfe_biot
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
                        FEFaceValues<dim>                &fe_face_values_mortar,
+                       Projector::Projector<dim> &P_mortar,
                        std::vector<std::vector<double>> &Ap);
 
     void
@@ -159,6 +167,7 @@ namespace mfe_biot
             std::vector<std::vector<double>> &interface_data_receive,
             FEFaceValues<dim>                &fe_face_values,
             FEFaceValues<dim>                &fe_face_values_mortar,
+            Projector::Projector<dim> &P_mortar,
             std::vector<std::vector<double>> &Ap,
             std::vector<std::vector<double>> &q,
             std::vector<std::vector<std::vector<double>>>	&Q_side,
@@ -288,6 +297,9 @@ namespace mfe_biot
     BlockVector<double> mortar_vec;
     std::vector<BlockVector<double>> solution_bar_mortar;
     std::vector<BlockVector<double>> solution_star_mortar;
+    std::vector<BlockVector<double>> solution_bar_mortar_temp;
+    std::vector<BlockVector<double>> solution_star_mortar_temp;
+    AffineConstraints<double> constraints_mortar;
     std::vector <BlockVector<double>> multiscale_basis;
 
     // Output extra

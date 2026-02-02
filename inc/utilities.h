@@ -493,7 +493,8 @@ namespace dd_utilities
       if (neighbors[side] >= 0)
         boundary_functions_velocity[side + 1] = &fe_interface_data;
     
-    proj.project_boundary_values(dof2,
+    proj.project_boundary_values(in_vec,
+                                 dof2,
                                  boundary_functions_velocity,
                                  quad,
                                  constraints);

@@ -84,8 +84,8 @@ namespace mfe_biot
       biot_neighbor(false),
       mortar_flag(mortar_flag),
       mortar_degree(mortar_degree),
-      P_coarse2fine (false),
-      P_fine2coarse (false),
+      // P_coarse2fine (false),
+      // P_fine2coarse (false),
       gmres_iteration(0),
       grid_diameter(0),
       fe (FE_BDM<dim>(degree), dim,                // stress
@@ -860,6 +860,7 @@ namespace mfe_biot
                                             std::vector<std::vector<double>> &interface_data_receive,
                                             FEFaceValues<dim>                &fe_face_values,
                                             FEFaceValues<dim>                &fe_face_values_mortar,
+                                            Projector::Projector<dim> &P_mortar,
                                             std::vector<std::vector<double>> &Ap)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
@@ -878,7 +879,8 @@ namespace mfe_biot
     //in the mortar space
     interface_inner_product(solution_bar_function,
                             solution_star_function,
-                            fe_face_values_mortar);
+                            fe_face_values_mortar,
+                            P_mortar);
     
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
@@ -924,6 +926,7 @@ namespace mfe_biot
                                           FEFaceValues<dim>                &fe_face_values,
                                           FEFaceValues<dim>                &fe_face_values_mortar,
                                           std::vector<std::vector<double>> &interface_data,
+                                          Projector::Projector<dim> &P_mortar,
                                           std::vector<std::vector<double>> &r,
                                           double                           &r_norm,
                                           std::vector<std::vector<double>> &r_b,
@@ -953,7 +956,8 @@ namespace mfe_biot
     //in the mortar space
     interface_inner_product(solution_bar_function,
                             solution_star_function,
-                            fe_face_values_mortar);
+                            fe_face_values_mortar,
+                            P_mortar);
     
     //compute residual r = b - A*x
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
@@ -1045,11 +1049,13 @@ namespace mfe_biot
   }
 
   // compute inner product in mortar space
+  // <A*lambda, lambda>
   template <int dim>
   void
   MixedBiotProblem<dim>::interface_inner_product(std::unique_ptr<FEFunction> &solution_bar_function,
                                                  std::unique_ptr<FEFunction> &solution_star_function,
-                                                 FEFaceValues<dim> &fe_face_values_mortar)
+                                                 FEFaceValues<dim> &fe_face_values_mortar,
+                                                 Projector::Projector<dim> &P_mortar)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     unsigned int side = 0;
@@ -1059,6 +1065,8 @@ namespace mfe_biot
       {
         solution_bar_mortar[side] = 0;
         solution_star_mortar[side] = 0;
+        solution_bar_mortar_temp[side] = 0;
+        solution_star_mortar_temp[side] = 0;
       }
 
     const unsigned int n_face_q_points = fe_face_values_mortar.get_quadrature().size();
@@ -1151,12 +1159,12 @@ namespace mfe_biot
                   {
                     for (unsigned int l = 0; l < dim; ++l)
                     {
-                      solution_bar_mortar[side](local_dof_indices[i]) +=
+                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
                         (phi_eta[i][s] * 
                           bar_values_stress[s][l][q_point] * fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
                         * fe_face_values_mortar.JxW(q_point);    // dx
 
-                      solution_star_mortar[side](local_dof_indices[i]) +=
+                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
                         (phi_eta[i][s] * 
                           star_values_stress[s][l][q_point] * fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
                         * fe_face_values_mortar.JxW(q_point);    // dx
@@ -1167,12 +1175,12 @@ namespace mfe_biot
                 {
                   for (unsigned int s = 0; s < dim; ++s)
                   {
-                    solution_bar_mortar[side](local_dof_indices[i]) +=
+                    solution_bar_mortar_temp[side](local_dof_indices[i]) +=
                       (phi_p[i] * 
                         bar_values_flux[s][q_point] * fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
                       * fe_face_values_mortar.JxW(q_point);    // dx
 
-                    solution_star_mortar[side](local_dof_indices[i]) +=
+                    solution_star_mortar_temp[side](local_dof_indices[i]) +=
                       (phi_p[i] * 
                         star_values_flux[s][q_point] * fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
                         * fe_face_values_mortar.JxW(q_point);    // dx
@@ -1183,8 +1191,140 @@ namespace mfe_biot
           }
         }
     }
+    Quadrature<dim - 1> quad;
+    quad = QGauss<dim - 1>(qdegree);
+    std::vector<BlockVector<double>> temp_bar1(n_faces_per_cell);
+    std::vector<BlockVector<double>> temp_star1(n_faces_per_cell);
+
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+
+      }
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        // FEFieldFunction<dim, BlockVector<double>> solution_1_bar(dof_handler_mortar, solution_bar_mortar_temp[side]);
+        // FEFieldFunction<dim, BlockVector<double>> solution_1_star(dof_handler_mortar, solution_star_mortar_temp[side]);
+        // project_mortar<dim>(P_mortar,
+        //               dof_handler_mortar,
+        //               solution_bar_mortar_temp[side],
+        //               quad,
+        //               constraints_mortar,
+        //               neighbors,
+        //               dof_handler_mortar,
+        //               solution_bar_mortar[side]);
+        // project_mortar<dim>(P_mortar,
+        //               dof_handler_mortar,
+        //               solution_star_mortar_temp[side],
+        //               quad,
+        //               constraints_mortar,
+        //               neighbors,
+        //               dof_handler_mortar,
+        //               solution_star_mortar[side]);   
+        // P_coarse2fine = true;
+        solution_bar_mortar[side] = solution_bar_mortar_temp[side];
+        solution_star_mortar[side] = solution_star_mortar_temp[side];
+        // A_direct.vmult(solution_bar_mortar[side], solution_bar_mortar_temp[side]);
+        // A_direct.vmult(solution_star_mortar[side], solution_star_mortar_temp[side]);
+      }           
   }
-                                              
+
+  // compute inner product in mortar space
+  // <lambda, mu> on a particular face
+  template <int dim>
+  double
+  MixedBiotProblem<dim>::inner_product_mortar(std::vector<std::vector<double>> &v_1,
+                                              std::vector<std::vector<double>> &v_2,
+                                              FEFaceValues<dim> &fe_face_values_mortar)
+  {
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+    double inner_product = 0.0;
+
+    const unsigned int n_face_q_points = fe_face_values_mortar.get_quadrature().size();
+    const unsigned int dofs_per_cell   = fe_mortar.dofs_per_cell;
+    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+    std::vector<double> phi_p(dofs_per_cell);
+    std::vector<Tensor<1, dim>> phi_eta(dofs_per_cell, Tensor<1, dim>());
+
+    BlockVector<double> vec_1(mortar_vec);
+    BlockVector<double> vec_2(mortar_vec);
+    vec_1 = 0;
+    vec_2 = 0;
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          vec_1(interface_dofs[side][i]) = v_1[side][i];
+          vec_2(interface_dofs[side][i]) = v_2[side][i];
+        }
+      }
+
+    //first index for dim components, 0, 1: vel, 2: pressure
+    //second for value at each quad point
+    std::vector<Tensor<1, dim>> interface_values_v1_flux(n_face_q_points, Tensor<1, dim>());
+    std::vector<Tensor<1, dim>> interface_values_v2_flux(n_face_q_points, Tensor<1, dim>());
+
+    std::vector<std::vector<Tensor<1, dim>>> interface_values_v1_stress(dim, 
+                                              std::vector<Tensor<1, dim>>(n_face_q_points, Tensor<1, dim>()));
+    std::vector<std::vector<Tensor<1, dim>>> interface_values_v2_stress(dim, 
+                                              std::vector<Tensor<1, dim>>(n_face_q_points, Tensor<1, dim>()));
+
+    std::vector<FEValuesExtractors::Vector> stresses(dim, FEValuesExtractors::Vector());
+
+    for (unsigned int d=0; d<dim; ++d)
+    {
+      const FEValuesExtractors::Vector tmp_stress(d*dim);
+      stresses[d].first_vector_component = tmp_stress.first_vector_component;
+    }
+
+    const FEValuesExtractors::Vector velocity (dim*dim + dim + 0.5*dim*(dim-1));
+
+    unsigned int side = 0;
+    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
+    {
+      cell->get_dof_indices(local_dof_indices);
+      for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
+        if (cell->at_boundary(face_n) &&
+          (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7) )
+        {
+          //Need to reorder faces deal.ii iterators 
+          //use a different ordering from freefem, 
+          //they are ordered component wise 
+          fe_face_values_mortar.reinit(cell, face_n);
+          side = cell->face(face_n)->boundary_id() - 1;
+          
+          fe_face_values_mortar[velocity].get_function_values(
+            vec_1, interface_values_v1_flux);
+          fe_face_values_mortar[velocity].get_function_values(
+            vec_2, interface_values_v2_flux);                                 
+          
+          for (unsigned int s = 0 ; s < dim; ++s)
+          {
+            fe_face_values_mortar[stresses[s]].get_function_values(
+              vec_1, interface_values_v1_stress[s]);
+            fe_face_values_mortar[stresses[s]].get_function_values(
+              vec_2, interface_values_v2_stress[s]);
+          }
+          for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
+          {
+            inner_product += 
+              (interface_values_v1_flux[q_point] * fe_face_values_mortar.normal_vector(q_point)) *
+               (interface_values_v2_flux[q_point] * fe_face_values_mortar.normal_vector(q_point)) // (u1 * u2)
+              * fe_face_values_mortar.JxW(q_point);    // dx
+            for (unsigned int s = 0; s < dim; ++s)
+              inner_product += 
+                (interface_values_v1_stress[s][q_point] * fe_face_values_mortar.normal_vector(q_point) *
+                 interface_values_v2_stress[s][q_point] * fe_face_values_mortar.normal_vector(q_point)) // (sigma1.n * sigma2.n)
+                * fe_face_values_mortar.JxW(q_point);    // dx
+          }
+            
+        }
+        
+    }
+    return inner_product;
+  }
 
   // Arnoldi algorithm
   template <int dim>
@@ -1198,6 +1338,7 @@ namespace mfe_biot
                                 std::vector<std::vector<double>> &interface_data_receive,
                                 FEFaceValues<dim>                &fe_face_values,
                                 FEFaceValues<dim>                &fe_face_values_mortar,
+                                Projector::Projector<dim> &P_mortar,
                                 std::vector<std::vector<double>> &Ap,
                                 std::vector<std::vector<double>> &q,
                                 std::vector<std::vector<std::vector<double>>>	&Q_side,
@@ -1218,6 +1359,7 @@ namespace mfe_biot
                       interface_data_receive,
                       fe_face_values,
                       fe_face_values_mortar,
+                      P_mortar,
                       Ap);
 
     //defing q  to push_back to Q (Arnoldi algorithm)
@@ -1301,6 +1443,10 @@ namespace mfe_biot
     interface_fe_function.resize(n_faces_per_cell);
     solution_bar_mortar.resize(n_faces_per_cell);
     solution_star_mortar.resize(n_faces_per_cell);
+    solution_bar_mortar_temp.resize(n_faces_per_cell);
+    solution_star_mortar_temp.resize(n_faces_per_cell);
+
+    Projector::Projector <dim> P_mortar(false);
 
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
@@ -1334,6 +1480,9 @@ namespace mfe_biot
 
         solution_bar_mortar[side].reinit(mortar_vec);
         solution_star_mortar[side].reinit(mortar_vec);
+
+        solution_bar_mortar_temp[side].reinit(mortar_vec);
+        solution_star_mortar_temp[side].reinit(mortar_vec);
 
         Ap[side].resize(interface_dofs[side].size(), 0);
         lambda[side].resize(interface_dofs[side].size(), initial_val);
@@ -1382,6 +1531,7 @@ namespace mfe_biot
                      fe_face_values,
                      fe_face_values_mortar,
                      interface_data,
+                     P_mortar,
                      r,
                      r_norm,
                      r_b,
@@ -1418,6 +1568,7 @@ namespace mfe_biot
               interface_data_receive,
               fe_face_values,
               fe_face_values_mortar,
+              P_mortar,
               Ap,
               q,
               Q_side,

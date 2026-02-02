@@ -566,6 +566,7 @@ namespace Projector
     template <int spacedim, typename number>
     void
     project_boundary_values(
+      BlockVector<double>       &in_vec,
       const DoFHandler<dim, spacedim> &dof,
       const std::map<types::boundary_id, const Function<spacedim, number> *>
         &                        boundary_functions,
@@ -602,6 +603,7 @@ namespace Projector
     template <int spacedim, typename number>
     void
     do_project_boundary_values(
+      BlockVector<double>       &in_vec,
       const DoFHandler<dim, spacedim> &dof,
       const std::map<types::boundary_id, const Function<spacedim, number> *>
         &                                        boundary_functions,
@@ -633,6 +635,7 @@ namespace Projector
       {
         factorization.initialize(mass_matrix);
         factorization.vmult(solution, rhs);
+        state = true;
       }
   }
 
@@ -640,6 +643,7 @@ namespace Projector
   template <int spacedim, typename number>
   void
   Projector<dim>::do_project_boundary_values(
+    BlockVector<double>       &in_vec,
     const DoFHandler<dim, spacedim> &dof,
     const std::map<types::boundary_id, const Function<spacedim, number> *>
       &                                        boundary_functions,
@@ -715,6 +719,15 @@ namespace Projector
 
     Vector<double> boundary_projection(rhs.size());
 
+    // rhs currently contains the projection RHS assembled from the dummy boundary function.
+    // Overwrite rhs with the *true* dual vector restricted to boundary dofs:
+    //    rhs[boundary_index] = b_global[global_dof]
+    rhs = 0.0;
+
+    for (types::global_dof_index i = 0; i < dof_to_boundary_mapping.size(); ++i)
+      if (dof_to_boundary_mapping[i] != numbers::invalid_dof_index)
+        rhs(dof_to_boundary_mapping[i]) = in_vec(i);
+
     if (rhs.norm_sqr() < 1e28 * std::numeric_limits<double>::min())
       boundary_projection = 0;
     else
@@ -736,6 +749,7 @@ namespace Projector
   template <int spacedim, typename number>
   void
   Projector<dim>::project_boundary_values(
+    BlockVector<double>       &in_vec,
     const DoFHandler<dim, spacedim>                                             &dof,
     const std::map<types::boundary_id, const Function<spacedim, number> *>      &boundary_functions,
     const Quadrature<dim - 1>                                                   &q,
@@ -746,7 +760,7 @@ namespace Projector
 
 
     do_project_boundary_values(
-      dof, boundary_functions, q, boundary_values, component_mapping);
+      in_vec, dof, boundary_functions, q, boundary_values, component_mapping);
 
     typename std::map<types::global_dof_index, number>::const_iterator
       boundary_value = boundary_values.begin();
