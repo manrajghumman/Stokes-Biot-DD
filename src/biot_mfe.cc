@@ -713,7 +713,7 @@ namespace mfe_biot
                                   * theta_p
                                   * fe_face_values.JxW(q);
                   // lambda_p = interface_values_flux[s][q] * fe_face_values.normal_vector(q)[s];
-                  local_rhs(i) += fe_face_values[velocity].value (i, q) 
+                  local_rhs(i) += - fe_face_values[velocity].value (i, q) 
                                  * fe_face_values.normal_vector(q)
                                  * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1)
                                  * interface_values_flux[s][q] * fe_face_values.normal_vector(q)[s] 
