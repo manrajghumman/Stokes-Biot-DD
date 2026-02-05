@@ -243,10 +243,11 @@ namespace dd_stokes_biot
         {
           // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
           MPI_Comm_split(mpi_communicator, 2, this_mpi, &mpi_communicator_biot);
-          unsigned int degree, mortar_degree;
+          unsigned int degree, mortar_type, mortar_degree;
           prm.enter_subsection("Biot Parameters");
           {
               degree   = prm.get_integer("degree");
+              mortar_type = prm.get_integer("mortar_type");
               mortar_degree = prm.get_integer("mortar_degree");
           }
           prm.leave_subsection();
@@ -258,6 +259,7 @@ namespace dd_stokes_biot
                                           neighbors,
                                           neighbor_type,
                                           mpi_communicator_biot,
+                                          mortar_type,
                                           mortar_degree);
           biot->run(cycle);
         }
@@ -303,8 +305,8 @@ namespace dd_stokes_biot
       {
         if (subdomain_type == 1)
         {
-          // stokes->local_gmres(cycle);
-          stokes->local_cg();
+          stokes->local_gmres(cycle);
+          // stokes->local_cg();
           stokes->output_results(cycle);
           stokes->output_dof_results(cycle);
           stokes->compute_errors(cycle);

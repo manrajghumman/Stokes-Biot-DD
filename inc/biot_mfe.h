@@ -41,6 +41,7 @@ namespace mfe_biot
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
                       MPI_Comm mpi_communicator_biot,
+                      const unsigned int mortar_type,
                       const unsigned int mortar_degree);
 
     void run(unsigned int cycle);
@@ -216,7 +217,7 @@ namespace mfe_biot
     // FE degree and DD parameters
     const unsigned int degree;
     const unsigned int mortar_degree;
-    const unsigned int mortar_flag;
+    const unsigned int mortar_type;
     double tol;
     unsigned int qdegree;
 

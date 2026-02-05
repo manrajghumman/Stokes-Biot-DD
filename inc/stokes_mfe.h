@@ -159,7 +159,13 @@ namespace mfe_stokes
     void
     interface_inner_product(std::unique_ptr<FEFunction>      &solution_bar_function,
                             std::unique_ptr<FEFunction>      &solution_star_function,
-                            FEFaceValues<dim>                &fe_face_values);
+                            FEFaceValues<dim>                &fe_face_values,
+                            Projector::Projector<dim> &P_mortar);
+
+    double
+    inner_product_mortar(std::vector<std::vector<double>> &v_1,
+                         std::vector<std::vector<double>> &v_2,
+                         FEFaceValues<dim> &fe_face_values_mortar);
 
     void
     compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
@@ -168,6 +174,7 @@ namespace mfe_stokes
                     FEFaceValues<dim>               &fe_face_values,
                     FEFaceValues<dim>               &fe_face_values_mortar,
                     std::vector<std::vector<double>> &interface_data,
+                    Projector::Projector<dim> &P_mortar,
                     std::vector<std::vector<double>> &r,
                     double                           &r_norm,
                     std::vector<std::vector<double>> &r_b,
@@ -182,6 +189,7 @@ namespace mfe_stokes
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
                        FEFaceValues<dim>                &fe_face_values_mortar,
+                       Projector::Projector<dim> &P_mortar,
                        std::vector<std::vector<double>> &Ap);
               
     void
@@ -194,6 +202,7 @@ namespace mfe_stokes
             std::vector<std::vector<double>> &interface_data_receive,
             FEFaceValues<dim>                &fe_face_values,
             FEFaceValues<dim>                &fe_face_values_mortar,
+            Projector::Projector<dim> &P_mortar,
             std::vector<std::vector<double>> &Ap,
             std::vector<std::vector<double>> &q,
             std::vector<std::vector<std::vector<double>>>	&Q_side,
@@ -304,6 +313,8 @@ namespace mfe_stokes
     std::vector<BlockVector<double>>   interface_fe_function_mortar_fe;
     std::vector<BlockVector<double>>   solution_bar_mortar;
     std::vector<BlockVector<double>>   solution_star_mortar;
+    std::vector<BlockVector<double>> solution_bar_mortar_temp;
+    std::vector<BlockVector<double>> solution_star_mortar_temp;
     BlockVector<double>                mortar_vec;
     std::vector<BlockVector<double>>   multiscale_basis;
 

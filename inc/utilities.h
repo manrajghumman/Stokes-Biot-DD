@@ -115,8 +115,8 @@ namespace dd_utilities
     {
       if (fmod(double(n_proc), tmp) == 0)
       {
-        n_dom[0] = n_proc / tmp;
-        n_dom[1] = tmp;
+        n_dom[0] = n_proc / tmp; // x
+        n_dom[1] = tmp;          // y
         break;
       }
       else
