@@ -663,7 +663,7 @@ namespace mfe_biot
     std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
 
     std::vector<double> phi_v_dot_n(dofs_per_cell);
-    double theta_p;
+    double lambda_d;
 
     int side;
 
@@ -708,14 +708,14 @@ namespace mfe_biot
                 {
                   for (unsigned int s=0; s<dim; ++s)
                   {
-                    theta_p = 0.0;
+                    lambda_d = 0.0;
                     for (unsigned int l=0; l<dim; ++l)
-                      theta_p += interface_values_stress[s][l][q] * fe_face_values.normal_vector(q)[l];
+                      lambda_d += interface_values_stress[s][l][q] * fe_face_values.normal_vector(q)[l];
 
                     local_rhs(i) += fe_face_values[stresses[s]].value (i, q)
-                                    * fe_face_values.normal_vector(q)  // <tau.n, theta_p>
+                                    * fe_face_values.normal_vector(q)  // <tau.n, lambda_d>
                                     * get_normal_direction<dim>(side)
-                                    * theta_p
+                                    * lambda_d
                                     * fe_face_values.JxW(q);
                     // lambda_p = interface_values_flux[s][q] * fe_face_values.normal_vector(q)[s];
                     local_rhs(i) += - fe_face_values[velocity].value (i, q) 
@@ -762,12 +762,12 @@ namespace mfe_biot
               {
                 for (unsigned int s=0; s<dim; ++s)
                 {
-                  // theta_p = 0.0;
+                  // lambda_d = 0.0;
                   // for (unsigned int l=0; l<dim; ++l)
-                  //   theta_p += interface_values_stress[s][l][q] * fe_face_values.normal_vector(q)[l];
+                  //   lambda_d += interface_values_stress[s][l][q] * fe_face_values.normal_vector(q)[l];
 
                   local_rhs(i) += fe_face_values[stresses[s]].value (i, q)
-                                  * fe_face_values.normal_vector(q)  // <tau.n, theta_p>
+                                  * fe_face_values.normal_vector(q)  // <tau.n, lambda_d>
                                   * get_normal_direction<dim>(side)
                                   * interface_values_disp[s][q]
                                   * fe_face_values.JxW(q);

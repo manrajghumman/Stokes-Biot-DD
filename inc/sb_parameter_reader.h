@@ -49,18 +49,22 @@ class StokesBiotParameterReader : public Subscriptor
     prm.enter_subsection("Stokes Parameters");
     {
         prm.declare_entry("degree", "0",
-                      Patterns::Integer(),
-                      "Finite element degree for Stokes");
+                          Patterns::Integer(),
+                          "Finite element degree for Stokes");
         prm.declare_entry("quad_degree", "11",
-                      Patterns::Integer(),
-                      "Quadrature degree for Stokes");
+                          Patterns::Integer(),
+                          "Quadrature degree for Stokes");
         prm.declare_entry("continuous_mortar", "yes",
                       Patterns::Selection("yes|no"));
-        prm.declare_entry("mortar_degree", "2",
-                      Patterns::Integer());
+        prm.declare_entry("stokes_mortar_degree", "2",
+                          Patterns::Integer(),
+                          "Mortar degree for Stokes-Stokes interface");
+        prm.declare_entry("sb_mortar_degree", "1",
+                          Patterns::Integer(),
+                          "Mortar degree for Stokes-Biot interface");
         prm.declare_entry("gamma", "100.0",
-                      Patterns::Double(),
-                      "Nitsche's penalty parameter for Stokes");
+                          Patterns::Double(),
+                          "Nitsche's penalty parameter for Stokes");
     }
     prm.leave_subsection();
 

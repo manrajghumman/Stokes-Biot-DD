@@ -82,6 +82,7 @@ namespace mfe_stokes
     std::vector<unsigned int>  &neighbor_type,
     MPI_Comm                   mpi_communicator_stokes,
     const unsigned int         mortar_degree,
+    const unsigned int         mortar_degree_biot,
     const bool                 cont_mortar_flag)
     : mpi_communicator(MPI_COMM_WORLD)
     , mpi_communicator_stokes(mpi_communicator_stokes)
@@ -96,6 +97,7 @@ namespace mfe_stokes
     , stokes_neighbor(false)
     , biot_neighbor(false)
     , mortar_degree(mortar_degree)
+    , mortar_degree_biot(mortar_degree_biot)
     , cont_mortar_flag(cont_mortar_flag) // if mortar_degree is 0, use RT<dim> (0)
     // , tol(tol)
     // , reps(reps)
@@ -106,19 +108,25 @@ namespace mfe_stokes
     , P_coarse2fine(false)
     , P_fine2coarse(false)
     , gmres_iteration(0)
+    , dof_handler(triangulation)
+    , dof_handler_biot_mortar(triangulation_mortar)                          
+    , dof_handler_mortar(triangulation_mortar)
     , fe(FE_Q<dim>(degree+1),//fe for velocity
          dim,
          FE_Q<dim>(degree),//fe for pressure
          1)
-    , dof_handler(triangulation)
-    , fe_biot_stress(FE_BDM<dim>(degree_biot), dim,
-              FE_Nothing<dim>(), 1)
-    , fe_darcy_vel(FE_BDM<dim>(degree_biot), 1,
-               FE_Nothing<dim>(), 1)
-    , dof_handler_biot_stress(triangulation_mortar)
-    , dof_handler_darcy_vel(triangulation_mortar)
-    , dof_handler_mortar(triangulation_mortar)
-    ,fe_mortar([mortar_degree, cont_mortar_flag]() -> FESystem<dim> {
+    // , fe_biot_stress(FE_BDM<dim>(degree_biot), dim,
+    //           FE_Nothing<dim>(), 1)
+    // , fe_darcy_vel(FE_BDM<dim>(degree_biot), 1,
+    //            FE_Nothing<dim>(), 1)
+    // , dof_handler_biot_stress(triangulation_mortar)
+    // , dof_handler_darcy_vel(triangulation_mortar)
+    , fe_biot_mortar(FE_BDM<dim>(mortar_degree_biot), dim,    // displacement lagrange multiplier on mortar
+                      FE_Nothing<dim>(), dim,
+                      FE_Nothing<dim>(), 0.5*dim*(dim-1), 
+                      FE_BDM<dim>(mortar_degree_biot), 1,    // pressure lagrange multiplier on mortar
+                      FE_Nothing<dim>(), 1)
+    , fe_mortar([mortar_degree, cont_mortar_flag]() -> FESystem<dim> {
       if (cont_mortar_flag)
         return FESystem<dim>(FE_Q<dim>(mortar_degree), dim, FE_Nothing<dim>(), 1);
       else if (!cont_mortar_flag)
@@ -292,47 +300,90 @@ namespace mfe_stokes
   MixedStokesProblem<dim>::setup_system_biot()
   {
 
-    // write the dof count for stress in biot side!!
-    dof_handler_biot_stress.distribute_dofs(fe_biot_stress);
-    DoFRenumbering::component_wise(dof_handler_biot_stress);
+    // // write the dof count for stress in biot side!!
+    // dof_handler_biot_stress.distribute_dofs(fe_biot_stress);
+    // DoFRenumbering::component_wise(dof_handler_biot_stress);
 
-    n_biot_stress=0;
-    unsigned int n_biot_stress_extra = 0;
-    std::vector<types::global_dof_index> dofs_per_component_stress =
-            DoFTools::count_dofs_per_fe_component (dof_handler_biot_stress);
+    // n_biot_stress=0;
+    // unsigned int n_biot_stress_extra = 0;
+    // std::vector<types::global_dof_index> dofs_per_component_stress =
+    //         DoFTools::count_dofs_per_fe_component (dof_handler_biot_stress);
 
-    for (unsigned int i = 0; i < dim; ++i)
-      n_biot_stress += dofs_per_component_stress[i*dim];
+    // for (unsigned int i = 0; i < dim; ++i)
+    //   n_biot_stress += dofs_per_component_stress[i*dim];
 
-    pcout << " N stress dofs: " << n_biot_stress << std::endl;
+    // pcout << " N stress dofs: " << n_biot_stress << std::endl;
     
-    // write the dof count for velocity in biot side!!
-    dof_handler_darcy_vel.distribute_dofs(fe_darcy_vel);
-    DoFRenumbering::component_wise(dof_handler_darcy_vel);
+    // // write the dof count for velocity in biot side!!
+    // dof_handler_darcy_vel.distribute_dofs(fe_darcy_vel);
+    // DoFRenumbering::component_wise(dof_handler_darcy_vel);
 
-    n_darcy_vel = 0; 
-    unsigned int n_darcy_vel_extra = 0;
-    std::vector<types::global_dof_index> dofs_per_component_darcy_vel =
-            DoFTools::count_dofs_per_fe_component (dof_handler_darcy_vel);
+    // n_darcy_vel = 0; 
+    // unsigned int n_darcy_vel_extra = 0;
+    // std::vector<types::global_dof_index> dofs_per_component_darcy_vel =
+    //         DoFTools::count_dofs_per_fe_component (dof_handler_darcy_vel);
     
-    n_darcy_vel = dofs_per_component_darcy_vel[0];
-    n_darcy_vel_extra = dofs_per_component_darcy_vel[dim];
+    // n_darcy_vel = dofs_per_component_darcy_vel[0];
+    // n_darcy_vel_extra = dofs_per_component_darcy_vel[dim];
 
-    pcout << " N darcy velocity dofs: " << n_darcy_vel << std::endl;
+    // pcout << " N darcy velocity dofs: " << n_darcy_vel << std::endl;
 
-    // Reinit Biot stress vector 
-    biot_stress_vec.reinit(2);
-    biot_stress_vec.block(0).reinit(n_biot_stress);
-    biot_stress_vec.block(1).reinit(n_biot_stress_extra);
-    biot_stress_vec.collect_sizes();
-    biot_stress_vec = 0;
+    // // Reinit Biot stress vector 
+    // biot_stress_vec.reinit(2);
+    // biot_stress_vec.block(0).reinit(n_biot_stress);
+    // biot_stress_vec.block(1).reinit(n_biot_stress_extra);
+    // biot_stress_vec.collect_sizes();
+    // biot_stress_vec = 0;
 
-    // Reinit Darcy velocity vector 
-    darcy_velocity_vec.reinit(2);
-    darcy_velocity_vec.block(0).reinit(n_darcy_vel);
-    darcy_velocity_vec.block(1).reinit(n_darcy_vel_extra);
-    darcy_velocity_vec.collect_sizes();
-    darcy_velocity_vec = 0;
+    // // Reinit Darcy velocity vector 
+    // darcy_velocity_vec.reinit(2);
+    // darcy_velocity_vec.block(0).reinit(n_darcy_vel);
+    // darcy_velocity_vec.block(1).reinit(n_darcy_vel_extra);
+    // darcy_velocity_vec.collect_sizes();
+    // darcy_velocity_vec = 0;
+
+    // write the dof count for biot side!!
+    dof_handler_biot_mortar.distribute_dofs(fe_biot_mortar);
+    DoFRenumbering::component_wise(dof_handler_biot_mortar);
+
+    std::vector<types::global_dof_index> dofs_per_component_biot_mortar =
+            DoFTools::count_dofs_per_fe_component (dof_handler_biot_mortar);
+
+    unsigned int n_s_mortar=0, n_u_mortar=0, n_g_mortar=0, n_z_mortar = 0, n_p_mortar = 0;
+    for (unsigned int i=0; i<dim; ++i)
+    {
+      n_s_mortar += dofs_per_component_biot_mortar[i*dim];
+      n_u_mortar += dofs_per_component_biot_mortar[dim*dim + i];
+
+      // Rotation is scalar in 2d and vector in 3d, so this:
+      if (dim == 2)
+          n_g_mortar = dofs_per_component_biot_mortar[dim*dim + dim];
+      else if (dim == 3)
+          n_g_mortar += dofs_per_component_biot_mortar[dim*dim + dim + i];
+    }
+      n_z_mortar = dofs_per_component_biot_mortar[dim*dim + dim + 0.5*dim*(dim-1)];
+      n_p_mortar = dofs_per_component_biot_mortar[dim*dim + dim +0.5*dim*(dim-1) + dim];
+
+    n_stress_mortar = n_s_mortar;
+    n_disp_mortar = n_u_mortar;
+    n_rot_mortar = n_g_mortar;
+    n_flux_mortar = n_z_mortar;
+    n_pressure_mortar = n_p_mortar;
+    // n_Elast= n_s+n_u+n_g;
+
+    pcout << "Biot mortar part:\n N stress mortar dofs: " << n_s_mortar
+          << "\n N displacement mortar dofs: " << n_u_mortar
+          << "\n N rotation mortar dofs: " << n_g_mortar
+          << "\n N flux mortar dofs: " << n_z_mortar
+          << "\n N pressure mortar dofs: " << n_p_mortar << std::endl;
+
+    mortar_vec_biot.reinit(5);
+    mortar_vec_biot.block(0).reinit (n_s_mortar);
+    mortar_vec_biot.block(1).reinit (n_u_mortar);
+    mortar_vec_biot.block(2).reinit (n_g_mortar);
+    mortar_vec_biot.block(3).reinit (n_z_mortar);
+    mortar_vec_biot.block(4).reinit (n_p_mortar);
+    mortar_vec_biot.collect_sizes ();
   }
 
   // MixedStokesProblemDD - initialize the interface data structure
@@ -376,11 +427,11 @@ namespace mfe_stokes
     
     if (biot_neighbor) // Stokes-Biot interface
     {
-      // Get interface dofs for stress dofs in biot side
+      // Get interface dofs for stress and velocity dofs in biot side
       std::vector<types::global_dof_index> local_face_dof_indices_biot_stress;
-      local_face_dof_indices_biot_stress.resize(fe_biot_stress.dofs_per_face);
+      local_face_dof_indices_biot_stress.resize(fe_biot_mortar.dofs_per_face);
       typename DoFHandler<dim>::active_cell_iterator cell_stress, endc_stress;
-      cell_stress = dof_handler_biot_stress.begin_active(), endc_stress = dof_handler_biot_stress.end();
+      cell_stress = dof_handler_biot_mortar.begin_active(), endc_stress = dof_handler_biot_mortar.end();
       side = 0;
       for (; cell_stress != endc_stress; ++cell_stress)
       {
@@ -395,7 +446,7 @@ namespace mfe_stokes
             side = cell_stress->face(face_n)->boundary_id() - 1;
             if (neighbor_type[side] == 2) // Stokes-Biot interface
               for (auto el : local_face_dof_indices_biot_stress)
-                if (el < n_biot_stress){
+                {
                   // there are no corner dofs in BDM, so no need to check for duplicates
                   interface_dofs[side].push_back(el);
                   interface_dofs_total.push_back(el);                                                    
@@ -404,29 +455,29 @@ namespace mfe_stokes
         }
       }
 
-      // Get interface dofs for darcy vel dofs in biot side
-      std::vector<types::global_dof_index> local_face_dof_indices_darcy_vel;
-      local_face_dof_indices_darcy_vel.resize(fe_darcy_vel.dofs_per_face);
-      typename DoFHandler<dim>::active_cell_iterator cell_vel, endc_vel;
-      cell_vel = dof_handler_darcy_vel.begin_active(), endc_vel = dof_handler_darcy_vel.end();
-      side = 0;
-      for (; cell_vel != endc_vel; ++cell_vel)
-        for (unsigned int face_n = 0; face_n < n_faces_per_cell;
-              ++face_n)
-          if (cell_vel->at_boundary(face_n) &&
-                (cell_vel->face(face_n)->boundary_id() != 0 && 
-                  cell_vel->face(face_n)->boundary_id() !=7))
-          {
-            cell_vel->face(face_n)->get_dof_indices(local_face_dof_indices_darcy_vel, 0);
-            side = cell_vel->face(face_n)->boundary_id() - 1;
-            if (neighbor_type[side] == 2) // Stokes-Biot interface
-              for (auto el : local_face_dof_indices_darcy_vel)
-                if (el < n_darcy_vel){
-                  // there are no corner dofs in BDM, so no need to check for duplicates
-                  interface_dofs[side].push_back(el+n_biot_stress); // offset by n_biot_stress
-                  interface_dofs_total.push_back(el+n_biot_stress);                                                    
-                }
-          }
+      // // Get interface dofs for darcy vel dofs in biot side
+      // std::vector<types::global_dof_index> local_face_dof_indices_darcy_vel;
+      // local_face_dof_indices_darcy_vel.resize(fe_darcy_vel.dofs_per_face);
+      // typename DoFHandler<dim>::active_cell_iterator cell_vel, endc_vel;
+      // cell_vel = dof_handler_darcy_vel.begin_active(), endc_vel = dof_handler_darcy_vel.end();
+      // side = 0;
+      // for (; cell_vel != endc_vel; ++cell_vel)
+      //   for (unsigned int face_n = 0; face_n < n_faces_per_cell;
+      //         ++face_n)
+      //     if (cell_vel->at_boundary(face_n) &&
+      //           (cell_vel->face(face_n)->boundary_id() != 0 && 
+      //             cell_vel->face(face_n)->boundary_id() !=7))
+      //     {
+      //       cell_vel->face(face_n)->get_dof_indices(local_face_dof_indices_darcy_vel, 0);
+      //       side = cell_vel->face(face_n)->boundary_id() - 1;
+      //       if (neighbor_type[side] == 2) // Stokes-Biot interface
+      //         for (auto el : local_face_dof_indices_darcy_vel)
+      //           if (el < n_darcy_vel){
+      //             // there are no corner dofs in BDM, so no need to check for duplicates
+      //             interface_dofs[side].push_back(el+n_biot_stress); // offset by n_biot_stress
+      //             interface_dofs_total.push_back(el+n_biot_stress);                                                    
+      //           }
+      //     }
     }
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
     {
@@ -465,6 +516,7 @@ namespace mfe_stokes
     // TimerOutput::Scope t(computing_timer, "Assemble system");
     system_matrix         = 0;
     system_rhs_bar        = 0;
+    double alpha = 1.0; // BJS coupling parameter
 
     QGauss<dim> quadrature_formula(degree+2);
     QGauss<dim - 1> face_quadrature_formula(degree+2);
@@ -532,6 +584,15 @@ namespace mfe_stokes
     std::vector<Tensor<1, dim>>          phi_u(dofs_per_cell);
     std::vector<double>                  phi_p(dofs_per_cell);
 
+    // to keep track of which face we are on for interface boundary conditions
+    // our objects assume clockwise labelling but dealii assumes component-wise 
+    //labelling, so we need to convert between the two when applying boundary conditions
+    unsigned int side; 
+    Tensor<1, dim> tangent_vector; // the tangent vector to a side
+    double const_bjs = 0; 
+    const K_permeability<dim> k_permeability;
+    std::vector<Tensor<2,dim>>  k_permeability_values(n_face_q_points);
+                                             
     for (const auto &cell : dof_handler.active_cell_iterators())
     {
       fe_values.reinit(cell);
@@ -646,6 +707,42 @@ namespace mfe_stokes
               }
             }
           }//Ending Dirichlet Condition
+          if (face->boundary_id() != 0 && face->boundary_id() != 7) //Entering Stokes-Biot interface BJS term
+          {
+            side = face->boundary_id() - 1;
+            k_permeability.value_list (fe_face_values.get_quadrature_points(), k_permeability_values);
+            for (unsigned int q = 0; q < n_face_q_points; ++q)
+            {
+              for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                phi_u[k] = fe_face_values[velocities].value(k, q);
+
+              // computes normal tangent vector in 2D, 
+              // assumes counterclockwise ordering of faces in deal.ii
+              if (dim == 2) 
+              {
+                tangent_vector[0] = - fe_face_values.normal_vector(q)[1];
+                tangent_vector[1] = fe_face_values.normal_vector(q)[0];
+              }
+              else if (dim == 3)
+              {
+                Assert(false, "Tangent vector not implemented for 3D yet");
+              }
+              // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
+              const_bjs = alpha * 
+                          std::sqrt(1/((k_permeability_values[q]*tangent_vector)
+                                                    *tangent_vector));
+                                                    
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                for (unsigned int j = 0; j <= i; ++j)
+                {
+                  local_matrix(i,j) += const_bjs * (phi_u[j] * tangent_vector)
+                                        * (phi_u[i] * tangent_vector) // alpha*sqrt(K^-1) <u_t, v_t>
+                                        * fe_face_values.JxW(q);
+                }
+              }
+            }
+          }
         }
       }
 
@@ -861,7 +958,8 @@ namespace mfe_stokes
                                               std::vector<std::vector<double>> &interface_data_receive,
                                               FEFaceValues<dim>                &fe_face_values,
                                               FEFaceValues<dim>                &fe_face_values_mortar,
-                                              Projector::Projector<dim> &P_mortar,
+                                              FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                                              std::vector<Projector::Projector<dim>> &P_mortar,
                                               std::vector<std::vector<double>> &Ap)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
@@ -876,17 +974,30 @@ namespace mfe_stokes
                       fe_face_values);
     solve_star();
 
-    interface_inner_product(solution_bar_function,
+    interface_inner_product(interface_function,
+                            solution_bar_function,
                             solution_star_function,
                             fe_face_values_mortar,
+                            fe_face_values_mortar_biot,
                             P_mortar);
     
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
       {
         // Create vector of u\dot n to send
-        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          interface_data_send[side][i] = solution_star_mortar[side][interface_dofs[side][i]];
+        if (neighbor_type[side] == 1) //Stokes-Stokes interface
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
+        else if (neighbor_type[side] == 2) //Stokes-Biot interface
+        {
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
+              interface_data_send[side][i] = solution_star_mortar[side][interface_dofs[side][i]];
+            else // pressure lagrange multiplier test space
+              interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
+          }
+        }
 
         MPI_Sendrecv(interface_data_send[side].data(),
                       static_cast<int>(interface_dofs[side].size()),
@@ -906,7 +1017,7 @@ namespace mfe_stokes
         // Compute Ap and with it compute alpha
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         {
-          Ap[side][i] = - (interface_data_send[side][i] +
+          Ap[side][i] = (interface_data_send[side][i] +
                           interface_data_receive[side][i]);
         }
       }
@@ -920,8 +1031,9 @@ namespace mfe_stokes
                                             std::unique_ptr<FEFunction>       &solution_star_function,
                                             FEFaceValues<dim>                &fe_face_values,
                                             FEFaceValues<dim>                &fe_face_values_mortar,
+                                            FEFaceValues<dim>                &fe_face_values_mortar_biot,
                                             std::vector<std::vector<double>> &interface_data,
-                                            Projector::Projector<dim> &P_mortar,
+                                            std::vector<Projector::Projector<dim>> &P_mortar,
                                             std::vector<std::vector<double>> &r,
                                             double                           &r_norm,
                                             std::vector<std::vector<double>> &r_b,
@@ -949,9 +1061,11 @@ namespace mfe_stokes
 
     //for computing the inner products
     //in the mortar space
-    interface_inner_product(solution_bar_function,
+    interface_inner_product(interface_function,
+                            solution_bar_function,
                             solution_star_function,
                             fe_face_values_mortar,
+                            fe_face_values_mortar_biot,
                             P_mortar);
     //compute residual r = b - A*x
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
@@ -960,11 +1074,33 @@ namespace mfe_stokes
         std::vector<double> r_b_receive_buffer(r[side].size());
         std::vector<double> r_receive_buffer(r[side].size());
 
-        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        if (neighbor_type[side] == 1) //Stokes-Stokes interface
         {
-          r_b[side][i] = solution_bar_mortar[side][interface_dofs[side][i]];
-          r[side][i] =  solution_bar_mortar[side][interface_dofs[side][i]]+
-                        solution_star_mortar[side][interface_dofs[side][i]];
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            r_b[side][i] = solution_bar_mortar[side][interface_dofs[side][i]];
+            r[side][i] =  solution_bar_mortar[side][interface_dofs[side][i]]
+                          + solution_star_mortar[side][interface_dofs[side][i]];
+          }
+        }
+        else if (neighbor_type[side] == 2) //Stokes-Biot interface
+        {
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+            {
+              r_b[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]];
+              r[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]]
+                          - solution_star_mortar[side][interface_dofs[side][i]];     
+              // pcout << "Ax[side][i]: " << Ax[side][i] << " solution_bar: " << solution_bar[interface_dofs[side][i]] << std::endl;
+            }
+            else //monolithic-darcy part (coupled)
+            {
+              r_b[side][i] = solution_bar_mortar[side][interface_dofs[side][i]];
+              r[side][i] =  solution_bar_mortar[side][interface_dofs[side][i]]
+                          + solution_star_mortar[side][interface_dofs[side][i]];
+            }                
+          }
         }
 
         MPI_Sendrecv(r_b[side].data(),
@@ -1007,8 +1143,8 @@ namespace mfe_stokes
         // r_b_norm_side[side] = vect_norm(r_b[side]);
       }
 
-      r_norm = inner_product_mortar(r, r, fe_face_values_mortar);
-      b_norm = inner_product_mortar(r_b, r_b, fe_face_values_mortar);
+      r_norm = inner_product_mortar(r, r, fe_face_values_mortar, fe_face_values_mortar_biot);
+      b_norm = inner_product_mortar(r_b, r_b, fe_face_values_mortar, fe_face_values_mortar_biot);
 
     // //Calculating r-norm(same as b-norm)-----
     // for(unsigned int side=0; side<n_faces_per_cell;++side)
@@ -1040,13 +1176,15 @@ namespace mfe_stokes
   // compute inner product in mortar space
   template <int dim>
   void
-  MixedStokesProblem<dim>::interface_inner_product(std::unique_ptr<FEFunction>      &solution_bar_function,
+  MixedStokesProblem<dim>::interface_inner_product(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                                  std::unique_ptr<FEFunction>      &solution_bar_function,
                                                   std::unique_ptr<FEFunction>       &solution_star_function,
                                                   FEFaceValues<dim>                 &fe_face_values_mortar,
-                                                  Projector::Projector<dim> &P_mortar)
+                                                  FEFaceValues<dim>                 &fe_face_values_mortar_biot,
+                                                  std::vector<Projector::Projector<dim>> &P_mortar)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
-    
+
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
       {
@@ -1055,121 +1193,306 @@ namespace mfe_stokes
         solution_bar_mortar_temp[side] = 0;
         solution_star_mortar_temp[side] = 0;
       }
-    
-    const unsigned int n_face_q_points = fe_face_values_mortar.get_quadrature().size();
-    const unsigned int dofs_per_cell   = fe_mortar.dofs_per_cell;
 
-    Vector<double>                       local_rhs_bar(dofs_per_cell);
-    Vector<double>                       local_rhs_star(dofs_per_cell);
-    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+    if (stokes_neighbor)
+    { 
+      const unsigned int n_face_q_points = fe_face_values_mortar.get_quadrature().size();
+      const unsigned int dofs_per_cell   = fe_mortar.dofs_per_cell;
 
-    const FEValuesExtractors::Vector velocities(0);
-    std::vector<std::vector<unsigned int>> interface_dofs_count(GeometryInfo<dim>::faces_per_cell);
+      Vector<double>                       local_rhs_bar(dofs_per_cell);
+      Vector<double>                       local_rhs_star(dofs_per_cell);
+      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
 
-    //first index for dim components, 0, 1: vel, 2: pressure
-    //second for value at each quad point
-    std::vector<std::vector<double>> bar_values(dim, std::vector<double>(n_face_q_points, 0.0));
-    std::vector<std::vector<double>> star_values(dim, std::vector<double>(n_face_q_points, 0.0));
-    std::vector<Tensor<1, dim>>      phi_mu(dofs_per_cell);
+      const FEValuesExtractors::Vector velocities(0);
+      std::vector<std::vector<unsigned int>> interface_dofs_count(GeometryInfo<dim>::faces_per_cell);
 
-    unsigned int side = 0;
+      //first index for dim components, 0, 1: vel, 2: pressure
+      //second for value at each quad point
+      std::vector<std::vector<double>> bar_values(dim, std::vector<double>(n_face_q_points, 0.0));
+      std::vector<std::vector<double>> star_values(dim, std::vector<double>(n_face_q_points, 0.0));
+      std::vector<Tensor<1, dim>>      phi_mu(dofs_per_cell);
 
-    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
-    {
-      local_rhs_bar  = 0;
-      local_rhs_star = 0;
-      cell->get_dof_indices(local_dof_indices);
-      for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
+      unsigned int side = 0;
+
+      for (const auto &cell : dof_handler_mortar.active_cell_iterators())
       {
-        if (cell->at_boundary(face_n) &&
-          (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
+        local_rhs_bar  = 0;
+        local_rhs_star = 0;
+        cell->get_dof_indices(local_dof_indices);
+        for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
         {
-          //Need to reorder faces deal.ii iterators 
-          //use a different ordering from freefem, 
-          //they are ordered component wise 
-          fe_face_values_mortar.reinit(cell, face_n);
-          side = cell->face(face_n)->boundary_id() - 1;
-          for (unsigned int s = 0; s < dim; ++s)
+          if (cell->at_boundary(face_n) &&
+            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
           {
-            solution_bar_function->value_list(fe_face_values_mortar.get_quadrature_points(),
-                                      bar_values[s], s);
-            solution_star_function->value_list(fe_face_values_mortar.get_quadrature_points(),
-                                      star_values[s], s);
-          }
-
-          for (unsigned int q_point = 0; q_point < n_face_q_points;
-              ++q_point)
-          {
-            for (unsigned int k = 0; k < dofs_per_cell; ++k)
+            //Need to reorder faces deal.ii iterators 
+            //use a different ordering from freefem, 
+            //they are ordered component wise 
+            fe_face_values_mortar.reinit(cell, face_n);
+            side = cell->face(face_n)->boundary_id() - 1;
+            if (neighbor_type[side] == 1) //Stokes-Stokes interface
             {
-              if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                             local_dof_indices[k]) != interface_dofs[side].end())
-              {             
-                // if (std::find (interface_dofs_count[side].begin(), interface_dofs_count[side].end(),
-                //               local_dof_indices[k]) == interface_dofs_count[side].end()) 
-                // {            
-                phi_mu[k]  = fe_face_values_mortar[velocities].value(k, q_point); 
-                // interface_dofs_count[side].push_back(local_dof_indices[k]);
-                // }
+              for (unsigned int s = 0; s < dim; ++s)
+              {
+                solution_bar_function->value_list(fe_face_values_mortar.get_quadrature_points(),
+                                          bar_values[s], s);
+                solution_star_function->value_list(fe_face_values_mortar.get_quadrature_points(),
+                                          star_values[s], s);
               }
-              else
-                phi_mu[k] = 0;
-            }
 
-            for (unsigned int i = 0; i < dofs_per_cell; ++i)
-            {
-              if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                             local_dof_indices[i]) != interface_dofs[side].end())
-              {   
-                for (unsigned int s = 0; s < dim; ++s)
+              for (unsigned int q_point = 0; q_point < n_face_q_points;
+                  ++q_point)
+              {
+                for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 {
-                  solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                    (phi_mu[i][s] * get_normal_direction<dim>(side) *  // mu(x_q)
-                      bar_values[s][q_point]) *    // u_bar
-                      fe_face_values_mortar.JxW(q_point);    // dx
+                  if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                local_dof_indices[k]) != interface_dofs[side].end())
+                  {             
+                    // if (std::find (interface_dofs_count[side].begin(), interface_dofs_count[side].end(),
+                    //               local_dof_indices[k]) == interface_dofs_count[side].end()) 
+                    // {            
+                    phi_mu[k]  = fe_face_values_mortar[velocities].value(k, q_point); 
+                    // interface_dofs_count[side].push_back(local_dof_indices[k]);
+                    // }
+                  }
+                  else
+                    phi_mu[k] = 0;
+                }
 
-                  solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                    (phi_mu[i][s] * get_normal_direction<dim>(side) *  // mu(x_q)
-                      star_values[s][q_point]) *    // u_star
-                      fe_face_values_mortar.JxW(q_point);    // dx
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                local_dof_indices[i]) != interface_dofs[side].end())
+                  {   
+                    for (unsigned int s = 0; s < dim; ++s)
+                    {
+                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                        (phi_mu[i][s] * get_normal_direction<dim>(side) *  // mu(x_q)
+                          bar_values[s][q_point]) *    // u_bar
+                          fe_face_values_mortar.JxW(q_point);    // dx
+
+                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                        (phi_mu[i][s] * get_normal_direction<dim>(side) *  // mu(x_q)
+                          star_values[s][q_point]) *    // u_star
+                          fe_face_values_mortar.JxW(q_point);    // dx
+                    }
+                  }
                 }
               }
             }
           }
         }
       }
-      // for (unsigned int i = 0; i < dofs_per_cell; ++i)
-      // {
-      //   solution_bar_mortar(local_dof_indices[i]) += local_rhs_bar(i);        
-      //   solution_star_mortar(local_dof_indices[i]) += local_rhs_star(i);
-      // }
-    }
-  
+    
+      Quadrature<dim - 1> quad;
+      quad = QGauss<dim - 1>(qdegree);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0 && neighbor_type[side] == 1) //Stokes-Stokes interface
+        {
+          project_mortar<dim>(P_mortar[0],
+                        dof_handler_mortar,
+                        solution_bar_mortar_temp[side],
+                        quad,
+                        constraints_mortar,
+                        neighbors,
+                        dof_handler_mortar,
+                        solution_bar_mortar[side]);
+          project_mortar<dim>(P_mortar[0],
+                        dof_handler_mortar,
+                        solution_star_mortar_temp[side],
+                        quad,
+                        constraints_mortar,
+                        neighbors,
+                        dof_handler_mortar,
+                        solution_star_mortar[side]);   
+
+          // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
+          // solution_star_mortar[side] = solution_star_mortar_temp[side];
+        } 
+    } 
+    else if (biot_neighbor) 
+    {
+      double alpha = 1.0;     
+      const unsigned int n_face_q_points = fe_face_values_mortar_biot.get_quadrature().size();
+      const unsigned int dofs_per_cell   = fe_biot_mortar.dofs_per_cell;
+
+      Vector<double>                       local_rhs_bar(dofs_per_cell);
+      Vector<double>                       local_rhs_star(dofs_per_cell);
+      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+      std::vector<double> phi_p(dofs_per_cell);
+      std::vector<Tensor<1, dim>> phi_eta(dofs_per_cell, Tensor<1, dim>());
+
+      const K_permeability<dim> k_permeability;
+      std::vector<Tensor<2,dim>>  k_permeability_values(n_face_q_points);
+
+      //first index for dim components, 0, 1: vel, 2: pressure
+      //second for value at each quad point
+      std::vector<std::vector<double>> bar_values(dim, std::vector<double>(n_face_q_points, 0.0));
+      std::vector<std::vector<double>> star_values(dim, std::vector<double>(n_face_q_points, 0.0));
+
+      std::vector<FEValuesExtractors::Vector> stresses(dim, FEValuesExtractors::Vector());
+
+      for (unsigned int d=0; d<dim; ++d)
+      {
+        const FEValuesExtractors::Vector tmp_stress(d*dim);
+        stresses[d].first_vector_component = tmp_stress.first_vector_component;
+      }
+      const FEValuesExtractors::Vector velocity (dim*dim + dim + 0.5*dim*(dim-1));
+
+      std::vector<std::vector<double>> interface_values_flux(dim, std::vector<double> (n_face_q_points));
+      std::vector<std::vector<std::vector<double>>> interface_values_stress(dim, 
+                                                      std::vector<std::vector<double>>(
+                                                      dim, std::vector<double>(n_face_q_points)));
+
+      double lambda_p = 0.0; // the pressure lagrange multiplier value at the quad point
+      Tensor<1, dim> lambda_d; // the displacement lagrange multiplier value at the quad point
+
+      unsigned int side = 0;
+      double const_bjs =0.0; // the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
+
+      Tensor<1, dim> tangent_vector;
+
+      for (const auto &cell : dof_handler_biot_mortar.active_cell_iterators())
+      {
+        cell->get_dof_indices(local_dof_indices);
+        for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
+          if (cell->at_boundary(face_n) &&
+            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
+          {
+            //Need to reorder faces deal.ii iterators 
+            //use a different ordering from freefem, 
+            //they are ordered component wise 
+            fe_face_values_mortar_biot.reinit(cell, face_n);
+            side = cell->face(face_n)->boundary_id() - 1;
+            k_permeability.value_list (fe_face_values_mortar_biot.get_quadrature_points(), k_permeability_values);
+            if (neighbor_type[side] == 2) //Stokes-Biot interface
+            {
+              for (unsigned int s = 0; s < dim; ++s)
+              {
+                solution_bar_function->value_list(fe_face_values_mortar_biot.get_quadrature_points(),
+                                          bar_values[s], s);
+                solution_star_function->value_list(fe_face_values_mortar_biot.get_quadrature_points(),
+                                          star_values[s], s);
+              }
+              for (unsigned int s = 0; s < dim; ++s)
+                interface_function[side]->value_list(fe_face_values_mortar_biot.get_quadrature_points(),
+                                                    interface_values_flux[s], dim*dim + dim + 0.5*dim*(dim-1)+s);
+
+              for (unsigned int s = 0 ; s < dim*dim; ++s)
+                interface_function[side]->value_list(fe_face_values_mortar_biot.get_quadrature_points(),
+                                              interface_values_stress[s/dim][s%dim], s);
+              for (unsigned int q_point = 0; q_point < n_face_q_points;
+                    ++q_point)
+              {
+                // computes normal tangent vector in 2D, 
+                // assumes counterclockwise ordering of faces in deal.ii
+                if (dim == 2) 
+                {
+                  tangent_vector[0] = - fe_face_values_mortar_biot.normal_vector(q_point)[1];
+                  tangent_vector[1] = fe_face_values_mortar_biot.normal_vector(q_point)[0];
+                }
+                else if (dim == 3)
+                {
+                  Assert(false, "Tangent vector not implemented for 3D yet");
+                }
+                // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
+                const_bjs = alpha * 
+                            std::sqrt(1/((k_permeability_values[q_point]*tangent_vector)
+                                                      *tangent_vector));
+                // compute lambda_p and lambda_d at the quad point
+                for (unsigned int s = 0; s < dim; ++s)
+                {
+                  lambda_p += interface_values_flux[s][q_point] 
+                                * fe_face_values_mortar_biot.normal_vector(q_point)[s];    
+                  lambda_d[s] = 0;
+                  for (unsigned int l = 0; l < dim; ++l)
+                    lambda_d[s] += interface_values_stress[s][l][q_point] 
+                                  * fe_face_values_mortar_biot.normal_vector(q_point)[l]; 
+                }                                                   
+                for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                {
+                  for (unsigned int s = 0; s < dim; ++s)
+                    phi_eta[k][s] = fe_face_values_mortar_biot[stresses[s]].value (k, q_point)
+                                  * fe_face_values_mortar_biot.normal_vector(q_point)
+                                  * get_normal_direction<dim>(side);
+
+                  phi_p[k] = fe_face_values_mortar_biot[velocity].value (k, q_point)
+                            * fe_face_values_mortar_biot.normal_vector(q_point)
+                            * get_normal_direction<dim>(side);
+                }
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  // contribution from the coupling term in the 
+                  // displacement lagrange multiplier test function
+                  for (unsigned int s = 0; s < dim; ++s)
+                  {
+                    solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                      (const_bjs * bar_values[s][q_point] * tangent_vector[s]
+                        * phi_eta[i] * tangent_vector) // c_bjs<u_bar_f * t_f, mu_d * t_f>
+                      * fe_face_values_mortar_biot.JxW(q_point);    // dx
+
+                    solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                    - (const_bjs * star_values[s][q_point] * tangent_vector[s]
+                        * phi_eta[i] * tangent_vector) // - c_bjs<u_star_f * t_f, mu_d * t_f>
+                      * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                  }
+                  solution_star_mortar_temp[side][local_dof_indices[i]] +=
+                    ((- phi_eta[i] * fe_face_values_mortar_biot.normal_vector(q_point) 
+                      * lambda_p) // <phi_eta(x_q) * n_p * lambda_p>
+                      + const_bjs * (lambda_d * tangent_vector) 
+                      * (phi_eta[i] * tangent_vector)) // <lambda_d * t_f,  phi_eta * t_f>
+                    * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                  
+                  // contribution from the coupling term in the 
+                  // pressure lagrange multiplier test function
+                  for (unsigned int s = 0; s < dim; ++s)
+                  {
+                    solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                      ((phi_p[i] * bar_values[s][q_point] 
+                        * fe_face_values_mortar.normal_vector(q_point)[s]))   // <u_bar * n, mu_p>
+                       * fe_face_values_mortar.JxW(q_point);    // dx
+
+                    solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                      ((phi_p[i] * star_values[s][q_point] 
+                        * fe_face_values_mortar.normal_vector(q_point)[s]))   // <u_bar * n, mu_p>
+                       * fe_face_values_mortar.JxW(q_point);    // dx
+                  }
+                  solution_bar_mortar_temp[side][local_dof_indices[i]] +=
+                   ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
+                    * phi_p[i]) // <lambda_d * n, mu_p> 
+                    * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                }
+              }
+            }
+          }
+      }
+
     Quadrature<dim - 1> quad;
     quad = QGauss<dim - 1>(qdegree);
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-      if (neighbors[side] >= 0)
+      if (neighbors[side] >= 0 && neighbor_type[side] == 2) //Stokes-Biot interface
       {
-        project_mortar<dim>(P_mortar,
-                      dof_handler_mortar,
-                      solution_bar_mortar_temp[side],
-                      quad,
-                      constraints_mortar,
-                      neighbors,
-                      dof_handler_mortar,
-                      solution_bar_mortar[side]);
-        project_mortar<dim>(P_mortar,
-                      dof_handler_mortar,
-                      solution_star_mortar_temp[side],
-                      quad,
-                      constraints_mortar,
-                      neighbors,
-                      dof_handler_mortar,
-                      solution_star_mortar[side]);   
+        project_mortar<dim>(P_mortar[1],
+                            dof_handler_mortar,
+                            solution_bar_mortar_temp[side],
+                            quad,
+                            constraints_mortar,
+                            neighbors,
+                            dof_handler_mortar,
+                            solution_bar_mortar[side]);
+        project_mortar<dim>(P_mortar[1],
+                            dof_handler_mortar,
+                            solution_star_mortar_temp[side],
+                            quad,
+                            constraints_mortar,
+                            neighbors,
+                            dof_handler_mortar,
+                            solution_star_mortar[side]);   
 
         // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
         // solution_star_mortar[side] = solution_star_mortar_temp[side];
-      }   
+      } 
+    }
   }
 
   // compute inner product in mortar space
@@ -1178,64 +1501,153 @@ namespace mfe_stokes
   double
   MixedStokesProblem<dim>::inner_product_mortar(std::vector<std::vector<double>> &v_1,
                                                 std::vector<std::vector<double>> &v_2,
-                                                FEFaceValues<dim> &fe_face_values_mortar)
+                                                FEFaceValues<dim> &fe_face_values_mortar,
+                                                FEFaceValues<dim> &fe_face_values_mortar_biot)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     double inner_product = 0.0;
 
-    const unsigned int n_face_q_points = fe_face_values_mortar.get_quadrature().size();
-    const unsigned int dofs_per_cell   = fe_mortar.dofs_per_cell;
-    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-    std::vector<Tensor<1, dim>> phi_u(dofs_per_cell, Tensor<1, dim>());
+    if (stokes_neighbor)
+    {
+      const unsigned int n_face_q_points = fe_face_values_mortar.get_quadrature().size();
+      const unsigned int dofs_per_cell   = fe_mortar.dofs_per_cell;
+      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+      std::vector<Tensor<1, dim>> phi_u(dofs_per_cell, Tensor<1, dim>());
 
-    BlockVector<double> vec_1(mortar_vec);
-    BlockVector<double> vec_2(mortar_vec);
-    vec_1 = 0;
-    vec_2 = 0;
-    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-      if (neighbors[side] >= 0)
-      {
-        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+      BlockVector<double> vec_1(mortar_vec);
+      BlockVector<double> vec_2(mortar_vec);
+      vec_1 = 0;
+      vec_2 = 0;
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
         {
-          vec_1(interface_dofs[side][i]) = v_1[side][i];
-          vec_2(interface_dofs[side][i]) = v_2[side][i];
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            vec_1(interface_dofs[side][i]) = v_1[side][i];
+            vec_2(interface_dofs[side][i]) = v_2[side][i];
+          }
         }
+
+      //first index for dim components, 0, 1: vel, 2: pressure
+      //second for value at each quad point
+      std::vector<Tensor<1, dim>> interface_values_v1_flux(n_face_q_points, Tensor<1, dim>());
+      std::vector<Tensor<1, dim>> interface_values_v2_flux(n_face_q_points, Tensor<1, dim>());
+
+      const FEValuesExtractors::Vector velocity (0);
+
+      unsigned int side = 0;
+      for (const auto &cell : dof_handler_mortar.active_cell_iterators())
+      {
+        cell->get_dof_indices(local_dof_indices);
+        for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
+          if (cell->at_boundary(face_n) &&
+            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7) )
+          {
+            //Need to reorder faces deal.ii iterators 
+            //use a different ordering from freefem, 
+            //they are ordered component wise 
+            fe_face_values_mortar.reinit(cell, face_n);
+            side = cell->face(face_n)->boundary_id() - 1;
+            
+            fe_face_values_mortar[velocity].get_function_values(
+              vec_1, interface_values_v1_flux);
+            fe_face_values_mortar[velocity].get_function_values(
+              vec_2, interface_values_v2_flux);                                 
+            
+            for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
+            {
+              inner_product += 
+                interface_values_v1_flux[q_point] * (interface_values_v2_flux[q_point]) // (u1 * u2)
+                * fe_face_values_mortar.JxW(q_point);    // dx
+            }
+              
+          }
+      }
+    }
+    else if (biot_neighbor)
+    {
+      const unsigned int n_face_q_points = fe_face_values_mortar_biot.get_quadrature().size();
+      const unsigned int dofs_per_cell   = fe_biot_mortar.dofs_per_cell;
+      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+      std::vector<double> phi_p(dofs_per_cell);
+      std::vector<Tensor<1, dim>> phi_eta(dofs_per_cell, Tensor<1, dim>());
+
+      BlockVector<double> vec_1(mortar_vec_biot);
+      BlockVector<double> vec_2(mortar_vec_biot);
+      vec_1 = 0;
+      vec_2 = 0;
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            vec_1(interface_dofs[side][i]) = v_1[side][i];
+            vec_2(interface_dofs[side][i]) = v_2[side][i];
+          }
+        }
+
+      //first index for dim components, 0, 1: vel, 2: pressure
+      //second for value at each quad point
+      std::vector<Tensor<1, dim>> interface_values_v1_flux(n_face_q_points, Tensor<1, dim>());
+      std::vector<Tensor<1, dim>> interface_values_v2_flux(n_face_q_points, Tensor<1, dim>());
+
+      std::vector<std::vector<Tensor<1, dim>>> interface_values_v1_stress(dim, 
+                                                std::vector<Tensor<1, dim>>(n_face_q_points, Tensor<1, dim>()));
+      std::vector<std::vector<Tensor<1, dim>>> interface_values_v2_stress(dim, 
+                                                std::vector<Tensor<1, dim>>(n_face_q_points, Tensor<1, dim>()));
+
+      std::vector<FEValuesExtractors::Vector> stresses(dim, FEValuesExtractors::Vector());
+
+      for (unsigned int d=0; d<dim; ++d)
+      {
+        const FEValuesExtractors::Vector tmp_stress(d*dim);
+        stresses[d].first_vector_component = tmp_stress.first_vector_component;
       }
 
-    //first index for dim components, 0, 1: vel, 2: pressure
-    //second for value at each quad point
-    std::vector<Tensor<1, dim>> interface_values_v1_flux(n_face_q_points, Tensor<1, dim>());
-    std::vector<Tensor<1, dim>> interface_values_v2_flux(n_face_q_points, Tensor<1, dim>());
+      const FEValuesExtractors::Vector velocity (dim*dim + dim + 0.5*dim*(dim-1));
 
-    const FEValuesExtractors::Vector velocity (0);
-
-    unsigned int side = 0;
-    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
-    {
-      cell->get_dof_indices(local_dof_indices);
-      for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
-        if (cell->at_boundary(face_n) &&
-          (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7) )
-        {
-          //Need to reorder faces deal.ii iterators 
-          //use a different ordering from freefem, 
-          //they are ordered component wise 
-          fe_face_values_mortar.reinit(cell, face_n);
-          side = cell->face(face_n)->boundary_id() - 1;
-          
-          fe_face_values_mortar[velocity].get_function_values(
-            vec_1, interface_values_v1_flux);
-          fe_face_values_mortar[velocity].get_function_values(
-            vec_2, interface_values_v2_flux);                                 
-          
-          for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
+      unsigned int side = 0;
+      for (const auto &cell : dof_handler_biot_mortar.active_cell_iterators())
+      {
+        cell->get_dof_indices(local_dof_indices);
+        for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
+          if (cell->at_boundary(face_n) &&
+            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7) )
           {
-            inner_product += 
-              interface_values_v1_flux[q_point] * (interface_values_v2_flux[q_point]) // (u1 * u2)
-              * fe_face_values_mortar.JxW(q_point);    // dx
-          }
+            //Need to reorder faces deal.ii iterators 
+            //use a different ordering from freefem, 
+            //they are ordered component wise 
+            fe_face_values_mortar_biot.reinit(cell, face_n);
+            side = cell->face(face_n)->boundary_id() - 1;
             
-        }
+            fe_face_values_mortar_biot[velocity].get_function_values(
+              vec_1, interface_values_v1_flux);
+            fe_face_values_mortar_biot[velocity].get_function_values(
+              vec_2, interface_values_v2_flux);                                 
+            
+            for (unsigned int s = 0 ; s < dim; ++s)
+            {
+              fe_face_values_mortar_biot[stresses[s]].get_function_values(
+                vec_1, interface_values_v1_stress[s]);
+              fe_face_values_mortar_biot[stresses[s]].get_function_values(
+                vec_2, interface_values_v2_stress[s]);
+            }
+            for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
+            {
+              inner_product += 
+                (interface_values_v1_flux[q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) *
+                (interface_values_v2_flux[q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) // (u1 * u2)
+                * fe_face_values_mortar_biot.JxW(q_point);    // dx
+              for (unsigned int s = 0; s < dim; ++s)
+                inner_product += 
+                  (interface_values_v1_stress[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point) *
+                  interface_values_v2_stress[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) // (sigma1.n * sigma2.n)
+                  * fe_face_values_mortar_biot.JxW(q_point);    // dx
+            }
+              
+          }
+          
+      }
     }
     
     return inner_product;
@@ -1253,7 +1665,8 @@ namespace mfe_stokes
                                     std::vector<std::vector<double>> &interface_data_receive,
                                     FEFaceValues<dim>                &fe_face_values,
                                     FEFaceValues<dim>                &fe_face_values_mortar,
-                                    Projector::Projector<dim> &P_mortar,
+                                    FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                                    std::vector<Projector::Projector<dim>> &P_mortar,
                                     std::vector<std::vector<double>> &Ap,
                                     std::vector<std::vector<double>> &q,
                                     std::vector<std::vector<std::vector<double>>>	&Q_side,
@@ -1274,6 +1687,7 @@ namespace mfe_stokes
                         interface_data_receive,
                         fe_face_values,
                         fe_face_values_mortar,
+                        fe_face_values_mortar_biot,
                         P_mortar,
                         Ap);
 
@@ -1307,7 +1721,7 @@ namespace mfe_stokes
           for (unsigned int side = 0; side < n_faces_per_cell; ++side)
             for (unsigned int k = 0; k < q[side].size(); ++k)
               Q_tmp[side][k]=Q_side[side][i][k];
-          h[i] = inner_product_mortar(Q_tmp, q, fe_face_values_mortar);
+          h[i] = inner_product_mortar(Q_tmp, q, fe_face_values_mortar, fe_face_values_mortar_biot);
 
           // for(unsigned int j=0; j<q[side].size();++j)
           //   h[i]+=q[side][j]*Q_side[side][i][j];
@@ -1340,7 +1754,7 @@ namespace mfe_stokes
     //   if (neighbors[side] >= 0)
     //     h_dummy+=vect_norm(q[side])*vect_norm(q[side]);
 
-    h_dummy = inner_product_mortar(q, q, fe_face_values_mortar);
+    h_dummy = inner_product_mortar(q, q, fe_face_values_mortar, fe_face_values_mortar_biot);
     
     double h_k_buffer=0;
 
@@ -1386,7 +1800,9 @@ namespace mfe_stokes
     double initial_val = 0.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
-    Projector::Projector<dim> P_mortar(false);
+    // [0] will hold factored L2 projection matrix for Stokes-Stokes interface
+    // [1] will hold factored L2 projection matrix for Stokes-Biot interface
+    std::vector<Projector::Projector<dim>> P_mortar(2, Projector::Projector<dim>(false));
 
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
@@ -1405,16 +1821,21 @@ namespace mfe_stokes
 
 
     // dealii::AffineConstraints<double>   constraints;
+    FEFaceValues<dim> fe_face_values(fe,
+                                  quad,
+                                  update_values | update_normal_vectors |
+                                    update_quadrature_points |
+                                    update_JxW_values);
     FEFaceValues<dim> fe_face_values_mortar(fe_mortar,
                                           quad,
                                           update_values | update_normal_vectors |
                                             update_quadrature_points |
                                             update_JxW_values);
-     FEFaceValues<dim> fe_face_values(fe,
-                                    quad,
-                                    update_values | update_normal_vectors |
-                                      update_quadrature_points |
-                                      update_JxW_values);
+    FEFaceValues<dim> fe_face_values_mortar_biot(fe_biot_mortar,
+                                          quad,
+                                          update_values | update_normal_vectors |
+                                            update_quadrature_points |
+                                            update_JxW_values);
 
     //GMRES structures and parameters
     std::vector<double>	sn;
@@ -1441,13 +1862,27 @@ namespace mfe_stokes
                                             0);
         interface_data_send[side].resize(interface_dofs[side].size(), 0);
         interface_data[side].resize(interface_dofs[side].size(), initial_val);
-        interface_fe_function[side].reinit(mortar_vec);
 
-        solution_bar_mortar[side].reinit(mortar_vec);
-        solution_star_mortar[side].reinit(mortar_vec);
+        if (neighbor_type[side] == 1) //Stokes-Stokes interface
+        {
+          interface_fe_function[side].reinit(mortar_vec);
 
-        solution_bar_mortar_temp[side].reinit(mortar_vec);
-        solution_star_mortar_temp[side].reinit(mortar_vec);
+          solution_bar_mortar[side].reinit(mortar_vec);
+          solution_star_mortar[side].reinit(mortar_vec);
+
+          solution_bar_mortar_temp[side].reinit(mortar_vec);
+          solution_star_mortar_temp[side].reinit(mortar_vec);
+        }
+        else if (neighbor_type[side] == 2) //Stokes-Biot interface
+        {
+          interface_fe_function[side].reinit(mortar_vec_biot);
+
+          solution_bar_mortar[side].reinit(mortar_vec_biot);
+          solution_star_mortar[side].reinit(mortar_vec_biot);
+
+          solution_bar_mortar_temp[side].reinit(mortar_vec_biot);
+          solution_star_mortar_temp[side].reinit(mortar_vec_biot);
+        }
 
         Ap[side].resize(interface_dofs[side].size(), 0);
         lambda[side].resize(interface_dofs[side].size(), initial_val);
@@ -1477,6 +1912,7 @@ namespace mfe_stokes
                      solution_star_function,
                      fe_face_values,
                      fe_face_values_mortar,
+                     fe_face_values_mortar_biot,
                      interface_data,
                      P_mortar,
                      r,
@@ -1515,6 +1951,7 @@ namespace mfe_stokes
               interface_data_receive,
               fe_face_values,
               fe_face_values_mortar,
+              fe_face_values_mortar_biot,
               P_mortar,
               Ap,
               q,
@@ -1619,7 +2056,7 @@ namespace mfe_stokes
     double initial_val = 0.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
-    Projector::Projector<dim> P_mortar(false);
+    std::vector<Projector::Projector<dim>> P_mortar(2, Projector::Projector<dim>(false));
 
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
@@ -1630,12 +2067,16 @@ namespace mfe_stokes
                                     update_values | update_normal_vectors |
                                       update_quadrature_points |
                                       update_JxW_values);
-
     FEFaceValues<dim> fe_face_values_mortar(fe_mortar,
                                           quad,
                                           update_values | update_normal_vectors |
                                             update_quadrature_points |
-                                            update_JxW_values);                                  
+                                            update_JxW_values);          
+    FEFaceValues<dim> fe_face_values_mortar_biot(fe_biot_mortar,
+                                          quad,
+                                          update_values | update_normal_vectors |
+                                            update_quadrature_points |
+                                            update_JxW_values);                        
 
     // CG structures and parameters
     std::vector<double> alpha_side(n_faces_per_cell, 0),
@@ -1655,13 +2096,27 @@ namespace mfe_stokes
                                             0);
         interface_data_send[side].resize(interface_dofs[side].size(), 0);
         interface_data[side].resize(interface_dofs[side].size(), initial_val);
-        interface_fe_function[side].reinit(mortar_vec);
 
-        solution_bar_mortar[side].reinit(mortar_vec);
-        solution_star_mortar[side].reinit(mortar_vec);
+        if (neighbor_type[side] == 1) //Stokes-Stokes interface
+        {
+          interface_fe_function[side].reinit(mortar_vec);
 
-        solution_bar_mortar_temp[side].reinit(mortar_vec);
-        solution_star_mortar_temp[side].reinit(mortar_vec);
+          solution_bar_mortar[side].reinit(mortar_vec);
+          solution_star_mortar[side].reinit(mortar_vec);
+
+          solution_bar_mortar_temp[side].reinit(mortar_vec);
+          solution_star_mortar_temp[side].reinit(mortar_vec);
+        }
+        else if (neighbor_type[side] == 2) //Stokes-Biot interface
+        {
+          interface_fe_function[side].reinit(mortar_vec_biot);
+
+          solution_bar_mortar[side].reinit(mortar_vec_biot);
+          solution_star_mortar[side].reinit(mortar_vec_biot);
+
+          solution_bar_mortar_temp[side].reinit(mortar_vec_biot);
+          solution_star_mortar_temp[side].reinit(mortar_vec_biot);
+        }
 
         Ap[side].resize(interface_dofs[side].size(), 0);
         lambda[side].resize(interface_dofs[side].size(), initial_val);
@@ -1689,6 +2144,7 @@ namespace mfe_stokes
                      solution_star_function,
                      fe_face_values,
                      fe_face_values_mortar,
+                     fe_face_values_mortar_biot,
                      interface_data,
                      P_mortar,
                      r,
@@ -1725,6 +2181,7 @@ namespace mfe_stokes
                           interface_data_receive,
                           fe_face_values,
                           fe_face_values_mortar,
+                          fe_face_values_mortar_biot,
                           P_mortar,
                           Ap);
 
@@ -1754,8 +2211,8 @@ namespace mfe_stokes
       // });
       std::vector<double> alpha_buffer(2, 0);
 
-      alpha[0] = inner_product_mortar(r, r, fe_face_values_mortar);
-      alpha[1] = inner_product_mortar(p, Ap, fe_face_values_mortar);
+      alpha[0] = inner_product_mortar(r, r, fe_face_values_mortar, fe_face_values_mortar_biot);
+      alpha[1] = inner_product_mortar(p, Ap, fe_face_values_mortar, fe_face_values_mortar_biot);
 
       MPI_Allreduce(&alpha[0], //sending this data
                     &alpha_buffer[0], //receiving the result here
@@ -1823,7 +2280,7 @@ namespace mfe_stokes
       //   beta[0] += n;
       // });
 
-      beta[0] = inner_product_mortar(r, r, fe_face_values_mortar);
+      beta[0] = inner_product_mortar(r, r, fe_face_values_mortar, fe_face_values_mortar_biot);
       double beta_buffer = 0;
 
       MPI_Allreduce(

@@ -249,8 +249,6 @@ namespace mfe_biot
     unsigned long n_rot_mortar;
     unsigned long n_flux_mortar;
     unsigned long n_pressure_mortar;
-    unsigned long n_Elast_mortar;
-    unsigned int n_mortar_dofs;
 
     // Subdomain coordinates (assuming logically rectangular blocks)
     Point <dim> p1;
