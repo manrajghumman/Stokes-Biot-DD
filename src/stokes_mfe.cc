@@ -103,10 +103,6 @@ namespace mfe_stokes
     // , reps(reps)
     , neighbors(neighbors)
     , neighbor_type(neighbor_type)
-    , P_stokes2biot(false)
-    , P_biot2stokes(false)
-    , P_coarse2fine(false)
-    , P_fine2coarse(false)
     , gmres_iteration(0)
     , dof_handler(triangulation)
     , dof_handler_biot_mortar(triangulation_mortar)                          
@@ -299,49 +295,6 @@ namespace mfe_stokes
   void
   MixedStokesProblem<dim>::setup_system_biot()
   {
-
-    // // write the dof count for stress in biot side!!
-    // dof_handler_biot_stress.distribute_dofs(fe_biot_stress);
-    // DoFRenumbering::component_wise(dof_handler_biot_stress);
-
-    // n_biot_stress=0;
-    // unsigned int n_biot_stress_extra = 0;
-    // std::vector<types::global_dof_index> dofs_per_component_stress =
-    //         DoFTools::count_dofs_per_fe_component (dof_handler_biot_stress);
-
-    // for (unsigned int i = 0; i < dim; ++i)
-    //   n_biot_stress += dofs_per_component_stress[i*dim];
-
-    // pcout << " N stress dofs: " << n_biot_stress << std::endl;
-    
-    // // write the dof count for velocity in biot side!!
-    // dof_handler_darcy_vel.distribute_dofs(fe_darcy_vel);
-    // DoFRenumbering::component_wise(dof_handler_darcy_vel);
-
-    // n_darcy_vel = 0; 
-    // unsigned int n_darcy_vel_extra = 0;
-    // std::vector<types::global_dof_index> dofs_per_component_darcy_vel =
-    //         DoFTools::count_dofs_per_fe_component (dof_handler_darcy_vel);
-    
-    // n_darcy_vel = dofs_per_component_darcy_vel[0];
-    // n_darcy_vel_extra = dofs_per_component_darcy_vel[dim];
-
-    // pcout << " N darcy velocity dofs: " << n_darcy_vel << std::endl;
-
-    // // Reinit Biot stress vector 
-    // biot_stress_vec.reinit(2);
-    // biot_stress_vec.block(0).reinit(n_biot_stress);
-    // biot_stress_vec.block(1).reinit(n_biot_stress_extra);
-    // biot_stress_vec.collect_sizes();
-    // biot_stress_vec = 0;
-
-    // // Reinit Darcy velocity vector 
-    // darcy_velocity_vec.reinit(2);
-    // darcy_velocity_vec.block(0).reinit(n_darcy_vel);
-    // darcy_velocity_vec.block(1).reinit(n_darcy_vel_extra);
-    // darcy_velocity_vec.collect_sizes();
-    // darcy_velocity_vec = 0;
-
     // write the dof count for biot side!!
     dof_handler_biot_mortar.distribute_dofs(fe_biot_mortar);
     DoFRenumbering::component_wise(dof_handler_biot_mortar);
@@ -369,7 +322,6 @@ namespace mfe_stokes
     n_rot_mortar = n_g_mortar;
     n_flux_mortar = n_z_mortar;
     n_pressure_mortar = n_p_mortar;
-    // n_Elast= n_s+n_u+n_g;
 
     pcout << "Biot mortar part:\n N stress mortar dofs: " << n_s_mortar
           << "\n N displacement mortar dofs: " << n_u_mortar
@@ -638,9 +590,9 @@ namespace mfe_stokes
       {
         if (face->at_boundary())
         { 
-          fe_face_values.reinit(cell, face);
           if (face->boundary_id() == 7) //Entering Neumann Condition
           {
+            fe_face_values.reinit(cell, face);
             stress_tensor.value_list(fe_face_values.get_quadrature_points(), 
                                 stress_tensor_values);  
             for (unsigned int q_point = 0; q_point < n_face_q_points;
@@ -663,6 +615,7 @@ namespace mfe_stokes
           }//Ending Neumann Condition
           if (face->boundary_id() == 0)//Entering Dirichlet Condition
           {
+            fe_face_values.reinit(cell, face);
             for (unsigned int q = 0; q < n_face_q_points; ++q)
             {
               Tensor<1,dim> gd; 
@@ -710,35 +663,39 @@ namespace mfe_stokes
           if (face->boundary_id() != 0 && face->boundary_id() != 7) //Entering Stokes-Biot interface BJS term
           {
             side = face->boundary_id() - 1;
-            k_permeability.value_list (fe_face_values.get_quadrature_points(), k_permeability_values);
-            for (unsigned int q = 0; q < n_face_q_points; ++q)
+            if (neighbor_type[side] == 2) // Stokes-Biot interface
             {
-              for (unsigned int k = 0; k < dofs_per_cell; ++k)
-                phi_u[k] = fe_face_values[velocities].value(k, q);
+              fe_face_values.reinit(cell, face);
+              k_permeability.value_list (fe_face_values.get_quadrature_points(), k_permeability_values);
+              for (unsigned int q = 0; q < n_face_q_points; ++q)
+              {
+                for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                  phi_u[k] = fe_face_values[velocities].value(k, q);
 
-              // computes normal tangent vector in 2D, 
-              // assumes counterclockwise ordering of faces in deal.ii
-              if (dim == 2) 
-              {
-                tangent_vector[0] = - fe_face_values.normal_vector(q)[1];
-                tangent_vector[1] = fe_face_values.normal_vector(q)[0];
-              }
-              else if (dim == 3)
-              {
-                Assert(false, "Tangent vector not implemented for 3D yet");
-              }
-              // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
-              const_bjs = alpha * 
-                          std::sqrt(1/((k_permeability_values[q]*tangent_vector)
-                                                    *tangent_vector));
-                                                    
-              for (unsigned int i = 0; i < dofs_per_cell; ++i)
-              {
-                for (unsigned int j = 0; j <= i; ++j)
+                // computes normal tangent vector in 2D, 
+                // assumes counterclockwise ordering of faces in deal.ii
+                if (dim == 2) 
                 {
-                  local_matrix(i,j) += const_bjs * (phi_u[j] * tangent_vector)
-                                        * (phi_u[i] * tangent_vector) // alpha*sqrt(K^-1) <u_t, v_t>
-                                        * fe_face_values.JxW(q);
+                  tangent_vector[0] = - fe_face_values.normal_vector(q)[1] * get_normal_direction<dim>(side);
+                  tangent_vector[1] = fe_face_values.normal_vector(q)[0] * get_normal_direction<dim>(side);
+                }
+                else if (dim == 3)
+                {
+                  Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
+                }
+                // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
+                const_bjs = alpha * 
+                            std::sqrt(1/((k_permeability_values[q]*tangent_vector)
+                                                      *tangent_vector));
+                                                      
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  for (unsigned int j = 0; j <= i; ++j)
+                  {
+                    local_matrix(i,j) += const_bjs * (phi_u[j] * tangent_vector)
+                                          * (phi_u[i] * tangent_vector) // alpha*sqrt(K^-1) <u_t, v_t>
+                                          * fe_face_values.JxW(q);
+                  }
                 }
               }
             }
@@ -772,70 +729,171 @@ namespace mfe_stokes
   void
   MixedStokesProblem<dim>::assemble_rhs_star(
     std::vector<std::unique_ptr<FEFunction>> &interface_function,
-    FEFaceValues<dim> &fe_face_values)
+    FEFaceValues<dim> &fe_face_values,
+    FEFaceValues<dim> &fe_face_values_mortar_biot)
   {
     // TimerOutput::Scope t(computing_timer, "Assemble RHS star stokes");
     system_rhs_star = 0;
-
-    const unsigned int n_face_q_points = fe_face_values.get_quadrature().size();
-    const unsigned int dofs_per_cell   = fe.dofs_per_cell;
-
-    Vector<double>                       local_rhs(dofs_per_cell);
-    std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
-
-    const FEValuesExtractors::Vector velocities(0);
-    // std::vector<Tensor<1, dim>>          interface_values(n_face_q_points, Tensor<1, dim>());
-    std::vector<std::vector<double>>     interface_values(dim, std::vector<double>(n_face_q_points, 0.0));//first index for dim components, 0, 1: vel, 2: pressure
-    std::vector<Tensor<1, dim>>          phi_u(dofs_per_cell);                                            //second for value at each quad point
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
-    int side;
-    // if (this_mpi == 1)
-    //   std::cout << "Assembling RHS star for this_mpi = " << this_mpi << std::endl;
-    for (const auto &cell : dof_handler.active_cell_iterators())
-    {
-      local_rhs                   = 0;
-      cell->get_dof_indices(local_dof_indices);
-      for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
-      {
-        if (cell->at_boundary(face_n) &&
-          (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
-          {
-            fe_face_values.reinit(cell, face_n);
-            //Need to reorder faces deal.ii iterators 
-            //use a different ordering from freefem ... only works for 2D
-            side = cell->face(face_n)->boundary_id() - 1;
-            // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side, face_n = " << this_mpi << ", " << side << ", " << face_n << std::endl;
-            // std::cout << "interface_fe_function[side].block(0).size(): " << interface_fe_function[side].size() << " this_mpi, side = " << this_mpi << ", " << side << std::endl;
-            // std::cout << "\ninterface_values = " << interface_values.size() << std::endl;
-            // fe_face_values[velocities].get_function_values(
-            //   interface_fe_function[side], interface_values);
-            // interface_function.vector_value_list(fe_face_values.get_quadrature_points(),
-            //                              interface_values);
-            for (unsigned int s = 0; s < dim; ++s)
-              interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
-                                    interface_values[s], s);
-            for (unsigned int q_point = 0; q_point < n_face_q_points;
-                ++q_point)
-            {
-              for (unsigned int k = 0; k < dofs_per_cell; ++k)
-              {
-                phi_u[k]  = fe_face_values[velocities].value(k, q_point); 
-              }
 
-              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+    if (stokes_neighbor)
+    {
+      const unsigned int n_face_q_points = fe_face_values.get_quadrature().size();
+      const unsigned int dofs_per_cell   = fe.dofs_per_cell;
+
+      Vector<double>                       local_rhs(dofs_per_cell);
+      std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
+
+      const FEValuesExtractors::Vector velocities(0);
+      // std::vector<Tensor<1, dim>>          interface_values(n_face_q_points, Tensor<1, dim>());
+      std::vector<std::vector<double>>     interface_values(dim, std::vector<double>(n_face_q_points, 0.0));//first index for dim components, 0, 1: vel, 2: pressure
+      std::vector<Tensor<1, dim>>          phi_u(dofs_per_cell);                                            //second for value at each quad point
+      unsigned int side;
+      // if (this_mpi == 1)
+      //   std::cout << "Assembling RHS star for this_mpi = " << this_mpi << std::endl;
+      for (const auto &cell : dof_handler.active_cell_iterators())
+      {
+        local_rhs                   = 0;
+        cell->get_dof_indices(local_dof_indices);
+        for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
+        {
+          if (cell->at_boundary(face_n) &&
+            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
+            {
+              //Need to reorder faces deal.ii iterators 
+              //dealii uses component-wise labelling but 
+              //our objects use clockwise labelling
+              side = cell->face(face_n)->boundary_id() - 1;
+              if (neighbor_type[side] == 1) // Stokes-Stokes interface
               {
+                fe_face_values.reinit(cell, face_n);
                 for (unsigned int s = 0; s < dim; ++s)
-                  local_rhs(i) +=
-                    - (phi_u[i][s] * get_normal_direction<dim>(cell->face(face_n)->boundary_id()-1)*  // phi_v_i(x_q)
-                      interface_values[s][q_point]) *    // Tn_i = lambda
-                      fe_face_values.JxW(q_point);    // dx
+                  interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
+                                        interface_values[s], s);
+                for (unsigned int q_point = 0; q_point < n_face_q_points;
+                    ++q_point)
+                {
+                  for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                  {
+                    phi_u[k]  = fe_face_values[velocities].value(k, q_point)
+                                * get_normal_direction<dim>(side); // multiply by normal direction to get correct sign
+                  }
+
+                  for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                  {
+                    for (unsigned int s = 0; s < dim; ++s)
+                      local_rhs(i) +=
+                        - (phi_u[i][s] *  // phi_v_i(x_q)
+                          interface_values[s][q_point]) *    // Tn_i = lambda
+                          fe_face_values.JxW(q_point);    // dx
+                  }
+                }
+              }
+            }  
+        }
+
+        for (unsigned int i = 0; i < dofs_per_cell; ++i)
+          system_rhs_star(local_dof_indices[i]) += local_rhs(i);        
+      }
+    }
+    else if (biot_neighbor)
+    {
+      double alpha = 1.0; // BJS coupling parameter
+      const unsigned int n_face_q_points = fe_face_values.get_quadrature().size();
+      const unsigned int dofs_per_cell = fe.dofs_per_cell;
+
+      Vector<double>                       local_rhs (dofs_per_cell);
+      std::vector<types::global_dof_index> local_dof_indices (dofs_per_cell);
+
+      const FEValuesExtractors::Vector velocities(0);
+      std::vector<Tensor<1, dim>>     phi_u(dofs_per_cell);
+      double lambda_p = 0.0; // the pressure lagrange multiplier value at the quad point
+      Tensor<1, dim> lambda_d; // the displacement lagrange multiplier value at the quad point
+
+      unsigned int side;
+      
+
+      std::vector<std::vector<double>> interface_values_flux(dim, std::vector<double> (n_face_q_points));
+      std::vector<std::vector<std::vector<double>>> interface_values_stress(dim, 
+                                                      std::vector<std::vector<double>>(
+                                                      dim, std::vector<double>(n_face_q_points)));
+
+      Tensor<1, dim> tangent_vector; // the tangent vector to a side                                                
+      double const_bjs = 0; 
+      const K_permeability<dim> k_permeability;
+      std::vector<Tensor<2,dim>>  k_permeability_values(n_face_q_points);
+
+      for (const auto &cell : dof_handler.active_cell_iterators())
+      {
+        local_rhs = 0;
+        for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
+          if (cell->at_boundary(face_n) && 
+            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7))
+            {
+              side = cell->face(face_n)->boundary_id() - 1;
+              if (neighbor_type[side] == 2) // Stokes-Biot interface
+              {
+                fe_face_values.reinit (cell, face_n);
+                k_permeability.value_list (fe_face_values.get_quadrature_points(), k_permeability_values);
+                for (unsigned int s = 0; s < dim; ++s)
+                  interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
+                                                      interface_values_flux[s], dim*dim + dim + 0.5*dim*(dim-1)+s);
+
+                for (unsigned int s = 0 ; s < dim*dim; ++s)
+                  interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
+                                                interface_values_stress[s/dim][s%dim], s);
+
+                for (unsigned int q=0; q<n_face_q_points; ++q)
+                {
+                  // computes normal tangent vector in 2D, 
+                  // assumes counterclockwise ordering of faces in deal.ii
+                  if (dim == 2) 
+                  {
+                    tangent_vector[0] = - fe_face_values.normal_vector(q)[1] * get_normal_direction<dim>(side);
+                    tangent_vector[1] = fe_face_values.normal_vector(q)[0] * get_normal_direction<dim>(side);
+                  }
+                  else if (dim == 3)
+                  {
+                    Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
+                  }
+                  // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
+                  const_bjs = alpha * 
+                              std::sqrt(1/((k_permeability_values[q]*tangent_vector)
+                                                        *tangent_vector));
+                  for (unsigned int s = 0; s < dim; ++s)
+                  {
+                    lambda_p += interface_values_flux[s][q] 
+                                  * fe_face_values.normal_vector(q)[s];    
+                    lambda_d[s] = 0;
+                    for (unsigned int l = 0; l < dim; ++l)
+                      lambda_d[s] += interface_values_stress[s][l][q] 
+                                    * fe_face_values.normal_vector(q)[l]; 
+                  }
+                  for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                  {
+                    phi_u[k]  = fe_face_values[velocities].value(k, q) 
+                                * get_normal_direction<dim>(side); 
+                  }                 
+                  for (unsigned int i=0; i<dofs_per_cell; ++i)
+                  {
+                     local_rhs(i) += - (phi_u[i] * fe_face_values.normal_vector(q) 
+                                        * lambda_p) // - <lambda_p, v.n>
+                                        * fe_face_values.JxW(q);
+                    for (unsigned int s=0; s<dim; ++s)
+                    {
+                      local_rhs(i) += const_bjs * (phi_u[i] * tangent_vector)
+                                       * (lambda_d * tangent_vector) 
+                                    * fe_face_values.JxW(q); // c_bjs<lambda_d.t_f, v.t_f> term from BJS condition                             
+                    }
+                  }
+                }
               }
             }
-          }  
-      }
 
-      for (unsigned int i = 0; i < dofs_per_cell; ++i)
-        system_rhs_star(local_dof_indices[i]) += local_rhs(i);        
+        cell->get_dof_indices (local_dof_indices);
+        for (unsigned int i=0; i<dofs_per_cell; ++i)
+          system_rhs_star(local_dof_indices[i]) += local_rhs(i);
+      }
     }
   }
 
@@ -971,7 +1029,8 @@ namespace mfe_stokes
 
     // interface_fe_function.block(1) = 0;
     assemble_rhs_star(interface_function,
-                      fe_face_values);
+                      fe_face_values,
+                      fe_face_values_mortar_biot);
     solve_star();
 
     interface_inner_product(interface_function,
@@ -986,8 +1045,10 @@ namespace mfe_stokes
       {
         // Create vector of u\dot n to send
         if (neighbor_type[side] == 1) //Stokes-Stokes interface
+        {
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
+        }
         else if (neighbor_type[side] == 2) //Stokes-Biot interface
         {
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
@@ -1052,7 +1113,8 @@ namespace mfe_stokes
 
     // interface_fe_function.block(1) = 0;
     assemble_rhs_star(interface_function,
-                      fe_face_values);
+                      fe_face_values,
+                      fe_face_values_mortar_biot);
     solve_star();
 
     //for computing rhs b for
@@ -1227,10 +1289,10 @@ namespace mfe_stokes
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem, 
             //they are ordered component wise 
-            fe_face_values_mortar.reinit(cell, face_n);
             side = cell->face(face_n)->boundary_id() - 1;
             if (neighbor_type[side] == 1) //Stokes-Stokes interface
             {
+              fe_face_values_mortar.reinit(cell, face_n);
               for (unsigned int s = 0; s < dim; ++s)
               {
                 solution_bar_function->value_list(fe_face_values_mortar.get_quadrature_points(),
@@ -1250,7 +1312,8 @@ namespace mfe_stokes
                     // if (std::find (interface_dofs_count[side].begin(), interface_dofs_count[side].end(),
                     //               local_dof_indices[k]) == interface_dofs_count[side].end()) 
                     // {            
-                    phi_mu[k]  = fe_face_values_mortar[velocities].value(k, q_point); 
+                    phi_mu[k]  = fe_face_values_mortar[velocities].value(k, q_point)
+                                * get_normal_direction<dim>(side); // multiply by normal direction to get correct sign
                     // interface_dofs_count[side].push_back(local_dof_indices[k]);
                     // }
                   }
@@ -1266,14 +1329,12 @@ namespace mfe_stokes
                     for (unsigned int s = 0; s < dim; ++s)
                     {
                       solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                        (phi_mu[i][s] * get_normal_direction<dim>(side) *  // mu(x_q)
-                          bar_values[s][q_point]) *    // u_bar
-                          fe_face_values_mortar.JxW(q_point);    // dx
+                        (phi_mu[i][s] * bar_values[s][q_point]) // <mu(x_q), u_bar(x_q)>
+                          * fe_face_values_mortar.JxW(q_point); // dx
 
                       solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                        (phi_mu[i][s] * get_normal_direction<dim>(side) *  // mu(x_q)
-                          star_values[s][q_point]) *    // u_star
-                          fe_face_values_mortar.JxW(q_point);    // dx
+                        (phi_mu[i][s] * star_values[s][q_point])  // <mu(x_q), u_star(x_q)>
+                          * fe_face_values_mortar.JxW(q_point);   // dx
                     }
                   }
                 }
@@ -1362,11 +1423,11 @@ namespace mfe_stokes
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem, 
             //they are ordered component wise 
-            fe_face_values_mortar_biot.reinit(cell, face_n);
             side = cell->face(face_n)->boundary_id() - 1;
-            k_permeability.value_list (fe_face_values_mortar_biot.get_quadrature_points(), k_permeability_values);
             if (neighbor_type[side] == 2) //Stokes-Biot interface
             {
+              fe_face_values_mortar_biot.reinit(cell, face_n);
+              k_permeability.value_list (fe_face_values_mortar_biot.get_quadrature_points(), k_permeability_values);
               for (unsigned int s = 0; s < dim; ++s)
               {
                 solution_bar_function->value_list(fe_face_values_mortar_biot.get_quadrature_points(),
@@ -1388,12 +1449,12 @@ namespace mfe_stokes
                 // assumes counterclockwise ordering of faces in deal.ii
                 if (dim == 2) 
                 {
-                  tangent_vector[0] = - fe_face_values_mortar_biot.normal_vector(q_point)[1];
-                  tangent_vector[1] = fe_face_values_mortar_biot.normal_vector(q_point)[0];
+                  tangent_vector[0] = - fe_face_values_mortar_biot.normal_vector(q_point)[1] * get_normal_direction<dim>(side);
+                  tangent_vector[1] = fe_face_values_mortar_biot.normal_vector(q_point)[0] * get_normal_direction<dim>(side);
                 }
                 else if (dim == 3)
                 {
-                  Assert(false, "Tangent vector not implemented for 3D yet");
+                  Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
                 }
                 // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
                 const_bjs = alpha * 
@@ -1403,7 +1464,7 @@ namespace mfe_stokes
                 for (unsigned int s = 0; s < dim; ++s)
                 {
                   lambda_p += interface_values_flux[s][q_point] 
-                                * fe_face_values_mortar_biot.normal_vector(q_point)[s];    
+                              * fe_face_values_mortar_biot.normal_vector(q_point)[s];    
                   lambda_d[s] = 0;
                   for (unsigned int l = 0; l < dim; ++l)
                     lambda_d[s] += interface_values_stress[s][l][q_point] 
@@ -1427,8 +1488,8 @@ namespace mfe_stokes
                   for (unsigned int s = 0; s < dim; ++s)
                   {
                     solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                      (const_bjs * bar_values[s][q_point] * tangent_vector[s]
-                        * phi_eta[i] * tangent_vector) // c_bjs<u_bar_f * t_f, mu_d * t_f>
+                      - (const_bjs * bar_values[s][q_point] * tangent_vector[s]
+                        * phi_eta[i] * tangent_vector) // - c_bjs<u_bar_f * t_f, mu_d * t_f>
                       * fe_face_values_mortar_biot.JxW(q_point);    // dx
 
                     solution_star_mortar_temp[side](local_dof_indices[i]) +=
@@ -1438,9 +1499,9 @@ namespace mfe_stokes
                   }
                   solution_star_mortar_temp[side][local_dof_indices[i]] +=
                     ((- phi_eta[i] * fe_face_values_mortar_biot.normal_vector(q_point) 
-                      * lambda_p) // <phi_eta(x_q) * n_p * lambda_p>
+                      * lambda_p) // <phi_eta(x_q) * n_p * lambda_p> the extra negative sign as n_p = -n_f
                       + const_bjs * (lambda_d * tangent_vector) 
-                      * (phi_eta[i] * tangent_vector)) // <lambda_d * t_f,  phi_eta * t_f>
+                      * (phi_eta[i] * tangent_vector)) // c_bjs<lambda_d * t_f,  phi_eta * t_f>
                     * fe_face_values_mortar_biot.JxW(q_point);    // dx
                   
                   // contribution from the coupling term in the 
@@ -1448,18 +1509,18 @@ namespace mfe_stokes
                   for (unsigned int s = 0; s < dim; ++s)
                   {
                     solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                      ((phi_p[i] * bar_values[s][q_point] 
-                        * fe_face_values_mortar.normal_vector(q_point)[s]))   // <u_bar * n, mu_p>
-                       * fe_face_values_mortar.JxW(q_point);    // dx
+                      ((bar_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
+                        * phi_p[i])   // <u_bar * n, mu_p>
+                       * fe_face_values_mortar_biot.JxW(q_point);    // dx
 
                     solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                      ((phi_p[i] * star_values[s][q_point] 
-                        * fe_face_values_mortar.normal_vector(q_point)[s]))   // <u_bar * n, mu_p>
-                       * fe_face_values_mortar.JxW(q_point);    // dx
+                      ((star_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
+                        * phi_p[i])   // <u_star * n, mu_p>
+                       * fe_face_values_mortar_biot.JxW(q_point);    // dx
                   }
                   solution_bar_mortar_temp[side][local_dof_indices[i]] +=
-                   ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
-                    * phi_p[i]) // <lambda_d * n, mu_p> 
+                   - ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
+                    * phi_p[i]) // <lambda_d * n, mu_p> extra negative sign as n_p = -n_f
                     * fe_face_values_mortar_biot.JxW(q_point);    // dx
                 }
               }
@@ -1467,31 +1528,31 @@ namespace mfe_stokes
           }
       }
 
-    Quadrature<dim - 1> quad;
-    quad = QGauss<dim - 1>(qdegree);
-    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-      if (neighbors[side] >= 0 && neighbor_type[side] == 2) //Stokes-Biot interface
-      {
-        project_mortar<dim>(P_mortar[1],
-                            dof_handler_mortar,
-                            solution_bar_mortar_temp[side],
-                            quad,
-                            constraints_mortar,
-                            neighbors,
-                            dof_handler_mortar,
-                            solution_bar_mortar[side]);
-        project_mortar<dim>(P_mortar[1],
-                            dof_handler_mortar,
-                            solution_star_mortar_temp[side],
-                            quad,
-                            constraints_mortar,
-                            neighbors,
-                            dof_handler_mortar,
-                            solution_star_mortar[side]);   
+      Quadrature<dim - 1> quad;
+      quad = QGauss<dim - 1>(qdegree);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0 && neighbor_type[side] == 2) //Stokes-Biot interface
+        {
+          project_mortar<dim>(P_mortar[1],
+                              dof_handler_biot_mortar,
+                              solution_bar_mortar_temp[side],
+                              quad,
+                              constraints_mortar,
+                              neighbors,
+                              dof_handler_biot_mortar,
+                              solution_bar_mortar[side]);
+          project_mortar<dim>(P_mortar[1],
+                              dof_handler_biot_mortar,
+                              solution_star_mortar_temp[side],
+                              quad,
+                              constraints_mortar,
+                              neighbors,
+                              dof_handler_biot_mortar,
+                              solution_star_mortar[side]);   
 
-        // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
-        // solution_star_mortar[side] = solution_star_mortar_temp[side];
-      } 
+          // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
+          // solution_star_mortar[side] = solution_star_mortar_temp[side];
+        } 
     }
   }
 
@@ -1514,12 +1575,20 @@ namespace mfe_stokes
       std::vector<types::global_dof_index> local_dof_indices(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_u(dofs_per_cell, Tensor<1, dim>());
 
+      //first index for dim components, 0, 1: vel, 2: pressure
+      //second for value at each quad point
+      std::vector<Tensor<1, dim>> interface_values_v1_flux(n_face_q_points, Tensor<1, dim>());
+      std::vector<Tensor<1, dim>> interface_values_v2_flux(n_face_q_points, Tensor<1, dim>());
+
+      const FEValuesExtractors::Vector velocity (0);
+
       BlockVector<double> vec_1(mortar_vec);
       BlockVector<double> vec_2(mortar_vec);
       vec_1 = 0;
       vec_2 = 0;
+
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-        if (neighbors[side] >= 0)
+        if (neighbors[side] >= 0 && neighbor_type[side] == 1) //Stokes-Stokes interface
         {
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
@@ -1527,13 +1596,6 @@ namespace mfe_stokes
             vec_2(interface_dofs[side][i]) = v_2[side][i];
           }
         }
-
-      //first index for dim components, 0, 1: vel, 2: pressure
-      //second for value at each quad point
-      std::vector<Tensor<1, dim>> interface_values_v1_flux(n_face_q_points, Tensor<1, dim>());
-      std::vector<Tensor<1, dim>> interface_values_v2_flux(n_face_q_points, Tensor<1, dim>());
-
-      const FEValuesExtractors::Vector velocity (0);
 
       unsigned int side = 0;
       for (const auto &cell : dof_handler_mortar.active_cell_iterators())
@@ -1546,21 +1608,23 @@ namespace mfe_stokes
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem, 
             //they are ordered component wise 
-            fe_face_values_mortar.reinit(cell, face_n);
             side = cell->face(face_n)->boundary_id() - 1;
-            
-            fe_face_values_mortar[velocity].get_function_values(
-              vec_1, interface_values_v1_flux);
-            fe_face_values_mortar[velocity].get_function_values(
-              vec_2, interface_values_v2_flux);                                 
-            
-            for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
+
+            if (neighbor_type[side] == 1) //Stokes-Stokes interface
             {
-              inner_product += 
-                interface_values_v1_flux[q_point] * (interface_values_v2_flux[q_point]) // (u1 * u2)
-                * fe_face_values_mortar.JxW(q_point);    // dx
-            }
+              fe_face_values_mortar.reinit(cell, face_n);
+              fe_face_values_mortar[velocity].get_function_values(
+                vec_1, interface_values_v1_flux);
+              fe_face_values_mortar[velocity].get_function_values(
+                vec_2, interface_values_v2_flux);                                 
               
+              for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
+              {
+                inner_product += 
+                  interface_values_v1_flux[q_point] * (interface_values_v2_flux[q_point]) // (u1 * u2)
+                  * fe_face_values_mortar.JxW(q_point);    // dx
+              }
+            }
           }
       }
     }
@@ -1576,8 +1640,9 @@ namespace mfe_stokes
       BlockVector<double> vec_2(mortar_vec_biot);
       vec_1 = 0;
       vec_2 = 0;
+
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-        if (neighbors[side] >= 0)
+        if (neighbors[side] >= 0 && neighbor_type[side] == 2) //Stokes-Biot interface
         {
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
@@ -1617,36 +1682,37 @@ namespace mfe_stokes
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem, 
             //they are ordered component wise 
-            fe_face_values_mortar_biot.reinit(cell, face_n);
             side = cell->face(face_n)->boundary_id() - 1;
             
-            fe_face_values_mortar_biot[velocity].get_function_values(
-              vec_1, interface_values_v1_flux);
-            fe_face_values_mortar_biot[velocity].get_function_values(
-              vec_2, interface_values_v2_flux);                                 
-            
-            for (unsigned int s = 0 ; s < dim; ++s)
+            if (neighbor_type[side] == 2) //Stokes-Biot interface
             {
-              fe_face_values_mortar_biot[stresses[s]].get_function_values(
-                vec_1, interface_values_v1_stress[s]);
-              fe_face_values_mortar_biot[stresses[s]].get_function_values(
-                vec_2, interface_values_v2_stress[s]);
-            }
-            for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
-            {
-              inner_product += 
-                (interface_values_v1_flux[q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) *
-                (interface_values_v2_flux[q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) // (u1 * u2)
-                * fe_face_values_mortar_biot.JxW(q_point);    // dx
-              for (unsigned int s = 0; s < dim; ++s)
-                inner_product += 
-                  (interface_values_v1_stress[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point) *
-                  interface_values_v2_stress[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) // (sigma1.n * sigma2.n)
-                  * fe_face_values_mortar_biot.JxW(q_point);    // dx
-            }
+              fe_face_values_mortar_biot.reinit(cell, face_n);
+              fe_face_values_mortar_biot[velocity].get_function_values(
+                vec_1, interface_values_v1_flux);
+              fe_face_values_mortar_biot[velocity].get_function_values(
+                vec_2, interface_values_v2_flux);                                 
               
-          }
-          
+              for (unsigned int s = 0 ; s < dim; ++s)
+              {
+                fe_face_values_mortar_biot[stresses[s]].get_function_values(
+                  vec_1, interface_values_v1_stress[s]);
+                fe_face_values_mortar_biot[stresses[s]].get_function_values(
+                  vec_2, interface_values_v2_stress[s]);
+              }
+              for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
+              {
+                inner_product += 
+                  (interface_values_v1_flux[q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) *
+                  (interface_values_v2_flux[q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) // (u1 * u2)
+                  * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                for (unsigned int s = 0; s < dim; ++s)
+                  inner_product += 
+                    (interface_values_v1_stress[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point) *
+                    interface_values_v2_stress[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)) // (sigma1.n * sigma2.n)
+                    * fe_face_values_mortar_biot.JxW(q_point);    // dx
+              }
+            }
+          } 
       }
     }
     
@@ -1807,17 +1873,6 @@ namespace mfe_stokes
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
     quad = QGauss<dim - 1>(qdegree);
-    // std::vector<BlockVector<double>> in_vec_lambda(n_faces_per_cell, BlockVector<double>(mortar_vec));
-    // std::vector<Functions::FEFieldFunction<dim, BlockVector<double>>>
-    //       interface_function;
-    // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-    // {
-    //   interface_function.push_back(
-    //     Functions::FEFieldFunction<dim, BlockVector<double>>
-    //                               (dof_handler, in_vec_lambda[side]));
-    // }
-    // Functions::FEFieldFunction<dim, BlockVector<double>> 
-    //       stokes_vector(dof_handler, in_vec_stokes);
 
 
     // dealii::AffineConstraints<double>   constraints;
@@ -1898,8 +1953,12 @@ namespace mfe_stokes
     std::unique_ptr<FEFunction> solution_star_function;
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
     {
-      interface_function.emplace_back(
-        std::make_unique<FEFunction>(dof_handler_mortar, interface_fe_function[side]));
+      if (neighbor_type[side] == 2) //Stokes-Biot interface
+        interface_function.emplace_back(
+          std::make_unique<FEFunction>(dof_handler_biot_mortar, interface_fe_function[side]));
+      else //Stokes-Stokes interface or otherwise enter a dummy cause you need 4 sides for the loop but only 2 or 3 are used
+        interface_function.emplace_back(
+          std::make_unique<FEFunction>(dof_handler_mortar, interface_fe_function[side]));
     }
     solution_bar_function = std::make_unique<FEFunction>(dof_handler, solution_bar);
     solution_star_function = std::make_unique<FEFunction>(dof_handler, solution_star);
@@ -2032,7 +2091,8 @@ namespace mfe_stokes
         interface_fe_function[side][interface_dofs[side][i]] = interface_data[side][i];
 
     assemble_rhs_star(interface_function,
-                      fe_face_values);
+                      fe_face_values,
+                      fe_face_values_mortar_biot);
     solve_star();
     solution.reinit(solution_bar);
     solution = solution_bar;
@@ -2130,8 +2190,12 @@ namespace mfe_stokes
     std::unique_ptr<FEFunction> solution_star_function;
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
     {
-      interface_function.emplace_back(
-        std::make_unique<FEFunction>(dof_handler_mortar, interface_fe_function[side]));
+      if (neighbor_type[side] == 2) //Stokes-Biot interface
+        interface_function.emplace_back(
+          std::make_unique<FEFunction>(dof_handler_biot_mortar, interface_fe_function[side]));
+      else //Stokes-Stokes interface or otherwise enter a dummy cause you need 4 sides for the loop but only 2 or 3 are used
+        interface_function.emplace_back(
+          std::make_unique<FEFunction>(dof_handler_mortar, interface_fe_function[side]));
     }
     solution_bar_function = std::make_unique<FEFunction>(dof_handler, solution_bar);
     solution_star_function = std::make_unique<FEFunction>(dof_handler, solution_star);
@@ -2312,7 +2376,8 @@ namespace mfe_stokes
         interface_fe_function[side][interface_dofs[side][i]] = interface_data[side][i];
 
     assemble_rhs_star(interface_function,
-                      fe_face_values);
+                      fe_face_values,
+                      fe_face_values_mortar_biot);
     solve_star();
     solution.reinit(solution_bar);
     solution = solution_bar; // u = u_bar
@@ -2852,7 +2917,7 @@ namespace mfe_stokes
       for (unsigned int d = 1; d < dim; ++d)
         subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
-      subdomain_dimensions[0] = 1.0 / double(n_domains[0]);
+      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
 
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);

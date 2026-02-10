@@ -1653,7 +1653,7 @@ namespace mfe_biot
     std::vector<std::vector<double>> interface_data_receive(n_faces_per_cell);
     std::vector<std::vector<double>> interface_data_send(n_faces_per_cell);
     std::vector<std::vector<double>> interface_data(n_faces_per_cell);
-    double initial_val = 1.0; //initial guess for gmres
+    double initial_val = 0.0; //initial guess for gmres
     interface_fe_function.resize(n_faces_per_cell);
     solution_bar_mortar.resize(n_faces_per_cell);
     solution_star_mortar.resize(n_faces_per_cell);
@@ -2676,7 +2676,7 @@ namespace mfe_biot
       for (unsigned int d = 1; d < dim; ++d)
         subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
-      subdomain_dimensions[0] = 1.0 / double(n_domains[0]);
+      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
       
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);

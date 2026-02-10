@@ -56,7 +56,8 @@ namespace mfe_stokes
 
     void
     assemble_rhs_star(std::vector<std::unique_ptr<FEFunction>> &interface_function,
-                      FEFaceValues<dim> &fe_face_values);
+                      FEFaceValues<dim> &fe_face_values,
+                      FEFaceValues<dim> &fe_face_values_mortar_biot);
 
     void
     solve_bar();
@@ -119,11 +120,6 @@ namespace mfe_stokes
     std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
     // std::vector<int> neighbors;
     // std::vector<unsigned int> neighbor_type;
-
-    Projector::Projector<dim> P_stokes2biot;
-    Projector::Projector<dim> P_biot2stokes;
-    Projector::Projector<dim> P_coarse2fine;
-    Projector::Projector<dim> P_fine2coarse;
 
     void
     interpret_parameters();
