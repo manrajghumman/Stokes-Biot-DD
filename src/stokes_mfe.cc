@@ -188,7 +188,7 @@ namespace mfe_stokes
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 1)
+        if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
         if (face->center()[dim - 1] == 1)
@@ -784,7 +784,7 @@ namespace mfe_stokes
                     for (unsigned int s = 0; s < dim; ++s)
                       local_rhs(i) +=
                         - (phi_u[i][s] *  // phi_v_i(x_q)
-                          interface_values[s][q_point]) *    // Tn_i = lambda
+                          interface_values[s][q_point]) *    // Tn_i = lambda_f
                           fe_face_values.JxW(q_point);    // dx
                   }
                 }

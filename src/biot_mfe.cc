@@ -168,7 +168,7 @@ namespace mfe_biot
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 1)
+        if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
         if (face->center()[dim - 1] == 1)
