@@ -217,28 +217,59 @@ namespace dd_utilities
     switch (dim)
       {
         case 2:
-          if (this_mpi % n_doms[0] == 0) // x = a line
+          if (n_doms[0] == 1 && n_doms[1] == 1) // only one domain
+          {
+            neighbors[0] = -1;
+            neighbors[1] = -1;
+            neighbors[2] = -1;
+            neighbors[3] = -1;
+          }
+          else if (n_doms[0] == 1) // 1 x n setup
+          {
+            if (this_mpi == 0) // only one line
             {
-              neighbors[0] = this_mpi - n_doms[0];
-              neighbors[1] = this_mpi + 1;
-              neighbors[2] = this_mpi + n_doms[0];
+              neighbors[0] = -1;
+              neighbors[1] = -1;
+              neighbors[2] = this_mpi + 1;
               neighbors[3] = -1;
             }
+            else if (this_mpi == n_doms[0] - 1) // only one line
+            {
+              neighbors[0] = 0;
+              neighbors[1] = -1;
+              neighbors[2] = -1;
+              neighbors[3] = - 1;
+            }
+            else
+            {
+              neighbors[0] = this_mpi - 1;
+              neighbors[1] = -1;
+              neighbors[2] = this_mpi + 1;
+              neighbors[3] = - 1;
+            }
+          }
+          else if (this_mpi % n_doms[0] == 0) // x = a line
+          {
+            neighbors[0] = this_mpi - n_doms[0];
+            neighbors[1] = this_mpi + 1;
+            neighbors[2] = this_mpi + n_doms[0];
+            neighbors[3] = -1;
+          }
           else if ((this_mpi + 1) % n_doms[0] ==
                    0 /*&& (this_mpi + 1) >= n_doms[0]*/) // x = b line
-            {
-              neighbors[0] = this_mpi - n_doms[0];
-              neighbors[1] = -1;
-              neighbors[2] = this_mpi + n_doms[0];
-              neighbors[3] = this_mpi - 1;
-            }
+          {
+            neighbors[0] = this_mpi - n_doms[0];
+            neighbors[1] = -1;
+            neighbors[2] = this_mpi + n_doms[0];
+            neighbors[3] = this_mpi - 1;
+          }
           else
-            {
-              neighbors[0] = this_mpi - n_doms[0];
-              neighbors[1] = this_mpi + 1;
-              neighbors[2] = this_mpi + n_doms[0];
-              neighbors[3] = this_mpi - 1;
-            }
+          {
+            neighbors[0] = this_mpi - n_doms[0];
+            neighbors[1] = this_mpi + 1;
+            neighbors[2] = this_mpi + n_doms[0];
+            neighbors[3] = this_mpi - 1;
+          }
           break;
 
         case 3:
