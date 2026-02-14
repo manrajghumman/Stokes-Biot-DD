@@ -126,7 +126,7 @@ namespace mfe_stokes
       if (cont_mortar_flag)
         return FESystem<dim>(FE_Q<dim>(mortar_degree), dim, FE_Nothing<dim>(), 1);
       else if (!cont_mortar_flag)
-        return FESystem<dim>(FE_RaviartThomas<dim>(mortar_degree), 1, FE_Nothing<dim>(), 1);
+        return FESystem<dim>(FE_DGQ<dim>(mortar_degree), dim, FE_Nothing<dim>(), 1);
       else
       {
         AssertThrow(false, ExcMessage("Invalid mortar element configuration."));
@@ -267,11 +267,11 @@ namespace mfe_stokes
             DoFTools::count_dofs_per_fe_component (dof_handler_mortar);
     unsigned int n_u_mortar = 0, n_p_mortar = 0;
     // Enable for dim = 2, 3 right now only works for dim = 2
-    if (cont_mortar_flag && mortar_degree > 0)
+    // if (cont_mortar_flag && mortar_degree > 0)
       for (unsigned int i = 0; i < dim; ++i)
         n_u_mortar += dofs_per_component_mortar[i];
-    else if (!cont_mortar_flag) // the case of RT elements
-      n_u_mortar = dofs_per_component_mortar[0];
+    // else if (!cont_mortar_flag) // the case of RT elements
+    //   n_u_mortar = dofs_per_component_mortar[0];
 
     n_p_mortar = dofs_per_component_mortar[dim];
 
@@ -354,7 +354,7 @@ namespace mfe_stokes
 
     unsigned int side = 0;
 
-    local_face_dof_indices.resize(fe_mortar.dofs_per_face);
+    local_face_dof_indices.resize(fe_mortar.dofs_per_cell);
 
     for (const auto &cell : dof_handler_mortar.active_cell_iterators())
       for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
@@ -362,11 +362,16 @@ namespace mfe_stokes
               (cell->face(face_n)->boundary_id() != 0 && 
                 cell->face(face_n)->boundary_id() !=7))
         {
-          cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
+          // cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
+          cell->get_dof_indices(local_face_dof_indices);
           side = cell->face(face_n)->boundary_id() - 1;
           if (neighbor_type[side] == subdomain_type) // Stokes-Stokes interface
-            for (auto el : local_face_dof_indices)
-              if (el < n_velocity_interface){
+          {
+            // for (auto el : local_face_dof_indices)
+            for (unsigned int i = 0; i < local_face_dof_indices.size(); ++i)
+            {
+                auto el = local_face_dof_indices[i];
+              if (el < n_velocity_interface && fe_mortar.has_support_on_face(i, face_n)){
                 // adding a check to not include the dofs at corners twice
                 if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(), el) 
                                                                   == interface_dofs[side].end())
@@ -375,6 +380,8 @@ namespace mfe_stokes
                   interface_dofs_total.push_back(el);                                                    
                 }
               }
+            }
+          }
         }
     
     if (biot_neighbor) // Stokes-Biot interface
