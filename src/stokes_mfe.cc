@@ -777,6 +777,9 @@ namespace mfe_stokes
                 for (unsigned int s = 0; s < dim; ++s)
                   interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
                                         interface_values[s], s);
+                for (unsigned int s = 0; s < dim; ++s)
+                  for (unsigned int q = 0; q < n_face_q_points; ++q)
+                    AssertIsFinite(interface_values[s][q]);
                 for (unsigned int q_point = 0; q_point < n_face_q_points;
                     ++q_point)
                 {
@@ -1040,6 +1043,8 @@ namespace mfe_stokes
                       fe_face_values_mortar_biot);
     solve_star();
 
+    for (unsigned int i = 0; i < solution_star.size(); ++i)
+      AssertIsFinite(solution_star[i]);
     interface_inner_product(interface_function,
                             solution_bar_function,
                             solution_star_function,
@@ -1959,6 +1964,10 @@ namespace mfe_stokes
     std::unique_ptr<FEFunction> solution_bar_function;
     std::unique_ptr<FEFunction> solution_star_function;
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+        for (unsigned int i = 0; i < interface_fe_function[side].size(); ++i)
+          AssertIsFinite(interface_fe_function[side][i]);
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
     {
       if (neighbor_type[side] == 2) //Stokes-Biot interface
         interface_function.emplace_back(
@@ -1986,6 +1995,11 @@ namespace mfe_stokes
                      r_b,
                      b_norm);
     //end -----------of calculating r-norm and b_norm------------------
+
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+        for (unsigned int i = 0; i < r[side].size(); ++i)
+          AssertIsFinite(r[side][i]);
 
     //Making the first element of matrix Q[side] same as r_side[side/r_norm
     for(unsigned int side=0; side<n_faces_per_cell;++side)
