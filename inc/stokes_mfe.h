@@ -256,6 +256,8 @@ namespace mfe_stokes
 
     unsigned long n_velocity_interface;
     unsigned long n_velocity_interface_fe;
+    unsigned long n_vx;
+    unsigned long n_vy;
     unsigned long n_stress_mortar;
     unsigned long n_disp_mortar;
     unsigned long n_rot_mortar;
@@ -325,6 +327,10 @@ namespace mfe_stokes
     std::vector<BlockVector<double>>   solution_star_mortar;
     std::vector<BlockVector<double>>   solution_bar_mortar_temp;
     std::vector<BlockVector<double>>   solution_star_mortar_temp;
+    std::vector<BlockVector<double>>   solution_bar_mortar_temp_direction;
+    std::vector<BlockVector<double>>   solution_star_mortar_temp_direction;
+    std::vector<BlockVector<double>>   solution_bar_swapped;
+    std::vector<BlockVector<double>>   solution_star_swapped;
     BlockVector<double>                mortar_vec;
     BlockVector<double>                mortar_vec_biot;
     std::vector<BlockVector<double>>   multiscale_basis;
