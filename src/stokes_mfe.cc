@@ -1434,25 +1434,29 @@ namespace mfe_stokes
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         if (neighbors[side] >= 0 && neighbor_type[side] == 1) //Stokes-Stokes interface
         {
-          // project_mortar<dim>(P_mortar[0],
-          //               dof_handler_mortar,
-          //               solution_bar_mortar_temp[side],
-          //               quad,
-          //               constraints_mortar,
-          //               neighbors,
-          //               dof_handler_mortar,
-          //               solution_bar_mortar[side]);
-          // project_mortar<dim>(P_mortar[0],
-          //               dof_handler_mortar,
-          //               solution_star_mortar_temp[side],
-          //               quad,
-          //               constraints_mortar,
-          //               neighbors,
-          //               dof_handler_mortar,
-          //               solution_star_mortar[side]);   
+          project_mortar<dim>(P_mortar[side],
+                        dof_handler_mortar,
+                        solution_bar_mortar_temp[side],
+                        quad,
+                        constraints_mortar,
+                        neighbors,
+                        dof_handler_mortar,
+                        solution_bar_mortar[side],
+                        interface_dofs[side],
+                        side);
+          project_mortar<dim>(P_mortar[side],
+                        dof_handler_mortar,
+                        solution_star_mortar_temp[side],
+                        quad,
+                        constraints_mortar,
+                        neighbors,
+                        dof_handler_mortar,
+                        solution_star_mortar[side],
+                        interface_dofs[side],
+                        side);   
 
-          solution_bar_mortar[side] = solution_bar_mortar_temp[side];
-          solution_star_mortar[side] = solution_star_mortar_temp[side];
+          // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
+          // solution_star_mortar[side] = solution_star_mortar_temp[side];
         } 
 
         // pcout << "After interface inner product solution star and bar: " << std::endl;
@@ -1628,22 +1632,26 @@ namespace mfe_stokes
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         if (neighbors[side] >= 0 && neighbor_type[side] == 2) //Stokes-Biot interface
         {
-          project_mortar<dim>(P_mortar[1],
+          project_mortar<dim>(P_mortar[side + n_faces_per_cell],
                               dof_handler_biot_mortar,
                               solution_bar_mortar_temp[side],
                               quad,
                               constraints_mortar,
                               neighbors,
                               dof_handler_biot_mortar,
-                              solution_bar_mortar[side]);
-          project_mortar<dim>(P_mortar[1],
+                              solution_bar_mortar[side],
+                              interface_dofs[side],
+                              side);
+          project_mortar<dim>(P_mortar[side + n_faces_per_cell],
                               dof_handler_biot_mortar,
                               solution_star_mortar_temp[side],
                               quad,
                               constraints_mortar,
                               neighbors,
                               dof_handler_biot_mortar,
-                              solution_star_mortar[side]);   
+                              solution_star_mortar[side],
+                              interface_dofs[side],
+                              side);   
 
           // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
           // solution_star_mortar[side] = solution_star_mortar_temp[side];
@@ -1963,7 +1971,8 @@ namespace mfe_stokes
 
     // [0] will hold factored L2 projection matrix for Stokes-Stokes interface
     // [1] will hold factored L2 projection matrix for Stokes-Biot interface
-    std::vector<Projector::Projector<dim>> P_mortar(2, Projector::Projector<dim>(false));
+    std::vector<Projector::Projector<dim>> P_mortar(2*n_faces_per_cell, 
+                                                    Projector::Projector<dim>(false));
 
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
@@ -2928,6 +2937,8 @@ namespace mfe_stokes
             "u_L2", ConvergenceTable::reduction_rate_log2);
       convergence_table_l2_total.evaluate_convergence_rates(
             "p_L2", ConvergenceTable::reduction_rate_log2);
+      convergence_table_l2_total.evaluate_convergence_rates(
+            "gmres_iter", ConvergenceTable::reduction_rate_log2);
 
       std::string conv_filename = "../output/convg_table_total/stokes_table_total_l2" + std::string(".tex");
 

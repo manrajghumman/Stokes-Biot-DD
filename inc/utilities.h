@@ -476,7 +476,9 @@ namespace dd_utilities
                  AffineConstraints<double> &constraints,
                  const std::vector<int>    &neighbors,
                  const DoFHandler<dim>     &dof2,
-                 BlockVector<double>       &out_vec)
+                 BlockVector<double>       &out_vec,
+                 const std::vector<unsigned int> &interface_dofs,
+                 const unsigned int &side)
   {
     out_vec = 0;
 
@@ -488,17 +490,19 @@ namespace dd_utilities
 
     constraints.clear();
 
-    for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell;
-         ++side)
-      if (neighbors[side] >= 0)
-        boundary_functions_velocity[side + 1] = &fe_interface_data;
+    for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+         ++face)
+      if (face == side)
+        boundary_functions_velocity[face + 1] = &fe_interface_data;
     
-    std::cout << "n_boundary_dofs = "
-          << dof2.n_boundary_dofs(boundary_functions_velocity)
-          << std::endl;
+    // std::cout << "n_boundary_dofs = "
+    //       << dof2.n_boundary_dofs(boundary_functions_velocity)
+    //       << std::endl;
     proj.project_boundary_values(in_vec,
                                  dof2,
                                  boundary_functions_velocity,
+                                 interface_dofs,
+                                 side,
                                  quad,
                                  constraints);
 
