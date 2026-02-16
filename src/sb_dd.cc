@@ -100,6 +100,9 @@ namespace dd_stokes_biot
         // Partitioning into subdomains (simple bricks)
         find_divisors<dim>(n_processes, n_domains);
 
+        n_domains[0] = 2;
+        n_domains[1] = 1;
+
         switch (dim)
         {
         case 2:

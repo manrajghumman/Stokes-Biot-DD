@@ -214,7 +214,8 @@ namespace mfe_stokes
         n_u += dofs_per_component[i];
       }
     n_p = dofs_per_component[dim];
-
+    n_vx = dofs_per_component[0];
+    n_vy = dofs_per_component[1];
     /**
      * @brief Constructs a BlockDynamicSparsityPattern object with 2x2 blocks.
      *
@@ -1033,12 +1034,74 @@ namespace mfe_stokes
                       fe_face_values_mortar_biot);
     solve_star();
 
+    // first compute the change in flux along the normal component
+    // put this inside the solution bar and star mortar block vectors
     interface_inner_product(interface_function,
                             solution_bar_function,
                             solution_star_function,
                             fe_face_values_mortar,
                             fe_face_values_mortar_biot,
                             P_mortar);
+
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        solution_bar_mortar[side] = solution_bar_mortar_temp_direction[side];
+        solution_star_mortar[side] = solution_star_mortar_temp_direction[side];
+      }                        
+
+    // now compute the change in flux along the tangential component
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        solution_bar_swapped[side] = solution_bar[side];
+        solution_star_swapped[side] = solution_star[side];
+      }
+    
+    // swap the x and y components to compute the tangential flux change
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+        for (unsigned int i = 0; i < solution_bar_mortar[side].size(); ++i)
+        {
+          if (i < n_vx) // put y component dofs from swapped into x component in solution bar and star
+          {
+            solution_bar[side][i] = solution_bar_swapped[side][i + n_vx];
+            solution_star[side][i] = solution_star_swapped[side][i + n_vx];
+          }
+          else if (n_vx <= i && i < n_vx + n_vy) // put y component dofs from swapped into x component in solution bar and star
+          {
+            solution_bar[side][i] = solution_bar_swapped[side][i - n_vx];
+            solution_star[side][i] = solution_star_swapped[side][i - n_vx];
+          }
+        }
+
+    interface_inner_product(interface_function,
+                            solution_bar_function,
+                            solution_star_function,
+                            fe_face_values_mortar,
+                            fe_face_values_mortar_biot,
+                            P_mortar);
+
+    // before doing this need to swap the x and y components back 
+    // for the mortar solutions bar and star since the tangential flux
+    // change is now in the x component instead of the y component after
+    // the swap, so we need to swap back before adding the normal
+    // and tangential flux changes together                        
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        // add the normal and tangential flux changes together
+        solution_bar_mortar[side].sadd(1.0, solution_bar_mortar_temp_direction[side]); 
+        solution_star_mortar[side].sadd(1.0, solution_star_mortar_temp_direction[side]);
+      }        
+    
+    // swap back the bar and star solutions to be in the correct order
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        solution_bar[side] = solution_bar_swapped[side];
+        solution_star[side] = solution_star_swapped[side];
+      }
     
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
@@ -1306,8 +1369,10 @@ namespace mfe_stokes
               {
                 for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 {
+                  // this is important to ensure we only compute inner product 
+                  // for dofs that are actually on the interface
                   if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                                local_dof_indices[k]) != interface_dofs[side].end())
+                                local_dof_indices[k]) != interface_dofs[side].end()) 
                   {             
                     // if (std::find (interface_dofs_count[side].begin(), interface_dofs_count[side].end(),
                     //               local_dof_indices[k]) == interface_dofs_count[side].end()) 
@@ -1323,9 +1388,9 @@ namespace mfe_stokes
 
                 for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
-                  if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                                local_dof_indices[i]) != interface_dofs[side].end())
-                  {   
+                  // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                  //               local_dof_indices[i]) != interface_dofs[side].end())
+                  // {   
                     for (unsigned int s = 0; s < dim; ++s)
                     {
                       solution_bar_mortar_temp[side](local_dof_indices[i]) +=
@@ -1336,7 +1401,7 @@ namespace mfe_stokes
                         (phi_mu[i][s] * star_values[s][q_point])  // <mu(x_q), u_star(x_q)>
                           * fe_face_values_mortar.JxW(q_point);   // dx
                     }
-                  }
+                  // }
                 }
               }
             }
@@ -1356,7 +1421,7 @@ namespace mfe_stokes
                         constraints_mortar,
                         neighbors,
                         dof_handler_mortar,
-                        solution_bar_mortar[side]);
+                        solution_bar_mortar_direction[side]);
           project_mortar<dim>(P_mortar[0],
                         dof_handler_mortar,
                         solution_star_mortar_temp[side],
@@ -1364,7 +1429,7 @@ namespace mfe_stokes
                         constraints_mortar,
                         neighbors,
                         dof_handler_mortar,
-                        solution_star_mortar[side]);   
+                        solution_star_mortar_direction[side]);   
 
           // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
           // solution_star_mortar[side] = solution_star_mortar_temp[side];
@@ -1863,12 +1928,16 @@ namespace mfe_stokes
     solution_star_mortar.resize(n_faces_per_cell);
     solution_bar_mortar_temp.resize(n_faces_per_cell);
     solution_star_mortar_temp.resize(n_faces_per_cell);
+    solution_bar_mortar_temp_direction.resize(n_faces_per_cell);
+    solution_star_mortar_temp_direction.resize(n_faces_per_cell);
     double initial_val = 0.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
     // [0] will hold factored L2 projection matrix for Stokes-Stokes interface
+    // for projecting from morta
     // [1] will hold factored L2 projection matrix for Stokes-Biot interface
-    std::vector<Projector::Projector<dim>> P_mortar(2, Projector::Projector<dim>(false));
+    // [2] will hold factored L2 projection matrix for 
+    std::vector<Projector::Projector<dim>> P_mortar(3, Projector::Projector<dim>(false));
 
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;
@@ -1927,6 +1996,9 @@ namespace mfe_stokes
 
           solution_bar_mortar_temp[side].reinit(mortar_vec);
           solution_star_mortar_temp[side].reinit(mortar_vec);
+
+          solution_bar_mortar_temp_direction[side].reinit(mortar_vec);
+          solution_star_mortar_temp_direction[side].reinit(mortar_vec);
         }
         else if (neighbor_type[side] == 2) //Stokes-Biot interface
         {
@@ -1937,6 +2009,9 @@ namespace mfe_stokes
 
           solution_bar_mortar_temp[side].reinit(mortar_vec_biot);
           solution_star_mortar_temp[side].reinit(mortar_vec_biot);
+
+          solution_bar_mortar_temp_direction[side].reinit(mortar_vec_biot);
+          solution_star_mortar_temp_direction[side].reinit(mortar_vec_biot);
         }
 
         Ap[side].resize(interface_dofs[side].size(), 0);
@@ -2922,6 +2997,18 @@ namespace mfe_stokes
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
 
+      for (unsigned int i = 0; i < n_processes; ++i)
+      {
+        if (this_mpi == i)
+        {
+          MPI_Barrier(mpi_communicator);
+          std::cout << "MPI process " << this_mpi << " has subdomain coordinates: "
+                    << "p1 = " << p1 << ", p2 = " << p2 << std::endl;
+          for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)
+            std::cout << "Neighbor on side " << side
+                      << " : " << neighbors[side] << std::endl;
+        }
+      }
       // if (mortar_flag)
       //   GridGenerator::subdivided_hyper_rectangle(triangulation,
       //                                             reps[this_mpi],
