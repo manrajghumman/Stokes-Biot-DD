@@ -758,6 +758,7 @@ namespace mfe_stokes
       unsigned int side;
       // if (this_mpi == 1)
       //   std::cout << "Assembling RHS star for this_mpi = " << this_mpi << std::endl;
+      // unsigned int hit = 1;
       for (const auto &cell : dof_handler.active_cell_iterators())
       {
         local_rhs                   = 0;
@@ -773,10 +774,37 @@ namespace mfe_stokes
               side = cell->face(face_n)->boundary_id() - 1;
               if (neighbor_type[side] == 1) // Stokes-Stokes interface
               {
+                // pcout << "hit = " << hit++ << std::endl;
                 fe_face_values.reinit(cell, face_n);
+                const auto &q_points = fe_face_values.get_quadrature_points();
                 for (unsigned int s = 0; s < dim; ++s)
                   interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
                                         interface_values[s], s);
+                // for (unsigned int s = 0; s < dim; ++s)
+                // {
+                //   for (unsigned int q = 0; q < n_face_q_points; ++q)
+                //   {
+                //     const double val = interface_values[s][q];
+
+                //     // if (!dealii::numbers::is_finite(val))
+                //     // if (this_mpi == 0)
+                //     // {
+                //     //   std::cout //<< "this_mpi = " << this_mpi
+                //     //     << "interface_values = " << val
+                //     //     // << "NaN/Inf from FEFieldFunction\n"
+                //     //     << "  side = " << side
+                //     //     << "  face_n = " << face_n
+                //     //     << "  component s = " << s
+                //     //     << "  q = " << q << "\n"
+                //     //     << "  x_q = " << q_points[q] << "\n"
+                //     //     << "  cell(level,index) = (" << cell->level() << "," << cell->index() << ")\n"
+                //     //     << "  cell id = " << cell->id() << "\n"
+                //     //     << "  boundary_id = " << cell->face(face_n)->boundary_id() << "\n"
+                //     //     << std::endl;
+                //     // }
+                //     // MPI_Barrier(mpi_communicator);
+                //   }
+                // }
                 for (unsigned int s = 0; s < dim; ++s)
                   for (unsigned int q = 0; q < n_face_q_points; ++q)
                     AssertIsFinite(interface_values[s][q]);
@@ -805,6 +833,8 @@ namespace mfe_stokes
         for (unsigned int i = 0; i < dofs_per_cell; ++i)
           system_rhs_star(local_dof_indices[i]) += local_rhs(i);        
       }
+      // if (this_mpi == 0)
+      //   system_rhs_star.print(std::cout);
     }
     else if (biot_neighbor)
     {
@@ -1117,21 +1147,39 @@ namespace mfe_stokes
     std::vector<double>     r_norm_side(n_faces_per_cell,0);
     std::vector<double>     r_b_norm_side(n_faces_per_cell,0);
 
-    //compute Ax from x = initial_val
+    // compute Ax from x = initial_val
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+      {
         interface_fe_function[side][interface_dofs[side][i]] = 
           interface_data[side][i];
+        // pcout << "interface_data[" << side << "][" << i << "]: " << interface_data[side][i] << std::endl;
+      }
 
+    // std::cout << mortar_vec.size()
+    // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    //   if (side = 1 && this_mpi == 0)
+    //   {
+    //     for (unsigned int i = 0; i < interface_fe_function[side].size(); ++i)
+    //       pcout << "hello " << i << std::endl;
+    //       // pcout << "interface_fe_function[" << side << "][" << i << "]: " << interface_fe_function[side][i] << std::endl;
+    //   }
+    // MPI_Barrier(mpi_communicator);
     // interface_fe_function.block(1) = 0;
     assemble_rhs_star(interface_function,
                       fe_face_values,
                       fe_face_values_mortar_biot);
     solve_star();
 
+    // for (unsigned int i = 0; i < solution_star.size(); ++i)
+    //   pcout << "solution_star[" << i << "]: " << solution_star[i] << std::endl;
+
     //for computing rhs b for
     // Ax = b in interface problem below
     solve_bar();
+
+    // for (unsigned int i = 0; i < solution_star.size(); ++i)
+    //   pcout << "solution_bar[" << i << "]: " << solution_bar[i] << std::endl;
 
     //for computing the inner products
     //in the mortar space
@@ -1141,6 +1189,16 @@ namespace mfe_stokes
                             fe_face_values_mortar,
                             fe_face_values_mortar_biot,
                             P_mortar);
+
+    // pcout << "After interface inner product solution star and bar: " << std::endl;
+    // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    //   if (neighbors[side] >= 0)
+    //   {
+    //     for (unsigned int i = 0; i < solution_star_mortar[side].size(); ++i)
+    //       pcout << "solution_star_mortar[" << i << "]: " << solution_star_mortar[side].block(0)(i) << std::endl;
+    //     for (unsigned int i = 0; i < solution_bar_mortar[side].size(); ++i)
+    //       pcout << "solution_bar_mortar[" << i << "]: " << solution_bar_mortar[side].block(0)[i] << std::endl;
+    //   }
     //compute residual r = b - A*x
     for (unsigned side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
@@ -1208,8 +1266,13 @@ namespace mfe_stokes
                     mpi_communicator,
                     &mpi_status);
 
+        // for (unsigned int i = 0; i < r[side].size(); ++i)
+        // {
+        //   pcout << "before r[" << side << "][" << i << "]: " << r[side][i] << " before r_b: " << r_b[side][i] << std::endl;
+        // }
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
+            // pcout << "r[" << side << "][" << i << "]: " << r[side][i] << " r_b: " << r_b[side][i] << std::endl;
             r[side][i] += r_receive_buffer[i];
             r_b[side][i] += r_b_receive_buffer[i];
           }
@@ -1355,32 +1418,52 @@ namespace mfe_stokes
           }
         }
       }
+
+      // pcout << "immediately after interface inner product solution star and bar: " << std::endl;
+      // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      //   if (neighbors[side] >= 0)
+      //   {
+      //     for (unsigned int i = 0; i < solution_star_mortar_temp[side].size(); ++i)
+      //       pcout << "solution_star_mortar_temp[" << i << "]: " << solution_star_mortar_temp[side].block(0)(i) << std::endl;
+      //     for (unsigned int i = 0; i < solution_bar_mortar_temp[side].size(); ++i)
+      //       pcout << "solution_bar_mortar_temp[" << i << "]: " << solution_bar_mortar_temp[side].block(0)[i] << std::endl;
+      //   }
     
       Quadrature<dim - 1> quad;
       quad = QGauss<dim - 1>(qdegree);
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         if (neighbors[side] >= 0 && neighbor_type[side] == 1) //Stokes-Stokes interface
         {
-          project_mortar<dim>(P_mortar[0],
-                        dof_handler_mortar,
-                        solution_bar_mortar_temp[side],
-                        quad,
-                        constraints_mortar,
-                        neighbors,
-                        dof_handler_mortar,
-                        solution_bar_mortar[side]);
-          project_mortar<dim>(P_mortar[0],
-                        dof_handler_mortar,
-                        solution_star_mortar_temp[side],
-                        quad,
-                        constraints_mortar,
-                        neighbors,
-                        dof_handler_mortar,
-                        solution_star_mortar[side]);   
+          // project_mortar<dim>(P_mortar[0],
+          //               dof_handler_mortar,
+          //               solution_bar_mortar_temp[side],
+          //               quad,
+          //               constraints_mortar,
+          //               neighbors,
+          //               dof_handler_mortar,
+          //               solution_bar_mortar[side]);
+          // project_mortar<dim>(P_mortar[0],
+          //               dof_handler_mortar,
+          //               solution_star_mortar_temp[side],
+          //               quad,
+          //               constraints_mortar,
+          //               neighbors,
+          //               dof_handler_mortar,
+          //               solution_star_mortar[side]);   
 
-          // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
-          // solution_star_mortar[side] = solution_star_mortar_temp[side];
+          solution_bar_mortar[side] = solution_bar_mortar_temp[side];
+          solution_star_mortar[side] = solution_star_mortar_temp[side];
         } 
+
+        // pcout << "After interface inner product solution star and bar: " << std::endl;
+        // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        //   if (neighbors[side] >= 0)
+        //   {
+        //     for (unsigned int i = 0; i < solution_star_mortar[side].size(); ++i)
+        //       pcout << "solution_star_mortar[" << i << "]: " << solution_star_mortar[side].block(0)(i) << std::endl;
+        //     for (unsigned int i = 0; i < solution_bar_mortar[side].size(); ++i)
+        //       pcout << "solution_bar_mortar[" << i << "]: " << solution_bar_mortar[side].block(0)[i] << std::endl;
+        //   }
     } 
     else if (biot_neighbor) 
     {
@@ -1875,7 +1958,7 @@ namespace mfe_stokes
     solution_star_mortar.resize(n_faces_per_cell);
     solution_bar_mortar_temp.resize(n_faces_per_cell);
     solution_star_mortar_temp.resize(n_faces_per_cell);
-    double initial_val = 0.0; //initial guess for gmres
+    double initial_val = 1.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
     // [0] will hold factored L2 projection matrix for Stokes-Stokes interface
@@ -2001,6 +2084,7 @@ namespace mfe_stokes
         for (unsigned int i = 0; i < r[side].size(); ++i)
           AssertIsFinite(r[side][i]);
 
+    pcout << "r_norm: " << r_norm << " b_norm: " << b_norm << std::endl;
     //Making the first element of matrix Q[side] same as r_side[side/r_norm
     for(unsigned int side=0; side<n_faces_per_cell;++side)
       if (neighbors[side] >= 0)

@@ -493,6 +493,9 @@ namespace dd_utilities
       if (neighbors[side] >= 0)
         boundary_functions_velocity[side + 1] = &fe_interface_data;
     
+    std::cout << "n_boundary_dofs = "
+          << dof2.n_boundary_dofs(boundary_functions_velocity)
+          << std::endl;
     proj.project_boundary_values(in_vec,
                                  dof2,
                                  boundary_functions_velocity,
