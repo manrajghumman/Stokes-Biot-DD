@@ -31,6 +31,39 @@ namespace dd_stokes_biot
                                                         std::vector<std::vector<unsigned int>> &dd_info_matrix,
                                                         const unsigned int &n_processes)
         {
+            // make initial grid i.e. fill n_domains vector for each subdomain
+            switch(dim)
+            {
+                case 2:
+                {
+                    // Get the string and split into a vector of strings
+                    std::vector<int> bvec = Utilities::string_to_int(
+                                    Utilities::split_string_list(prm.get("initial_grid_2D"))); 
+                    AssertThrow(bvec.size() == dim, 
+                                ExcMessage("Initial grid size must match the dimension."));
+                    // Initialize n_domains with 2D grid sizes
+                    n_domains[0] = bvec[0];
+                    n_domains[1] = bvec[1];
+                    break;
+                }
+                case 3:
+                {
+                    // Get the string and split into a vector of strings
+                    std::vector<int> bvec = Utilities::string_to_int(
+                                    Utilities::split_string_list(prm.get("initial_grid_3D"))); 
+                    AssertThrow(bvec.size() == dim, 
+                                ExcMessage("Initial grid size must match the dimension."));
+                    // Initialize n_domains with 3D grid sizes
+                    n_domains[0] = bvec[0];
+                    n_domains[1] = bvec[1];
+                    n_domains[2] = bvec[2];
+                    break;
+                }
+                default:
+                    AssertThrow(false, ExcMessage("Dimension must be either 2 or 3."));
+            }
+
+            // enter the number of refinements
             AssertThrow(dim == 2 || dim == 3, ExcMessage("Dimension must be either 2 or 3."));
             refine = prm.get_integer("refinements");
 
@@ -90,7 +123,7 @@ namespace mfe_stokes
             {
                 // Get the string and split into a vector of strings
                 std::vector<int> bvec = Utilities::string_to_int(
-                                Utilities::split_string_list(prm.get("initial_grid_2D"))); 
+                                Utilities::split_string_list(prm.get("initial_refinement_2D"))); 
                 AssertThrow(bvec.size() == dim, 
                             ExcMessage("Initial grid size must match the dimension."));
                 // Initialize mesh_m2d with 2D grid sizes
@@ -103,9 +136,9 @@ namespace mfe_stokes
             {
                 // Get the string and split into a vector of strings
                 std::vector<int> bvec = Utilities::string_to_int(
-                                Utilities::split_string_list(prm.get("initial_grid_3D"))); 
+                                Utilities::split_string_list(prm.get("initial_refinement_3D"))); 
                 AssertThrow(bvec.size() == dim, 
-                            ExcMessage("Initial grid size must match the dimension."));
+                            ExcMessage("Initial refinement must match the dimension."));
                 // Initialize mesh_m2d with 3D grid sizes
                 // Uniform initial mesh for all processes
                 for (unsigned int i = 0; i < n_processes + 1; ++i)
@@ -205,7 +238,7 @@ namespace mfe_biot
             {
                 // Get the string and split into a vector of strings
                 std::vector<int> bvec = Utilities::string_to_int(
-                                Utilities::split_string_list(prm.get("initial_grid_2D"))); 
+                                Utilities::split_string_list(prm.get("initial_refinement_2D"))); 
                 AssertThrow(bvec.size() == dim, 
                             ExcMessage("Initial grid size must match the dimension."));
                 // Initialize mesh_m2d with 2D grid sizes
@@ -218,9 +251,9 @@ namespace mfe_biot
             {
                 // Get the string and split into a vector of strings
                 std::vector<int> bvec = Utilities::string_to_int(
-                                Utilities::split_string_list(prm.get("initial_grid_3D"))); 
+                                Utilities::split_string_list(prm.get("initial_refinement_3D"))); 
                 AssertThrow(bvec.size() == dim, 
-                            ExcMessage("Initial grid size must match the dimension."));
+                            ExcMessage("Initial refinement must match the dimension."));
                 // Initialize mesh_m2d with 3D grid sizes
                 // Uniform initial mesh for all processes
                 for (unsigned int i = 0; i < n_processes + 1; ++i)

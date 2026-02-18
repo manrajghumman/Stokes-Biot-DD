@@ -29,6 +29,7 @@
 #include <deal.II/dofs/dof_accessor.h>
 #include <deal.II/dofs/dof_tools.h>
 #include <deal.II/fe/fe_system.h>
+#include <deal.II/fe/fe_q.h>
 #include <deal.II/fe/fe_dgq.h>
 #include <deal.II/fe/fe_dgp.h>
 #include <deal.II/fe/fe_raviart_thomas.h>
@@ -103,16 +104,16 @@ namespace mfe_biot
                               FE_BDM<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
                               FE_Nothing<dim>(), 1);
         else if (mortar_type == 1) // BDM(k), k>=1
-          return FESystem<dim>(FE_BDM<dim>(mortar_degree), 1,    // displacement lagrange multiplier on mortar
+          return FESystem<dim>(FE_Q<dim>(mortar_degree), 2,    // displacement lagrange multiplier on mortar
                               FE_Nothing<dim>(), dim,
                               FE_Nothing<dim>(), 0.5*dim*(dim-1), 
-                              FE_BDM<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
+                              FE_Q<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
                               FE_Nothing<dim>(), 1);
         else if (mortar_type == 2) // RT(k), k>=0
-          return FESystem<dim>(FE_RaviartThomas<dim>(mortar_degree), 1,    // displacement lagrange multiplier on mortar
+          return FESystem<dim>(FE_DGQ<dim>(mortar_degree), 2,    // displacement lagrange multiplier on mortar
                               FE_Nothing<dim>(), dim,
                               FE_Nothing<dim>(), 0.5*dim*(dim-1), 
-                              FE_RaviartThomas<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
+                              FE_DGQ<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
                               FE_Nothing<dim>(), 1);
         else
           AssertThrow(false, ExcMessage("Invalid mortar type. Use 0 for no mortar, 1 for BDM, or 2 for RT."));
@@ -306,6 +307,7 @@ namespace mfe_biot
       {
         // n_s_mortar += dofs_per_component_mortar[i];
         n_u_mortar += dofs_per_component_mortar[dim + i];
+        n_s_mortar += dofs_per_component_mortar[i];
 
         // Rotation is scalar in 2d and vector in 3d, so this:
         if (dim == 2)
@@ -313,7 +315,7 @@ namespace mfe_biot
         else if (dim == 3)
             n_g_mortar += dofs_per_component_mortar[2*dim + i];
       }
-      n_s_mortar += dofs_per_component_mortar[0];
+      // n_s_mortar += dofs_per_component_mortar[0];
       n_z_mortar = dofs_per_component_mortar[2*dim + 0.5*dim*(dim-1)];
       n_p_mortar = dofs_per_component_mortar[2*dim +0.5*dim*(dim-1) + dim];
     }
@@ -353,30 +355,68 @@ namespace mfe_biot
 
     unsigned int side = 0;
 
-    local_face_dof_indices.resize(fe_mortar.dofs_per_face);
-
-    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
-      for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
-        if (cell->at_boundary(face_n) &&
-              (cell->face(face_n)->boundary_id() != 0 && 
-                cell->face(face_n)->boundary_id() !=7))
-        {
-          cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
-          side = cell->face(face_n)->boundary_id() - 1;
-          // if (neighbor_type[side] == subdomain_type) // Stokes-Stokes interface -> don't have to do this for Biot subdomains
-          for (auto el : local_face_dof_indices)
+    if (mortar_type >= 2) // using Qk  or DQk mortar space
+    {
+      local_face_dof_indices.resize(fe_mortar.dofs_per_cell);
+      for (const auto &cell : dof_handler_mortar.active_cell_iterators())
+        for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
+          if (cell->at_boundary(face_n) &&
+                (cell->face(face_n)->boundary_id() != 0 && 
+                  cell->face(face_n)->boundary_id() !=7))
           {
-            if (el < n_stress_mortar){
-              interface_dofs[side].push_back(el);
-              interface_dofs_total.push_back(el);                                                    
-            }
-            else if(el >= n_stress_mortar+n_disp_mortar+n_rot_mortar && el < n_stress_mortar+n_disp_mortar+n_rot_mortar+n_flux_mortar)
+            // cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
+            cell->get_dof_indices(local_face_dof_indices);
+            side = cell->face(face_n)->boundary_id() - 1;
+            // if (neighbor_type[side] == subdomain_type) // Stokes-Stokes interface -> don't have to do this for Biot subdomains
+            for (unsigned int i = 0; i < local_face_dof_indices.size(); ++i)
             {
-              interface_dofs[side].push_back(el);
-              interface_dofs_total.push_back(el);        
+              auto el = local_face_dof_indices[i];
+              if (el < n_stress_mortar && fe_mortar.has_support_on_face(i, face_n))
+              {
+                interface_dofs[side].push_back(el);
+                interface_dofs_total.push_back(el);                                                    
+              }
+              else if(el >= n_stress_mortar+n_disp_mortar+n_rot_mortar && 
+                      el < n_stress_mortar+n_disp_mortar+n_rot_mortar+n_flux_mortar &&
+                      fe_mortar.has_support_on_face(i, face_n))
+              {
+                interface_dofs[side].push_back(el);
+                interface_dofs_total.push_back(el);        
+              }
             }
           }
-        }
+    }
+    else if (mortar_type >= 0 && mortar_type < 2)
+    {
+      local_face_dof_indices.resize(fe_mortar.dofs_per_face);
+      for (const auto &cell : dof_handler_mortar.active_cell_iterators())
+        for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
+          if (cell->at_boundary(face_n) &&
+                (cell->face(face_n)->boundary_id() != 0 && 
+                  cell->face(face_n)->boundary_id() !=7))
+          {
+            cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
+            side = cell->face(face_n)->boundary_id() - 1;
+            // if (neighbor_type[side] == subdomain_type) // Stokes-Stokes interface -> don't have to do this for Biot subdomains
+            for (auto el : local_face_dof_indices)
+            {
+              if (el < n_stress_mortar){
+                interface_dofs[side].push_back(el);
+                interface_dofs_total.push_back(el);                                                    
+              }
+              else if(el >= n_stress_mortar+n_disp_mortar+n_rot_mortar && el < n_stress_mortar+n_disp_mortar+n_rot_mortar+n_flux_mortar)
+              {
+                interface_dofs[side].push_back(el);
+                interface_dofs_total.push_back(el);        
+              }
+            }
+          }
+    }
+    else
+    {
+      AssertThrow(false, ExcMessage("Invalid mortar type."
+                  " Use 0 for no mortar, 1 for BDM, or 2 for RT."));
+    }
 
     // for (unsigned int i = 0; i < n_faces_per_cell; ++i)
     // {
@@ -395,8 +435,8 @@ namespace mfe_biot
         if (neighbors[side] >= 0)
         {
           pcout << "\ninterface_dofs[" << side << "] = ";
-          // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          //   pcout << interface_dofs[side][i] << " ";
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            pcout << interface_dofs[side][i] << " ";
         }
       pcout << std::endl;
   }
@@ -909,7 +949,7 @@ namespace mfe_biot
                                             std::vector<std::vector<double>> &interface_data_receive,
                                             FEFaceValues<dim>                &fe_face_values,
                                             FEFaceValues<dim>                &fe_face_values_mortar,
-                                            Projector::Projector<dim> &P_mortar,
+                                            std::vector<Projector::Projector<dim>> &P_mortar,
                                             std::vector<std::vector<double>> &Ap)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
@@ -975,7 +1015,7 @@ namespace mfe_biot
                                           FEFaceValues<dim>                &fe_face_values,
                                           FEFaceValues<dim>                &fe_face_values_mortar,
                                           std::vector<std::vector<double>> &interface_data,
-                                          Projector::Projector<dim> &P_mortar,
+                                          std::vector<Projector::Projector<dim>> &P_mortar,
                                           std::vector<std::vector<double>> &r,
                                           double                           &r_norm,
                                           std::vector<std::vector<double>> &r_b,
@@ -1107,7 +1147,7 @@ namespace mfe_biot
   MixedBiotProblem<dim>::interface_inner_product(std::unique_ptr<FEFunction> &solution_bar_function,
                                                  std::unique_ptr<FEFunction> &solution_star_function,
                                                  FEFaceValues<dim> &fe_face_values_mortar,
-                                                 Projector::Projector<dim> &P_mortar)
+                                                 std::vector<Projector::Projector<dim>> &P_mortar)
   {
     const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     unsigned int side = 0;
@@ -1345,22 +1385,26 @@ namespace mfe_biot
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
       {
-        project_mortar<dim>(P_mortar,
+        project_mortar<dim>(P_mortar[side],
                       dof_handler_mortar,
                       solution_bar_mortar_temp[side],
                       quad,
                       constraints_mortar,
                       neighbors,
                       dof_handler_mortar,
-                      solution_bar_mortar[side]);
-        project_mortar<dim>(P_mortar,
+                      solution_bar_mortar[side],
+                      interface_dofs[side],
+                      side);
+        project_mortar<dim>(P_mortar[side],
                       dof_handler_mortar,
                       solution_star_mortar_temp[side],
                       quad,
                       constraints_mortar,
                       neighbors,
                       dof_handler_mortar,
-                      solution_star_mortar[side]);   
+                      solution_star_mortar[side],
+                      interface_dofs[side],
+                      side);   
         
         // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
         // solution_star_mortar[side] = solution_star_mortar_temp[side];
@@ -1537,7 +1581,7 @@ namespace mfe_biot
                                 std::vector<std::vector<double>> &interface_data_receive,
                                 FEFaceValues<dim>                &fe_face_values,
                                 FEFaceValues<dim>                &fe_face_values_mortar,
-                                Projector::Projector<dim> &P_mortar,
+                                std::vector<Projector::Projector<dim>> &P_mortar,
                                 std::vector<std::vector<double>> &Ap,
                                 std::vector<std::vector<double>> &q,
                                 std::vector<std::vector<std::vector<double>>>	&Q_side,
@@ -1660,7 +1704,8 @@ namespace mfe_biot
     solution_bar_mortar_temp.resize(n_faces_per_cell);
     solution_star_mortar_temp.resize(n_faces_per_cell);
 
-    Projector::Projector <dim> P_mortar(false);
+    std::vector<Projector::Projector <dim>> P_mortar(n_faces_per_cell, 
+                                                  Projector::Projector <dim>(false));
 
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
@@ -2535,6 +2580,8 @@ namespace mfe_biot
       convergence_table_darcy_l2_total.evaluate_convergence_rates("||u-u_h||_L2",
                                                 ConvergenceTable::reduction_rate_log2);
       convergence_table_darcy_l2_total.evaluate_convergence_rates("||p-p_h||_L2",
+                                                ConvergenceTable::reduction_rate_log2);
+      convergence_table_darcy_l2_total.evaluate_convergence_rates("gmres_iter",
                                                 ConvergenceTable::reduction_rate_log2);
       // convergence_table_l2.evaluate_convergence_rates("||d-d_h||_L2",
       //                                           ConvergenceTable::reduction_rate_log2);

@@ -98,7 +98,9 @@ namespace dd_stokes_biot
       if (cycle == 0)
       {
         // Partitioning into subdomains (simple bricks)
-        find_divisors<dim>(n_processes, n_domains);
+        // find_divisors<dim>(n_processes, n_domains);
+        for (unsigned int i = 0; i < dim; ++i)
+          std::cout << "n_domains[" << i << "] = " << n_domains[i] << std::endl;
 
         switch (dim)
         {

@@ -42,6 +42,14 @@ class StokesBiotParameterReader : public Subscriptor
                         Patterns::Anything(),
                         "Initial grid size for 3D (x, y, z) "
                         "in number of cells per direction");
+    prm.declare_entry("initial_refinement_2D", "1, 1",
+                        Patterns::Anything(),
+                        "Initial refinement for 2D (x, y) "
+                        "in number of cells per direction");
+    prm.declare_entry("initial_refinement_3D", "1, 1, 1",
+                        Patterns::Anything(),
+                        "Initial refinement for 3D (x, y, z) "
+                        "in number of cells per direction");
     prm.declare_entry("grid", "1, 1",
                       Patterns::Anything(),
                       "Differentiate Stokes and Biot subdomains");

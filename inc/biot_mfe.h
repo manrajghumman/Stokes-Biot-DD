@@ -127,7 +127,7 @@ namespace mfe_biot
     interface_inner_product(std::unique_ptr<FEFunction> &solution_bar_function,
                             std::unique_ptr<FEFunction> &solution_star_function,
                             FEFaceValues<dim> &fe_face_values_mortar,
-                            Projector::Projector<dim> &P_mortar);
+                            std::vector<Projector::Projector<dim>> &P_mortar);
 
     double
     inner_product_mortar(std::vector<std::vector<double>> &v_1,
@@ -140,7 +140,7 @@ namespace mfe_biot
                     FEFaceValues<dim>                &fe_face_values,
                     FEFaceValues<dim>                &fe_face_values_mortar,
                     std::vector<std::vector<double>> &interface_data,
-                    Projector::Projector<dim> &P_mortar,
+                    std::vector<Projector::Projector<dim>> &P_mortar,
                     std::vector<std::vector<double>>  &r,
                     double                            &r_norm,
                     std::vector<std::vector<double>>  &r_b,
@@ -155,7 +155,7 @@ namespace mfe_biot
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
                        FEFaceValues<dim>                &fe_face_values_mortar,
-                       Projector::Projector<dim> &P_mortar,
+                       std::vector<Projector::Projector<dim>> &P_mortar,
                        std::vector<std::vector<double>> &Ap);
 
     void
@@ -168,7 +168,7 @@ namespace mfe_biot
             std::vector<std::vector<double>> &interface_data_receive,
             FEFaceValues<dim>                &fe_face_values,
             FEFaceValues<dim>                &fe_face_values_mortar,
-            Projector::Projector<dim> &P_mortar,
+            std::vector<Projector::Projector<dim>> &P_mortar,
             std::vector<std::vector<double>> &Ap,
             std::vector<std::vector<double>> &q,
             std::vector<std::vector<std::vector<double>>>	&Q_side,
