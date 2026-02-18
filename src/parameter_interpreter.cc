@@ -114,6 +114,7 @@ namespace mfe_stokes
         {
             qdegree  = prm.get_integer("quad_degree");  
             gamma    = prm.get_double("gamma");
+            initial_val = prm.get_double("initial_val lambda");
         }
         prm.leave_subsection();
         // make initial refinement matrix (reps) for each subdomain
@@ -228,7 +229,8 @@ namespace mfe_biot
     {
         prm.enter_subsection("Biot Parameters");
         {
-            qdegree  = prm.get_integer("quad_degree");  
+            qdegree  = prm.get_integer("quad_degree"); 
+            initial_val = prm.get_double("initial_val lambda"); 
         }
         prm.leave_subsection();
         // make initial refinement matrix (reps) for each subdomain

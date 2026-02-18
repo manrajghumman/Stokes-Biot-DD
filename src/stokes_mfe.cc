@@ -1966,7 +1966,7 @@ namespace mfe_stokes
     solution_star_mortar.resize(n_faces_per_cell);
     solution_bar_mortar_temp.resize(n_faces_per_cell);
     solution_star_mortar_temp.resize(n_faces_per_cell);
-    double initial_val = 1.0; //initial guess for gmres
+    // double initial_val = 1.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
     // [0] will hold factored L2 projection matrix for Stokes-Stokes interface
@@ -2227,7 +2227,7 @@ namespace mfe_stokes
     solution_star_mortar.resize(n_faces_per_cell);
     solution_bar_mortar_temp.resize(n_faces_per_cell);
     solution_star_mortar_temp.resize(n_faces_per_cell);
-    double initial_val = 0.0; //initial guess for gmres
+    // double initial_val = 0.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
     std::vector<Projector::Projector<dim>> P_mortar(2, Projector::Projector<dim>(false));

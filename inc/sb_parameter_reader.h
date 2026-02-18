@@ -73,6 +73,9 @@ class StokesBiotParameterReader : public Subscriptor
         prm.declare_entry("gamma", "100.0",
                           Patterns::Double(),
                           "Nitsche's penalty parameter for Stokes");
+        prm.declare_entry("initial_val lambda", "0.0",
+                          Patterns::Double(),
+                          "Initial value for lambda in Stokes mesh");
     }
     prm.leave_subsection();
 
@@ -103,6 +106,9 @@ class StokesBiotParameterReader : public Subscriptor
         prm.declare_entry("Kinv", "1, 0; 0, 1",
                       Patterns::Anything(),
                       "Inverse of Permeability tensor");
+        prm.declare_entry("initial_val lambda", "0.0",
+                      Patterns::Double(),
+                      "Initial value for lambda in Biot mesh");
     }
     prm.leave_subsection();
 

@@ -117,6 +117,7 @@ namespace mfe_stokes
     unsigned int mortar_degree;
     unsigned int mortar_degree_biot;
     double       tol;
+    double       initial_val;
     std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
     // std::vector<int> neighbors;
     // std::vector<unsigned int> neighbor_type;

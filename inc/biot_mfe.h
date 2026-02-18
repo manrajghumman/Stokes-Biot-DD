@@ -219,6 +219,7 @@ namespace mfe_biot
     const unsigned int mortar_degree;
     const unsigned int mortar_type;
     double tol;
+    double initial_val;
     unsigned int qdegree;
 
 

@@ -97,20 +97,26 @@ namespace mfe_biot
           FE_DGQ<dim>(degree-1), 1),               // pressure
       dof_handler (triangulation),
       fe_mortar([mortar_degree, mortar_type]() -> FESystem<dim> {
-        if (mortar_type == 0) // no mortar
+        if (mortar_type == 0) // BDM(k), k>0; k = 1 is no mortar case
           return FESystem<dim>(FE_BDM<dim>(mortar_degree), dim,    // displacement lagrange multiplier on mortar
                               FE_Nothing<dim>(), dim,
                               FE_Nothing<dim>(), 0.5*dim*(dim-1), 
                               FE_BDM<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
                               FE_Nothing<dim>(), 1);
-        else if (mortar_type == 1) // BDM(k), k>=1
-          return FESystem<dim>(FE_Q<dim>(mortar_degree), 2,    // displacement lagrange multiplier on mortar
+        else if (mortar_type == 1) // RT(k), k>=0
+          return FESystem<dim>(FE_RaviartThomas<dim>(mortar_degree), dim,    // displacement lagrange multiplier on mortar
+                              FE_Nothing<dim>(), dim,
+                              FE_Nothing<dim>(), 0.5*dim*(dim-1), 
+                              FE_RaviartThomas<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
+                              FE_Nothing<dim>(), 1);
+        else if (mortar_type == 2) // Q(k), k>0
+          return FESystem<dim>(FE_Q<dim>(mortar_degree), dim,    // displacement lagrange multiplier on mortar
                               FE_Nothing<dim>(), dim,
                               FE_Nothing<dim>(), 0.5*dim*(dim-1), 
                               FE_Q<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
                               FE_Nothing<dim>(), 1);
-        else if (mortar_type == 2) // RT(k), k>=0
-          return FESystem<dim>(FE_DGQ<dim>(mortar_degree), 2,    // displacement lagrange multiplier on mortar
+        else if (mortar_type == 3) // DQ(k), k>=0
+          return FESystem<dim>(FE_DGQ<dim>(mortar_degree), dim,    // displacement lagrange multiplier on mortar
                               FE_Nothing<dim>(), dim,
                               FE_Nothing<dim>(), 0.5*dim*(dim-1), 
                               FE_DGQ<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
@@ -285,7 +291,9 @@ namespace mfe_biot
             DoFTools::count_dofs_per_fe_component (dof_handler_mortar);
     unsigned int n_s_mortar=0, n_u_mortar=0, n_g_mortar=0, n_z_mortar = 0, n_p_mortar = 0;
 
-    if (mortar_type == 0)// no mortar
+    // when using displacement mortar space 
+    // as normal trace of a tensor space
+    if (mortar_type < 2)
     {
       for (unsigned int i=0; i<dim; ++i)
       {
@@ -317,7 +325,7 @@ namespace mfe_biot
       }
       // n_s_mortar += dofs_per_component_mortar[0];
       n_z_mortar = dofs_per_component_mortar[2*dim + 0.5*dim*(dim-1)];
-      n_p_mortar = dofs_per_component_mortar[2*dim +0.5*dim*(dim-1) + dim];
+      n_p_mortar = dofs_per_component_mortar[2*dim +0.5*dim*(dim-1) + 1];
     }
 
     n_stress_mortar = n_s_mortar;
@@ -355,7 +363,7 @@ namespace mfe_biot
 
     unsigned int side = 0;
 
-    if (mortar_type >= 2) // using Qk  or DQk mortar space
+    if (mortar_type >= 2) // using Qk or DQk mortar space
     {
       local_face_dof_indices.resize(fe_mortar.dofs_per_cell);
       for (const auto &cell : dof_handler_mortar.active_cell_iterators())
@@ -371,22 +379,30 @@ namespace mfe_biot
             for (unsigned int i = 0; i < local_face_dof_indices.size(); ++i)
             {
               auto el = local_face_dof_indices[i];
-              if (el < n_stress_mortar && fe_mortar.has_support_on_face(i, face_n))
+              if (fe_mortar.has_support_on_face(i, face_n))
               {
-                interface_dofs[side].push_back(el);
-                interface_dofs_total.push_back(el);                                                    
-              }
-              else if(el >= n_stress_mortar+n_disp_mortar+n_rot_mortar && 
-                      el < n_stress_mortar+n_disp_mortar+n_rot_mortar+n_flux_mortar &&
-                      fe_mortar.has_support_on_face(i, face_n))
-              {
-                interface_dofs[side].push_back(el);
-                interface_dofs_total.push_back(el);        
+                if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(), el) 
+                                                              == interface_dofs[side].end())
+                {
+                  if (el < n_stress_mortar)
+                  {
+                    interface_dofs[side].push_back(el);
+                    interface_dofs_total.push_back(el);
+                    // pcout << "hi disp mortar dof: " << el << std::endl;                                                
+                  }
+                  else if(el >= n_stress_mortar+n_disp_mortar+n_rot_mortar && 
+                          el < n_stress_mortar+n_disp_mortar+n_rot_mortar+n_flux_mortar)
+                  {
+                    interface_dofs[side].push_back(el);
+                    interface_dofs_total.push_back(el);    
+                    // pcout << "hi pressure mortar dof: " << el << std::endl;      
+                  }
+                }
               }
             }
           }
     }
-    else if (mortar_type >= 0 && mortar_type < 2)
+    else if (mortar_type < 2)
     {
       local_face_dof_indices.resize(fe_mortar.dofs_per_face);
       for (const auto &cell : dof_handler_mortar.active_cell_iterators())
@@ -430,15 +446,15 @@ namespace mfe_biot
                                      mpi_communicator, 
                                      this_mpi, 
                                      interface_dofs_size);
-    if (this_mpi == 0)
-      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-        if (neighbors[side] >= 0)
-        {
-          pcout << "\ninterface_dofs[" << side << "] = ";
-          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            pcout << interface_dofs[side][i] << " ";
-        }
-      pcout << std::endl;
+    // if (this_mpi == 0)
+    //   for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    //     if (neighbors[side] >= 0)
+    //     {
+    //       pcout << "\ninterface_dofs[" << side << "].size = " << interface_dofs[side].size() << " : ";
+    //       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+    //         pcout << interface_dofs[side][i] << " ";
+    //     }
+    //   pcout << std::endl;
   }
 
   // MixedBiotProblem - assemble_system
@@ -717,7 +733,7 @@ namespace mfe_biot
 
     const FEValuesExtractors::Vector velocity (dim*dim + dim + 0.5*dim*(dim-1));
 
-    if (mortar_type == 0)
+    if (mortar_type < 2)
     {
       std::vector<std::vector<double>> interface_values_flux(dim, std::vector<double> (n_face_q_points));
       std::vector<std::vector<std::vector<double>>> interface_values_stress(dim, 
@@ -775,7 +791,7 @@ namespace mfe_biot
     }
     else
     {
-      std::vector<std::vector<double>> interface_values_press(dim, std::vector<double> (n_face_q_points));
+      std::vector<double> interface_values_press(n_face_q_points);
       std::vector<std::vector<double>> interface_values_disp(dim, std::vector<double>(n_face_q_points));
 
       for (const auto &cell : dof_handler.active_cell_iterators())
@@ -791,10 +807,10 @@ namespace mfe_biot
             for (unsigned int s = 0; s < dim; ++s)
             {
               interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
-                                                  interface_values_press[s], 2*dim + 0.5*dim*(dim-1)+s);
-              interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
                                             interface_values_disp[s], s);
             }
+            interface_function[side]->value_list(fe_face_values.get_quadrature_points(),
+                                                  interface_values_press, 2*dim + 0.5*dim*(dim-1));
 
             for (unsigned int q=0; q<n_face_q_points; ++q)
             {
@@ -808,16 +824,13 @@ namespace mfe_biot
 
                   local_rhs(i) += fe_face_values[stresses[s]].value (i, q)
                                   * fe_face_values.normal_vector(q)  // <tau.n, lambda_d>
-                                  * get_normal_direction<dim>(side)
                                   * interface_values_disp[s][q]
-                                  * fe_face_values.JxW(q);
-                  // lambda_p = interface_values_flux[s][q] * fe_face_values.normal_vector(q)[s];
-                  local_rhs(i) += - fe_face_values[velocity].value (i, q) 
-                                * fe_face_values.normal_vector(q)
-                                * get_normal_direction<dim>(side)
-                                * interface_values_press[s][q] * fe_face_values.normal_vector(q)[s] 
-                                * fe_face_values.JxW(q); // <v.n, lambda_p>                                 
+                                  * fe_face_values.JxW(q);                                                 
                 }
+                local_rhs(i) += - fe_face_values[velocity].value (i, q) 
+                                * fe_face_values.normal_vector(q)
+                                * interface_values_press[q]
+                                * fe_face_values.JxW(q); // <v.n, lambda_p> 
               }
             }
           }
@@ -1183,7 +1196,7 @@ namespace mfe_biot
                                                     std::vector<double>(n_face_q_points, 0.0)));
     
 
-    if (mortar_type == 0)
+    if (mortar_type < 2)
     {
       std::vector<FEValuesExtractors::Vector> stresses(dim, FEValuesExtractors::Vector());
 
@@ -1286,7 +1299,7 @@ namespace mfe_biot
     else
     {
       const FEValuesExtractors::Vector disp_mortar(0);
-      const FEValuesExtractors::Vector velocity (2*dim+ 0.5*dim*(dim-1));
+      const FEValuesExtractors::Scalar press_mortar (2*dim+ 0.5*dim*(dim-1));
 
       for (const auto &cell : dof_handler_mortar.active_cell_iterators())
       {
@@ -1319,20 +1332,17 @@ namespace mfe_biot
             {
               for (unsigned int k = 0; k < dofs_per_cell; ++k)
               {
-                // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                //                 local_dof_indices[k]) != interface_dofs[side].end())
-                // {
-                  phi_eta[k] = fe_face_values_mortar[disp_mortar].value (k, q_point)
-                                * get_normal_direction<dim>(side);
-                  phi_p[k] = fe_face_values_mortar[velocity].value (k, q_point)
-                                  * fe_face_values_mortar.normal_vector(q_point)
-                                  * get_normal_direction<dim>(side);
-                // }
-                // else
-                //   {
-                //     phi_eta[k] = 0.0;
-                //     phi_p[k] = 0.0;
-                //   }
+                if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                local_dof_indices[k]) != interface_dofs[side].end())
+                {
+                  phi_eta[k] = fe_face_values_mortar[disp_mortar].value (k, q_point);
+                  phi_p[k] = fe_face_values_mortar[press_mortar].value (k, q_point);
+                }
+                else
+                  {
+                    phi_eta[k] = 0.0;
+                    phi_p[k] = 0.0;
+                  }
               }
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
@@ -1347,12 +1357,14 @@ namespace mfe_biot
                       {
                         solution_bar_mortar_temp[side](local_dof_indices[i]) +=
                           (phi_eta[i][s] * 
-                            bar_values_stress[s][l][q_point] * fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
+                            bar_values_stress[s][l][q_point] * 
+                            fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
                           * fe_face_values_mortar.JxW(q_point);    // dx
 
                         solution_star_mortar_temp[side](local_dof_indices[i]) +=
                           (phi_eta[i][s] * 
-                            star_values_stress[s][l][q_point] * fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
+                            star_values_stress[s][l][q_point] * 
+                            fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
                           * fe_face_values_mortar.JxW(q_point);    // dx
                       }
                     }
@@ -1363,12 +1375,14 @@ namespace mfe_biot
                     {
                       solution_bar_mortar_temp[side](local_dof_indices[i]) +=
                         (phi_p[i] * 
-                          bar_values_flux[s][q_point] * fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
+                          bar_values_flux[s][q_point] * 
+                          fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
                         * fe_face_values_mortar.JxW(q_point);    // dx
 
                       solution_star_mortar_temp[side](local_dof_indices[i]) +=
                         (phi_p[i] * 
-                          star_values_flux[s][q_point] * fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
+                          star_values_flux[s][q_point] * 
+                          fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
                           * fe_face_values_mortar.JxW(q_point);    // dx
                     }
                   // }
@@ -1442,7 +1456,7 @@ namespace mfe_biot
         }
       }
 
-    if (mortar_type == 0)
+    if (mortar_type < 2)
     {
       //first index for dim components, 0, 1: vel, 2: pressure
       //second for value at each quad point
@@ -1511,21 +1525,22 @@ namespace mfe_biot
     {
       //first index for dim components, 0, 1: vel, 2: pressure
       //second for value at each quad point
-      std::vector<Tensor<1, dim>> interface_values_v1_flux(n_face_q_points, Tensor<1, dim>());
-      std::vector<Tensor<1, dim>> interface_values_v2_flux(n_face_q_points, Tensor<1, dim>());
+      std::vector<double> interface_values_v1_press(n_face_q_points, 0.0);
+      std::vector<double> interface_values_v2_press(n_face_q_points, 0.0);
 
       std::vector<Tensor<1, dim>> interface_values_v1_disp(n_face_q_points, Tensor<1, dim>());
       std::vector<Tensor<1, dim>> interface_values_v2_disp(n_face_q_points, Tensor<1, dim>());
 
       std::vector<FEValuesExtractors::Vector> stresses(dim, FEValuesExtractors::Vector());
 
-      for (unsigned int d=0; d<dim; ++d)
-      {
-        const FEValuesExtractors::Vector tmp_stress(d*dim);
-        stresses[d].first_vector_component = tmp_stress.first_vector_component;
-      }
-      const FEValuesExtractors::Vector disp_mortar (0);
-      const FEValuesExtractors::Vector velocity (2*dim + 0.5*dim*(dim-1));
+      // for (unsigned int d=0; d<dim; ++d)
+      // {
+      //   const FEValuesExtractors::Vector tmp_stress(d*dim);
+      //   stresses[d].first_vector_component = tmp_stress.first_vector_component;
+      // }
+
+      const FEValuesExtractors::Vector disp (0);
+      const FEValuesExtractors::Scalar press (2*dim + 0.5*dim*(dim-1));
 
       unsigned int side = 0;
       for (const auto &cell : dof_handler_mortar.active_cell_iterators())
@@ -1541,29 +1556,35 @@ namespace mfe_biot
             fe_face_values_mortar.reinit(cell, face_n);
             side = cell->face(face_n)->boundary_id() - 1;
             
-            fe_face_values_mortar[velocity].get_function_values(
-              vec_1, interface_values_v1_flux);
-            fe_face_values_mortar[velocity].get_function_values(
-              vec_2, interface_values_v2_flux);                                 
-            
-            fe_face_values_mortar[disp_mortar].get_function_values(
-              vec_1, interface_values_v1_disp);
-            fe_face_values_mortar[disp_mortar].get_function_values(
-              vec_2, interface_values_v2_disp);
-            
+            fe_face_values_mortar[press].get_function_values(
+              vec_1, interface_values_v1_press);
+            fe_face_values_mortar[press].get_function_values(
+              vec_2, interface_values_v2_press);                                 
+            // for (unsigned int s = 0; s < dim; ++s)
+            // {
+            //   fe_face_values_mortar[disp].get_function_values(
+            //       vec_1, interface_values_v1_disp[s]);
+            //   fe_face_values_mortar[disp].get_function_values(
+            //     vec_2, interface_values_v2_disp[s]);
+            // }
+            fe_face_values_mortar[disp].get_function_values(
+                  vec_1, interface_values_v1_disp);
+              fe_face_values_mortar[disp].get_function_values(
+                vec_2, interface_values_v2_disp);
             for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
             {
               inner_product += 
-                (interface_values_v1_flux[q_point] * fe_face_values_mortar.normal_vector(q_point)) *
-                (interface_values_v2_flux[q_point] * fe_face_values_mortar.normal_vector(q_point)) // (u1 * u2)
+                (interface_values_v1_press[q_point] *
+                interface_values_v2_press[q_point] ) // (lambda_p_1 * lambda_p_2)
                 * fe_face_values_mortar.JxW(q_point);    // dx
               
-              inner_product += 
-                (interface_values_v1_disp[q_point] * interface_values_v2_disp[q_point]) // (eta_1 * eta_2)
-                * fe_face_values_mortar.JxW(q_point);    // dx
+                inner_product += 
+                  (interface_values_v1_disp[q_point] *
+                  interface_values_v2_disp[q_point]) // (lambda_d_1 * lambda_d_2)
+                  * fe_face_values_mortar.JxW(q_point);    // dx
             }
+              
           }
-          
       }
     }
     return inner_product;
@@ -1697,7 +1718,7 @@ namespace mfe_biot
     std::vector<std::vector<double>> interface_data_receive(n_faces_per_cell);
     std::vector<std::vector<double>> interface_data_send(n_faces_per_cell);
     std::vector<std::vector<double>> interface_data(n_faces_per_cell);
-    double initial_val = 0.0; //initial guess for gmres
+    // double initial_val = 0.0; //initial guess for gmres
     interface_fe_function.resize(n_faces_per_cell);
     solution_bar_mortar.resize(n_faces_per_cell);
     solution_star_mortar.resize(n_faces_per_cell);
