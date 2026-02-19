@@ -4,11 +4,11 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 7
+set refinements  = 6
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
-set initial_grid_2D  = 1, 2
+set initial_grid_2D  = 2, 1
 set initial_grid_3D  = 1, 1, 1
 
 set initial_refinement_2D = 1, 1
@@ -17,7 +17,7 @@ set initial_refinement_3D = 1, 1, 1
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
 # Note: Total subdomains should equal number of processes for mpirun
-set grid = 1; 1
+set grid = 1, 2
 
 
 #################################################################################
@@ -28,9 +28,10 @@ subsection Stokes Parameters
     set degree                = 1
     set quad_degree           = 11
 	set continuous_mortar     = yes
-	set stokes_mortar_degree  = 2
+	set stokes_mortar_degree  = 1
 	set sb_mortar_degree      = 1
 	set gamma                 = 100.0
+	set initial_val lambda    = 0.0
 end
 
 #################################################################################
@@ -38,13 +39,14 @@ end
 # Enter Finite elemet, quadrature and mortar information for Biot
 
 subsection Biot Parameters
-    set degree            = 1
-    set quad_degree       = 11
-	set mortar_type       = 2
-	set mortar_degree     = 1
-	set s_0               = 1.0
-	set alpha_BJS         = 1.0
-	set Kinv              = 1, 0; 0, 1
+    set degree              = 1
+    set quad_degree         = 11
+	set mortar_type         = 0
+	set mortar_degree       = 1
+	set s_0                 = 1.0
+	set alpha_BJS           = 1.0
+	set Kinv                = 1, 0; 0, 1
+	set initial_val lambda  = 0.0
 end
 
 #################################################################################
