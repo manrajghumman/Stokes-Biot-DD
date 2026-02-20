@@ -356,11 +356,14 @@ namespace mfe_stokes
     n_flux_mortar = n_z_mortar;
     n_pressure_mortar = n_p_mortar;
 
-    pcout << "Biot mortar part:\n N stress mortar dofs: " << n_s_mortar
-          << "\n N displacement mortar dofs: " << n_u_mortar
-          << "\n N rotation mortar dofs: " << n_g_mortar
-          << "\n N flux mortar dofs: " << n_z_mortar
-          << "\n N pressure mortar dofs: " << n_p_mortar << std::endl;
+    if (this_mpi == 1)
+    {
+      std::cout << "Stokes-Biot mortar part:\n N stress mortar dofs: " << n_s_mortar
+                << "\n N displacement mortar dofs: " << n_u_mortar
+                << "\n N rotation mortar dofs: " << n_g_mortar
+                << "\n N flux mortar dofs: " << n_z_mortar
+                << "\n N pressure mortar dofs: " << n_p_mortar << std::endl;
+    }
 
     mortar_vec_biot.reinit(5);
     mortar_vec_biot.block(0).reinit (n_s_mortar);
@@ -476,15 +479,27 @@ namespace mfe_stokes
             }
       }
     }
-    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    if (this_mpi == 1)
     {
-      if (neighbors[side] >= 0 && this_mpi == 0)
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       {
-        std::cout << "Stokes Part:\n Number of interface dofs on face " << side
-              << " : " << interface_dofs[side].size() << ", interface dofs: ";
-        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-        //   std::cout << interface_dofs[side][i] << " ";
-        std::cout << std::endl;
+        if (neighbors[side] >= 0)
+        {
+          if (neighbor_type[side] == 1) // Stokes-Stokes interface  
+          {
+            std::cout << "Stokes Part:\n Number of interface dofs on face " << side
+                  << " : " << interface_dofs[side].size() << ", interface dofs: ";
+                  std::cout << std::endl;
+          }
+          else if (neighbor_type[side] == 2) // Stokes-Biot interface
+          {
+            std::cout << "Stokes-Biot Part:\n Number of interface dofs on face " << side
+                  << " : " << interface_dofs[side].size() << ", interface dofs: ";
+          }
+          // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          //   std::cout << interface_dofs[side][i] << " ";
+          std::cout << std::endl;
+        }
       }
     }
     compute_interface_dofs_size<dim>(interface_dofs_total, 
@@ -847,7 +862,7 @@ namespace mfe_stokes
           system_rhs_star(local_dof_indices[i]) += local_rhs(i);        
       }
     }
-    else if (biot_neighbor)
+    if (biot_neighbor)
     {
       double alpha = 1.0; // BJS coupling parameter
       const unsigned int n_face_q_points = fe_face_values.get_quadrature().size();
@@ -1482,7 +1497,7 @@ namespace mfe_stokes
           // solution_star_mortar[side] = solution_star_mortar_temp[side];
         } 
     } 
-    else if (biot_neighbor) 
+    if (biot_neighbor) 
     {
       double alpha = 1.0;     
       const unsigned int n_face_q_points = fe_face_values_mortar_biot.get_quadrature().size();
@@ -1873,7 +1888,7 @@ namespace mfe_stokes
           }
       }
     }
-    else if (biot_neighbor)
+    if (biot_neighbor)
     {
       const unsigned int n_face_q_points = fe_face_values_mortar_biot.get_quadrature().size();
       const unsigned int dofs_per_cell   = fe_biot_mortar.dofs_per_cell;

@@ -433,12 +433,15 @@ namespace mfe_biot
                   " Use 0 for no mortar, 1 for BDM, or 2 for RT."));
     }
 
-    for (unsigned int i = 0; i < n_faces_per_cell; ++i)
+    if (this_mpi == 2)
     {
-      if (neighbors[i] >= 0)
+      for (unsigned int i = 0; i < n_faces_per_cell; ++i)
       {
-        std::cout << "Biot Part:\n Number of interface dofs on face " << i
-              << " : " << interface_dofs[i].size() << std::endl;
+        if (neighbors[i] >= 0)
+        {
+          std::cout << "Biot Part:\n Number of interface dofs on face " << i
+                << " : " << interface_dofs[i].size() << std::endl;
+        }
       }
     }
     compute_interface_dofs_size<dim>(interface_dofs_total, 
