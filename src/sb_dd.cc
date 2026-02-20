@@ -246,6 +246,7 @@ namespace dd_stokes_biot
                                               neighbor_type,
                                               mpi_communicator_stokes,
                                               mortar_degree,
+                                              mortar_type,
                                               mortar_degree_biot,
                                               cont_mortar_flag);
           stokes->run(cycle);

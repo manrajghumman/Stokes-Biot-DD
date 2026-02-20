@@ -347,7 +347,7 @@ namespace mfe_stokes
             n_g_mortar += dofs_per_component_biot_mortar[2*dim + i];
       }
       n_z_mortar = dofs_per_component_biot_mortar[2*dim + 0.5*dim*(dim-1)];
-      n_p_mortar = dofs_per_component_biot_mortar[2*dim +0.5*dim*(dim-1) + dim];
+      n_p_mortar = dofs_per_component_biot_mortar[2*dim +0.5*dim*(dim-1) + 1];
     }
 
     n_stress_mortar = n_s_mortar;
@@ -1714,8 +1714,8 @@ namespace mfe_stokes
                     if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
                                 local_dof_indices[k]) != interface_dofs[side].end())
                     {
-                      phi_eta[k] = fe_face_values_mortar[displacement].value (k, q_point);
-                      phi_p[k] = fe_face_values_mortar[pressure].value (k, q_point);
+                      phi_eta[k] = fe_face_values_mortar_biot[displacement].value (k, q_point);
+                      phi_p[k] = fe_face_values_mortar_biot[pressure].value (k, q_point);
                     }
                     else
                     {
