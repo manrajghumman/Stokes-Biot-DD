@@ -313,9 +313,8 @@ namespace mfe_biot
     {
       for (unsigned int i=0; i<dim; ++i)
       {
-        // n_s_mortar += dofs_per_component_mortar[i];
-        n_u_mortar += dofs_per_component_mortar[dim + i];
         n_s_mortar += dofs_per_component_mortar[i];
+        n_u_mortar += dofs_per_component_mortar[dim + i];
 
         // Rotation is scalar in 2d and vector in 3d, so this:
         if (dim == 2)
@@ -434,14 +433,14 @@ namespace mfe_biot
                   " Use 0 for no mortar, 1 for BDM, or 2 for RT."));
     }
 
-    // for (unsigned int i = 0; i < n_faces_per_cell; ++i)
-    // {
-    //   if (neighbors[i] >= 0)
-    //   {
-    //     std::cout << "Biot Part:\n Number of interface dofs on face " << i
-    //           << " : " << interface_dofs[i].size() << std::endl;
-    //   }
-    // }
+    for (unsigned int i = 0; i < n_faces_per_cell; ++i)
+    {
+      if (neighbors[i] >= 0)
+      {
+        std::cout << "Biot Part:\n Number of interface dofs on face " << i
+              << " : " << interface_dofs[i].size() << std::endl;
+      }
+    }
     compute_interface_dofs_size<dim>(interface_dofs_total, 
                                      mpi_communicator, 
                                      this_mpi, 
@@ -987,13 +986,28 @@ namespace mfe_biot
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
       {
-        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-        {
-          if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
-            interface_data_send[side][i] = solution_star_mortar[side][interface_dofs[side][i]];
-          else //monolithic-darcy part (coupled)
-            interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
-        }                                  
+        // if (neighbor_type[side] == 1 && mortar_type < 2) // Biot-Stokes interface
+        // {
+        //   for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        //   {
+        //     if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+        //       interface_data_send[side][i] = solution_star_mortar[side][interface_dofs[side][i]]
+        //                                        * get_normal_direction<dim>(side);
+        //     else //monolithic-darcy part (coupled)
+        //       interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]]
+        //                                        * get_normal_direction<dim>(side);
+        //   }    
+        // }
+        // else // Biot-Biot interface or Biot-Stokes interface with Q(k) or DQ(k) mortar
+        // {
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+              interface_data_send[side][i] = solution_star_mortar[side][interface_dofs[side][i]];
+            else //monolithic-darcy part (coupled)
+              interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
+          }    
+        // }                               
 
         MPI_Sendrecv(interface_data_send[side].data(),
                       interface_dofs[side].size(),
@@ -1068,22 +1082,48 @@ namespace mfe_biot
         std::vector<double> r_b_receive_buffer(r[side].size());
         std::vector<double> r_receive_buffer(r[side].size());
 
-        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-        {
-          if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+        // if (neighbor_type[side] == 1 && mortar_type < 2) // Biot-Stokes interface
+        // {
+        //   for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        //   {
+        //     if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+        //     {
+        //       r_b[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]]
+        //                         * get_normal_direction<dim>(side);
+        //       r[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]]
+        //                       * get_normal_direction<dim>(side)
+        //                   - solution_star_mortar[side][interface_dofs[side][i]]
+        //                       * get_normal_direction<dim>(side);     
+        //     }
+        //     else //monolithic-darcy part (coupled)
+        //     {
+        //       r_b[side][i] = solution_bar_mortar[side][interface_dofs[side][i]]
+        //                       * get_normal_direction<dim>(side);
+        //       r[side][i] =  solution_bar_mortar[side][interface_dofs[side][i]]
+        //                       * get_normal_direction<dim>(side)
+        //                   + solution_star_mortar[side][interface_dofs[side][i]]
+        //                       * get_normal_direction<dim>(side);
+        //     }       
+        //   }        
+        // }
+        // else // Biot-Biot interface or Biot-Stokes interface with Q(k) or DQ(k) mortar
+        // {
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
-            r_b[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]];
-            r[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]]
-                         - solution_star_mortar[side][interface_dofs[side][i]];     
-            // pcout << "Ax[side][i]: " << Ax[side][i] << " solution_bar: " << solution_bar[interface_dofs[side][i]] << std::endl;
-          }
-          else //monolithic-darcy part (coupled)
-          {
-            r_b[side][i] =solution_bar_mortar[side][interface_dofs[side][i]];
-            r[side][i] =  solution_bar_mortar[side][interface_dofs[side][i]]
-                        + solution_star_mortar[side][interface_dofs[side][i]];
-          }                
-        }
+            if (interface_dofs[side][i] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+            {
+              r_b[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]];
+              r[side][i] = - solution_bar_mortar[side][interface_dofs[side][i]]
+                          - solution_star_mortar[side][interface_dofs[side][i]];     
+            }
+            else //monolithic-darcy part (coupled)
+            {
+              r_b[side][i] = solution_bar_mortar[side][interface_dofs[side][i]];
+              r[side][i] =  solution_bar_mortar[side][interface_dofs[side][i]]
+                          + solution_star_mortar[side][interface_dofs[side][i]];
+            }       
+          }         
+        // }
 
         MPI_Sendrecv(r_b[side].data(),
                     r_b[side].size(),
@@ -1120,21 +1160,11 @@ namespace mfe_biot
             r[side][i] += r_receive_buffer[i];
             r_b[side][i] += r_b_receive_buffer[i];
           }
-        // r_norm_side[side] = vect_norm(r[side]);
-        // r_b_norm_side[side] = vect_norm(r_b[side]);
-        // inner_product_mortar(r, r, fe_face_values_mortar);
-        // inner_product_mortar(r_b, r_b, fe_face_values_mortar);
       }
       r_norm = inner_product_mortar(r, r, fe_face_values_mortar);
       b_norm = inner_product_mortar(r_b, r_b, fe_face_values_mortar);
 
     //Calculating r-norm(same as b-norm)-----
-    // for(unsigned int side=0; side<n_faces_per_cell;++side)
-    //   if (neighbors[side] >= 0)
-    //   {
-    //     r_norm+=r_norm_side[side]*r_norm_side[side];
-    //     b_norm+=r_b_norm_side[side]*r_b_norm_side[side];
-    //   }
     double r_norm_buffer =0;
     double b_norm_buffer =0;
     MPI_Allreduce(&b_norm,
@@ -1248,49 +1278,43 @@ namespace mfe_biot
                                   * fe_face_values_mortar.normal_vector(q_point)
                                   * get_normal_direction<dim>(side);
                   phi_p[k] = fe_face_values_mortar[velocity].value (k, q_point)
-                                  * fe_face_values_mortar.normal_vector(q_point)
-                                  * get_normal_direction<dim>(side);
+                              * fe_face_values_mortar.normal_vector(q_point)
+                              * get_normal_direction<dim>(side);
                 // }
               }
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                //                 local_dof_indices[i]) != interface_dofs[side].end())
-                // {   
-                //   if (local_dof_indices[i] < n_stress_mortar) //monolithic-Elascitiy part
-                //   {
-                    for (unsigned int s = 0; s < dim; ++s)
-                    {
-                      for (unsigned int l = 0; l < dim; ++l)
-                      {
-                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                          (phi_eta[i][s] * 
-                            bar_values_stress[s][l][q_point] * fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
-                          * fe_face_values_mortar.JxW(q_point);    // dx
+                for (unsigned int s = 0; s < dim; ++s)
+                {
+                  for (unsigned int l = 0; l < dim; ++l)
+                  {
+                    solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                      (phi_eta[i][s] * 
+                        bar_values_stress[s][l][q_point] * 
+                        fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
+                      * fe_face_values_mortar.JxW(q_point);    // dx
 
-                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                          (phi_eta[i][s] * 
-                            star_values_stress[s][l][q_point] * fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
-                          * fe_face_values_mortar.JxW(q_point);    // dx
-                      }
-                    }
-                  // }
-                  // else //monolithic-darcy part
-                  // {
-                    for (unsigned int s = 0; s < dim; ++s)
-                    {
-                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                        (phi_p[i] * 
-                          bar_values_flux[s][q_point] * fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
-                        * fe_face_values_mortar.JxW(q_point);    // dx
+                    solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                      (phi_eta[i][s] * 
+                        star_values_stress[s][l][q_point] * 
+                        fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
+                      * fe_face_values_mortar.JxW(q_point);    // dx
+                  }
+                }
+                for (unsigned int s = 0; s < dim; ++s)
+                {
+                  solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                    (phi_p[i] * 
+                      bar_values_flux[s][q_point] * 
+                      fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
+                    * fe_face_values_mortar.JxW(q_point);    // dx
 
-                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                        (phi_p[i] * 
-                          star_values_flux[s][q_point] * fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
-                          * fe_face_values_mortar.JxW(q_point);    // dx
-                    }
-                  // }
-                // }
+                  solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                    (phi_p[i] * 
+                      star_values_flux[s][q_point] * 
+                      fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
+                      * fe_face_values_mortar.JxW(q_point);    // dx
+                }
               }
             }
           }
@@ -1346,47 +1370,37 @@ namespace mfe_biot
               }
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                //                 local_dof_indices[i]) != interface_dofs[side].end())
-                // {   
-                  // if (local_dof_indices[i] < n_stress_mortar) //monolithic-Elascitiy part
-                  // {
-                    for (unsigned int s = 0; s < dim; ++s)
-                    {
-                      for (unsigned int l = 0; l < dim; ++l)
-                      {
-                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                          (phi_eta[i][s] * 
-                            bar_values_stress[s][l][q_point] * 
-                            fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
-                          * fe_face_values_mortar.JxW(q_point);    // dx
+                for (unsigned int s = 0; s < dim; ++s)
+                {
+                  for (unsigned int l = 0; l < dim; ++l)
+                  {
+                    solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                      (phi_eta[i][s] * 
+                        bar_values_stress[s][l][q_point] * 
+                        fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
+                      * fe_face_values_mortar.JxW(q_point);    // dx
 
-                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                          (phi_eta[i][s] * 
-                            star_values_stress[s][l][q_point] * 
-                            fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
-                          * fe_face_values_mortar.JxW(q_point);    // dx
-                      }
-                    }
-                  // }
-                  // else //monolithic-darcy part
-                  // {
-                    for (unsigned int s = 0; s < dim; ++s)
-                    {
-                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                        (phi_p[i] * 
-                          bar_values_flux[s][q_point] * 
-                          fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
-                        * fe_face_values_mortar.JxW(q_point);    // dx
+                    solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                      (phi_eta[i][s] * 
+                        star_values_stress[s][l][q_point] * 
+                        fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
+                      * fe_face_values_mortar.JxW(q_point);    // dx
+                  }
+                }
+                for (unsigned int s = 0; s < dim; ++s)
+                {
+                  solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                    (phi_p[i] * 
+                      bar_values_flux[s][q_point] * 
+                      fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
+                    * fe_face_values_mortar.JxW(q_point);    // dx
 
-                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                        (phi_p[i] * 
-                          star_values_flux[s][q_point] * 
-                          fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
-                          * fe_face_values_mortar.JxW(q_point);    // dx
-                    }
-                  // }
-                // }
+                  solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                    (phi_p[i] * 
+                      star_values_flux[s][q_point] * 
+                      fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
+                      * fe_face_values_mortar.JxW(q_point);    // dx
+                }
               }
             }
           }
@@ -1533,12 +1547,6 @@ namespace mfe_biot
 
       std::vector<FEValuesExtractors::Vector> stresses(dim, FEValuesExtractors::Vector());
 
-      // for (unsigned int d=0; d<dim; ++d)
-      // {
-      //   const FEValuesExtractors::Vector tmp_stress(d*dim);
-      //   stresses[d].first_vector_component = tmp_stress.first_vector_component;
-      // }
-
       const FEValuesExtractors::Vector disp (0);
       const FEValuesExtractors::Scalar press (2*dim + 0.5*dim*(dim-1));
 
@@ -1560,13 +1568,7 @@ namespace mfe_biot
               vec_1, interface_values_v1_press);
             fe_face_values_mortar[press].get_function_values(
               vec_2, interface_values_v2_press);                                 
-            // for (unsigned int s = 0; s < dim; ++s)
-            // {
-            //   fe_face_values_mortar[disp].get_function_values(
-            //       vec_1, interface_values_v1_disp[s]);
-            //   fe_face_values_mortar[disp].get_function_values(
-            //     vec_2, interface_values_v2_disp[s]);
-            // }
+            
             fe_face_values_mortar[disp].get_function_values(
                   vec_1, interface_values_v1_disp);
               fe_face_values_mortar[disp].get_function_values(

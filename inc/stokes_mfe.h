@@ -48,6 +48,7 @@ namespace mfe_stokes
                       std::vector<unsigned int> &neighbor_type,
                       MPI_Comm mpi_communicator_stokes,
                       const unsigned int mortar_degree = 2,
+                      const unsigned int mortar_type = 0,
                       const unsigned int mortar_degree_biot = 1,
                       const bool cont_mortar_flag = 1);
 
@@ -114,8 +115,9 @@ namespace mfe_stokes
     bool biot_neighbor;
     std::vector<unsigned int> external_bdry_ids;
     bool cont_mortar_flag;
-    unsigned int mortar_degree;
-    unsigned int mortar_degree_biot;
+    const unsigned int mortar_degree;
+    const unsigned int mortar_type;
+    const unsigned int mortar_degree_biot;
     double       tol;
     double       initial_val;
     std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain

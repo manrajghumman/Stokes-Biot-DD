@@ -28,8 +28,7 @@ subsection Stokes Parameters
     set degree                = 1
     set quad_degree           = 11
 	set continuous_mortar     = yes
-	set stokes_mortar_degree  = 1
-	set sb_mortar_degree      = 1
+	set stokes_mortar_degree  = 2
 	set gamma                 = 100.0
 	set initial_val lambda    = 0.0
 end
@@ -41,8 +40,8 @@ end
 subsection Biot Parameters
     set degree              = 1
     set quad_degree         = 11
-	set mortar_type         = 0
-	set mortar_degree       = 1
+	set mortar_type         = 2
+	set mortar_degree       = 2
 	set s_0                 = 1.0
 	set alpha_BJS           = 1.0
 	set Kinv                = 1, 0; 0, 1
@@ -57,7 +56,7 @@ end
 # 2 sides Dirichlet
 
 subsection External Boundary Conditions
-	set boundary_2D         = D, D, D, N
+	set boundary_2D         = D, D, D, D
 	set boundary_3D         = D, D, D, D, D, D
 end
 

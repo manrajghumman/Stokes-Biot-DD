@@ -210,15 +210,15 @@ namespace dd_stokes_biot
         {
           // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
           MPI_Comm_split(mpi_communicator, 1, this_mpi, &mpi_communicator_stokes);
-          unsigned int degree, mortar_degree, mortar_degree_biot;
+          unsigned int degree, mortar_degree, mortar_type, mortar_degree_biot;
           bool cont_mortar_flag;
           prm.enter_subsection("Stokes Parameters");
           {
             degree   = prm.get_integer("degree");
             cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
             mortar_degree = prm.get_integer("stokes_mortar_degree");
-            mortar_degree_biot = prm.get_integer("sb_mortar_degree");
-            // std::cout << "cont_mortar_flag: " << cont_mortar_flag
+            // std::cout << "before calling stokes, "
+            //           << "cont_mortar_flag: " << cont_mortar_flag
             //           << ", mortar_degree: " << mortar_degree 
             //           << ", degree: " << degree << std::endl;
           }
@@ -227,6 +227,14 @@ namespace dd_stokes_biot
           prm.enter_subsection("Biot Parameters");
           {
             degree_biot = prm.get_integer("degree");
+            mortar_type = prm.get_integer("mortar_type");
+            mortar_degree_biot = prm.get_integer("mortar_degree");
+            std::cout << "before calling stokes, "
+                      << "cont_mortar_flag: " << cont_mortar_flag
+                      << ", mortar_degree: " << mortar_degree
+                      << ", mortar_degree_biot: " << mortar_degree_biot
+                      << ", degree: " << degree
+                      << ", degree_biot: " << degree_biot << std::endl;
           }
           prm.leave_subsection();
           stokes = new MixedStokesProblem<dim>(prm,
