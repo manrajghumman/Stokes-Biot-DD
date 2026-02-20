@@ -1635,7 +1635,7 @@ namespace mfe_stokes
                           * phi_p[i])   // <u_star * n, mu_p>
                         * fe_face_values_mortar_biot.JxW(q_point);    // dx
                     }
-                    solution_bar_mortar_temp[side][local_dof_indices[i]] +=
+                    solution_star_mortar_temp[side][local_dof_indices[i]] +=
                     - ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
                       * phi_p[i]) // <lambda_d * n, mu_p> extra negative sign as n_p = -n_f
                       * fe_face_values_mortar_biot.JxW(q_point);    // dx
@@ -1761,7 +1761,7 @@ namespace mfe_stokes
                           * phi_p[i])   // <u_star * n, mu_p>
                         * fe_face_values_mortar_biot.JxW(q_point);    // dx
                     }
-                    solution_bar_mortar_temp[side][local_dof_indices[i]] +=
+                    solution_star_mortar_temp[side][local_dof_indices[i]] +=
                     - ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
                       * phi_p[i]) // <lambda_d * n, mu_p> extra negative sign as n_p = -n_f
                       * fe_face_values_mortar_biot.JxW(q_point);    // dx
