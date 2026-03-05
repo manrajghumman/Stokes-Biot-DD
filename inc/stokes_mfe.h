@@ -42,7 +42,7 @@ namespace mfe_stokes
   MixedStokesProblem (ParameterHandler &prm,
                       unsigned int &degree,
                       unsigned int &degree_biot,
-                      std::vector<unsigned int> n_domains,
+                      std::vector<unsigned int> &n_domains,
                       const unsigned int &subdomain_type,
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,

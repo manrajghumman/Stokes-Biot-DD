@@ -546,6 +546,8 @@ namespace dd_utilities
   compute_interface_dofs_size(std::vector<double> &interface_dofs_total,
                               const MPI_Comm      &mpi_communicator,
                               const unsigned int  &this_mpi,
+                              const unsigned int  &n_processes,
+                              std::vector<unsigned int>   &n_domains,
                               int                 &interface_dofs_size)
   {
     interface_dofs_size = 0;
@@ -555,10 +557,26 @@ namespace dd_utilities
     // If dim == 3, this is not implemented yet
     if (dim == 2)
     {
-      if (this_mpi % 2 == 0)
-        tmp = 0;
+      unsigned int count = 0;
+      unsigned int x, y;
+      x = this_mpi % n_domains[0];
+      y = this_mpi / n_domains[0];
+      if (y == 0)
+      {
+        if (this_mpi % 2 == 0)
+          tmp = 0;
+        else
+          tmp = interface_dofs_total.size();
+      }
       else
-        tmp = interface_dofs_total.size();
+      {
+        if (this_mpi % 2 == 1)
+          tmp = 0;
+        else
+          tmp = interface_dofs_total.size();
+      }
+
+      std::cout << "this_mpi = " << this_mpi << " tmp = " << tmp << std::endl;
       MPI_Allreduce(&tmp, //sending this data
                     &interface_dofs_size, //receiving the result here
                     1, //number of elements in alpha and alpha_buffer = 1+1

@@ -76,7 +76,7 @@ namespace mfe_stokes
     ParameterHandler           &prm,
     unsigned int               &degree,
     unsigned int               &degree_biot,
-    std::vector<unsigned int>   n_domains,
+    std::vector<unsigned int>  &n_domains,
     const unsigned int         &subdomain_type,
     std::vector<int>           &neighbors,
     std::vector<unsigned int>  &neighbor_type,
@@ -502,21 +502,28 @@ namespace mfe_stokes
         }
       }
     }
+    if (this_mpi == 0 || this_mpi == 2)
+    {
+      std::cout << "Total interface dofs before function: " << interface_dofs_total.size() << std::endl;
+    }
     compute_interface_dofs_size<dim>(interface_dofs_total, 
                                      mpi_communicator, 
                                      this_mpi, 
+                                     n_processes,
+                                     n_domains,
                                      interface_dofs_size);
-    // if (this_mpi == 0)
-    // {
-    //   std::cout << "interface_dofs: " << std::endl;
-    //   for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-    //   {
-    //     std::cout << "side " << side << ": ";
-    //     for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-    //       std::cout << interface_dofs[side][i] << " ";
-    //     std::cout << std::endl;
-    //   }
-    // }
+    if (this_mpi == 0 || this_mpi == 2)
+    {
+      std::cout << "Total number of interface dofs: " << interface_dofs_total.size() << std::endl;
+      std::cout << "interface_dofs: " << std::endl;
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        std::cout << "side " << side << ": ";
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          std::cout << interface_dofs[side][i] << " ";
+        std::cout << std::endl;
+      }
+    }
   }
 
 
@@ -708,14 +715,14 @@ namespace mfe_stokes
                                         * phi_u[i]) // + <p, v.n>
                                         + phi_u[j] 
                                         * fe_face_values.normal_vector(q)
-                                        * phi_p[i]) // - <u.n, w>
+                                        * phi_p[i]) // <u.n, w>
                                         * fe_face_values.JxW(q);
                 }
                 local_rhs(i) += (-2 * gd * (symgrad_phi_u[i] 
                               * fe_face_values.normal_vector(q)) // -2 <gd, D(v).n>
                               + gamma * gd * phi_u [i] / h_K // gamma * <gd, v>/h
                               + gd * fe_face_values.normal_vector(q)
-                              * phi_p[i]) // - <gd.n, w>
+                              * phi_p[i]) // <gd.n, w>
                               * fe_face_values.JxW(q);
               }
             }
@@ -2438,7 +2445,8 @@ namespace mfe_stokes
     // double initial_val = 0.0; //initial guess for gmres
     std::vector<std::vector<double>> lambda(n_faces_per_cell);
 
-    std::vector<Projector::Projector<dim>> P_mortar(2, Projector::Projector<dim>(false));
+    std::vector<Projector::Projector<dim>> P_mortar(2*n_faces_per_cell, 
+                                                    Projector::Projector<dim>(false));
 
     // Extra for projections from mortar to fine grid and RHS assembly
     Quadrature<dim - 1> quad;

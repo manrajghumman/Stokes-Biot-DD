@@ -447,6 +447,8 @@ namespace mfe_biot
     compute_interface_dofs_size<dim>(interface_dofs_total, 
                                      mpi_communicator, 
                                      this_mpi, 
+                                     n_processes,
+                                     n_domains,
                                      interface_dofs_size);
     // if (this_mpi == 0)
     //   for (unsigned int side = 0; side < n_faces_per_cell; ++side)
@@ -655,7 +657,7 @@ namespace mfe_biot
           
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                local_rhs(i) += (- (phi_u[i] * fe_face_values.normal_vector(q)) // - <u.n, g_p^D_p>
+                local_rhs(i) += (- (phi_u[i] * fe_face_values.normal_vector(q)) // - <v.n, g_p^D_p>
                                   * boundary_values_dir_press.value(fe_face_values.quadrature_point(q))
                                   + tau_n_i[i] * gd_disp )     // <tau.n, g_p^D_d>
                                   * fe_face_values.JxW(q);                               
