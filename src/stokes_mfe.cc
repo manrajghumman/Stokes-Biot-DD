@@ -502,28 +502,28 @@ namespace mfe_stokes
         }
       }
     }
-    if (this_mpi == 0 || this_mpi == 2)
-    {
-      std::cout << "Total interface dofs before function: " << interface_dofs_total.size() << std::endl;
-    }
+    // if (this_mpi == 0 || this_mpi == 2)
+    // {
+    //   std::cout << "Total interface dofs before function: " << interface_dofs_total.size() << std::endl;
+    // }
     compute_interface_dofs_size<dim>(interface_dofs_total, 
                                      mpi_communicator, 
                                      this_mpi, 
                                      n_processes,
                                      n_domains,
                                      interface_dofs_size);
-    if (this_mpi == 0 || this_mpi == 2)
-    {
-      std::cout << "Total number of interface dofs: " << interface_dofs_total.size() << std::endl;
-      std::cout << "interface_dofs: " << std::endl;
-      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-      {
-        std::cout << "side " << side << ": ";
-        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          std::cout << interface_dofs[side][i] << " ";
-        std::cout << std::endl;
-      }
-    }
+    // if (this_mpi == 0 || this_mpi == 2)
+    // {
+    //   std::cout << "Total number of interface dofs: " << interface_dofs_total.size() << std::endl;
+    //   std::cout << "interface_dofs: " << std::endl;
+    //   for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    //   {
+    //     std::cout << "side " << side << ": ";
+    //     for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+    //       std::cout << interface_dofs[side][i] << " ";
+    //     std::cout << std::endl;
+    //   }
+    // }
   }
 
 
@@ -2747,8 +2747,27 @@ namespace mfe_stokes
 
   template <int dim>
   void
-  MixedStokesProblem<dim>::output_results(const unsigned int cycle) const
+  MixedStokesProblem<dim>::output_results(const unsigned int cycle) 
   {
+    BlockVector<double> exact_solution;
+    exact_solution.reinit(solution);  // same block structure and sizes
+
+    ExactSolution<dim> exact_solution_function;
+    prm_fxn.enter_subsection("Exact solution");
+    exact_solution_function.exact_solution_val_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
+    // prm_fxn.enter_subsection("Exact gradient");
+    // exact_solution_function.exact_solution_grad_val_data.parse_parameters(prm_fxn);
+    // prm_fxn.leave_subsection();
+
+    // Interpolate exact solution into the FE space
+    VectorTools::interpolate(dof_handler, exact_solution_function, exact_solution);
+
+    // Error in FE space
+    BlockVector<double> error = solution;
+    error -= exact_solution;
+
     std::vector<std::string> solution_names(dim, "velocity");
     solution_names.emplace_back("pressure");
 
@@ -2761,7 +2780,7 @@ namespace mfe_stokes
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
     
-    data_out.add_data_vector(solution,
+    data_out.add_data_vector(error,
                             solution_names,
                             DataOut<dim>::type_dof_data,
                             data_component_interpretation);

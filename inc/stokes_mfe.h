@@ -73,7 +73,7 @@ namespace mfe_stokes
     output_dof_results(const unsigned int cycle) const;
 
     void
-    output_results(const unsigned int cycle) const;
+    output_results(const unsigned int cycle);
 
     void 
     compute_errors(const unsigned int &cycle);

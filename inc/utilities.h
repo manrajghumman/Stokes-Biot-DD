@@ -576,7 +576,7 @@ namespace dd_utilities
           tmp = interface_dofs_total.size();
       }
 
-      std::cout << "this_mpi = " << this_mpi << " tmp = " << tmp << std::endl;
+      // std::cout << "this_mpi = " << this_mpi << " tmp = " << tmp << std::endl;
       MPI_Allreduce(&tmp, //sending this data
                     &interface_dofs_size, //receiving the result here
                     1, //number of elements in alpha and alpha_buffer = 1+1

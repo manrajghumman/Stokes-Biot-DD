@@ -1956,8 +1956,42 @@ namespace mfe_biot
 
   template <int dim>
   void
-  MixedBiotProblem<dim>::output_results(const unsigned int cycle) const
+  MixedBiotProblem<dim>::output_results(const unsigned int cycle)
   {
+    BlockVector<double> exact_solution;
+    exact_solution.reinit(solution);
+
+    AffineConstraints<double> constraints;
+    // fill constraints as appropriate
+    constraints.close();
+
+    QTrapezoid<1>      q_trapez;
+    QIterated<dim>  quadrature(q_trapez,degree+2);
+
+    ExactSolution<dim> exact_solution_function;
+    prm_fxn.enter_subsection("Exact solution Darcy");
+    exact_solution_function.exact_solution_darcy_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    prm_fxn.enter_subsection("Exact solution stress");
+    exact_solution_function.exact_solution_stress_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    prm_fxn.enter_subsection("Exact solution displacement");
+    exact_solution_function.exact_solution_displacement_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+    prm_fxn.enter_subsection("Exact solution rotation");
+    exact_solution_function.exact_solution_rotation_data.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
+    VectorTools::project(dof_handler,
+                        constraints,
+                        quadrature,
+                        exact_solution_function,
+                        exact_solution);
+    
+    // Error in FE space
+    BlockVector<double> error = solution;
+    error -= exact_solution;
+                        
     std::vector<std::string> solution_names;
     switch(dim)
     {
@@ -2025,7 +2059,7 @@ namespace mfe_biot
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
     
-    data_out.add_data_vector(solution,
+    data_out.add_data_vector(error,
                             solution_names,
                             DataOut<dim>::type_dof_data,
                             data_component_interpretation);
