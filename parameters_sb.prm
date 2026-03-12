@@ -4,7 +4,7 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 1
+set refinements  = 6
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
@@ -27,9 +27,9 @@ set grid = 1, 2; 1, 2
 subsection Stokes Parameters
     set degree                = 1
     set quad_degree           = 11
-	set continuous_mortar     = no
-	set stokes_mortar_degree  = 0
-	set gamma                 = 100.0
+	set continuous_mortar     = yes
+	set stokes_mortar_degree  = 1
+	set gamma                 = 1000.0
 	set initial_val lambda    = 0.0
 end
 
@@ -40,7 +40,7 @@ end
 subsection Biot Parameters
     set degree              = 1
     set quad_degree         = 11
-	set mortar_type         = 0
+	set mortar_type         = 3
 	set mortar_degree       = 1
 	set s_0                 = 1.0
 	set alpha_BJS           = 1.0
@@ -65,5 +65,5 @@ end
 
 subsection Solver
 	set max_iter = 1000
-	set tol      = 1e-9
+	set tol      = 1e-8
 end

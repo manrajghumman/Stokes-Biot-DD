@@ -743,8 +743,8 @@ namespace mfe_stokes
                 // assumes counterclockwise ordering of faces in deal.ii
                 if (dim == 2) 
                 {
-                  tangent_vector[0] = - fe_face_values.normal_vector(q)[1] * get_normal_direction<dim>(side);
-                  tangent_vector[1] = fe_face_values.normal_vector(q)[0] * get_normal_direction<dim>(side);
+                  tangent_vector[0] = - fe_face_values.normal_vector(q)[1];
+                  tangent_vector[1] = fe_face_values.normal_vector(q)[0];
                 }
                 else if (dim == 3)
                 {
@@ -924,8 +924,8 @@ namespace mfe_stokes
                   // assumes counterclockwise ordering of faces in deal.ii
                   if (dim == 2) 
                   {
-                    tangent_vector[0] = - fe_face_values.normal_vector(q)[1] * get_normal_direction<dim>(side);
-                    tangent_vector[1] = fe_face_values.normal_vector(q)[0] * get_normal_direction<dim>(side);
+                    tangent_vector[0] = - fe_face_values.normal_vector(q)[1];
+                    tangent_vector[1] = fe_face_values.normal_vector(q)[0];
                   }
                   else if (dim == 3)
                   {
@@ -940,11 +940,13 @@ namespace mfe_stokes
                   for (unsigned int s = 0; s < dim; ++s)
                   {
                     lambda_p += interface_values_flux[s][q] 
-                                  * fe_face_values.normal_vector(q)[s];    
+                                  * fe_face_values.normal_vector(q)[s]
+                                  * get_normal_direction<dim>(side); // multiply by normal direction to get correct sign
                     lambda_d[s] = 0;
                     for (unsigned int l = 0; l < dim; ++l)
                       lambda_d[s] += interface_values_stress[s][l][q] 
-                                    * fe_face_values.normal_vector(q)[l]; 
+                                    * fe_face_values.normal_vector(q)[l]
+                                    * get_normal_direction<dim>(side); // multiply by normal direction to get correct sign
                   }
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                   {
@@ -996,8 +998,8 @@ namespace mfe_stokes
                   // assumes counterclockwise ordering of faces in deal.ii
                   if (dim == 2) 
                   {
-                    tangent_vector[0] = - fe_face_values.normal_vector(q)[1] * get_normal_direction<dim>(side);
-                    tangent_vector[1] = fe_face_values.normal_vector(q)[0] * get_normal_direction<dim>(side);
+                    tangent_vector[0] = - fe_face_values.normal_vector(q)[1];
+                    tangent_vector[1] = fe_face_values.normal_vector(q)[0];
                   }
                   else if (dim == 3)
                   {
@@ -1585,10 +1587,8 @@ namespace mfe_stokes
                   // assumes counterclockwise ordering of faces in deal.ii
                   if (dim == 2) 
                   {
-                    tangent_vector[0] = - fe_face_values_mortar_biot.normal_vector(q_point)[1] 
-                                           * get_normal_direction<dim>(side);
-                    tangent_vector[1] = fe_face_values_mortar_biot.normal_vector(q_point)[0] 
-                                           * get_normal_direction<dim>(side);
+                    tangent_vector[0] = - fe_face_values_mortar_biot.normal_vector(q_point)[1];
+                    tangent_vector[1] = fe_face_values_mortar_biot.normal_vector(q_point)[0];
                   }
                   else if (dim == 3)
                   {
@@ -1603,11 +1603,13 @@ namespace mfe_stokes
                   for (unsigned int s = 0; s < dim; ++s)
                   {
                     lambda_p += interface_values_flux[s][q_point] 
-                                * fe_face_values_mortar_biot.normal_vector(q_point)[s];    
+                                * fe_face_values_mortar_biot.normal_vector(q_point)[s]
+                                * get_normal_direction<dim>(side);   // multiply by normal direction to get correct sign
                     lambda_d[s] = 0;
                     for (unsigned int l = 0; l < dim; ++l)
                       lambda_d[s] += interface_values_stress[s][l][q_point] 
-                                    * fe_face_values_mortar_biot.normal_vector(q_point)[l]; 
+                                    * fe_face_values_mortar_biot.normal_vector(q_point)[l]
+                                    * get_normal_direction<dim>(side); // multiply by normal direction to get correct sign
                   }                                                   
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                   {
@@ -1709,10 +1711,8 @@ namespace mfe_stokes
                   // assumes counterclockwise ordering of faces in deal.ii
                   if (dim == 2) 
                   {
-                    tangent_vector[0] = - fe_face_values_mortar_biot.normal_vector(q_point)[1] 
-                                           * get_normal_direction<dim>(side);
-                    tangent_vector[1] = fe_face_values_mortar_biot.normal_vector(q_point)[0] 
-                                         * get_normal_direction<dim>(side);
+                    tangent_vector[0] = - fe_face_values_mortar_biot.normal_vector(q_point)[1];
+                    tangent_vector[1] = fe_face_values_mortar_biot.normal_vector(q_point)[0];
                   }
                   else if (dim == 3)
                   {
