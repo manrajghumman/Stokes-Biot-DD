@@ -856,6 +856,17 @@ namespace mfe_biot
     A_direct.initialize (system_matrix);
     A_direct.vmult(solution_bar, system_rhs_bar);
     pcout << "Solve bar completed." << std::endl;
+
+    double trace = 0.0;
+    for (unsigned int b = 0; b < system_matrix.n_block_rows(); ++b)
+    {
+      const SparseMatrix<double> &block = system_matrix.block(b,b);
+
+      for (unsigned int i = 0; i < block.m(); ++i)
+        trace += block.diag_element(i);
+    }
+    avg_eigenvalue = trace / system_matrix.m();
+    // solution_bar *= avg_eigenvalue;
   }
 
   template <int dim>
@@ -863,6 +874,7 @@ namespace mfe_biot
   {
     // TimerOutput::Scope t(computing_timer, "Solve star");
     A_direct.vmult (solution_star, system_rhs_star);
+    // solution_star *= avg_eigenvalue; 
   }
 
   //Functions for GMRES:-------------------
@@ -1441,6 +1453,7 @@ namespace mfe_biot
         
         // solution_bar_mortar[side] = solution_bar_mortar_temp[side];
         // solution_star_mortar[side] = solution_star_mortar_temp[side];
+        // solution_star_mortar[side]*= 1/avg_eigenvalue;
       }           
   }
 
@@ -1939,6 +1952,7 @@ namespace mfe_biot
     solution.reinit(solution_bar);
     solution = solution_bar;
     solution.sadd(1.0, solution_star);
+
     pcout<<"finished local_gmres"<<"\n";
   }
 

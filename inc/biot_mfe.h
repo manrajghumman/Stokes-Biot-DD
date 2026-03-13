@@ -84,6 +84,7 @@ namespace mfe_biot
     const unsigned int n_processes;
     const unsigned int this_mpi_biot;
     const unsigned int n_processes_biot;
+    double       avg_eigenvalue;
 
     // Projector::Projector <dim> P_coarse2fine;
     // Projector::Projector <dim> P_fine2coarse;
