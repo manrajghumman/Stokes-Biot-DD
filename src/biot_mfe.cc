@@ -67,6 +67,8 @@ namespace mfe_biot
     const unsigned int &subdomain_type,
     std::vector<int> &neighbors,
     std::vector<unsigned int> &neighbor_type,
+    std::vector<unsigned int> &initial_refinement,
+    std::vector<unsigned int> &initial_refinement_mortar,
     MPI_Comm mpi_communicator_biot,
     const unsigned int preconditioner_type,
     const unsigned int mortar_type,
@@ -83,6 +85,8 @@ namespace mfe_biot
       subdomain_type(subdomain_type),
       neighbors(neighbors),
       neighbor_type(neighbor_type),
+      initial_refinement(initial_refinement),
+      initial_refinement_mortar(initial_refinement_mortar),
       stokes_neighbor(false),
       biot_neighbor(false),
       mortar_type(mortar_type),
@@ -874,6 +878,7 @@ namespace mfe_biot
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         if (neighbors[side] >= 0)
         {
+          jacobi_scaling[side].resize(interface_dofs[side].size());
           MPI_Sendrecv(&avg_eigenvalue,
                         1,
                         MPI_DOUBLE,
@@ -889,11 +894,13 @@ namespace mfe_biot
                         &mpi_status);
 
           // jacobi_scaling[side] = 1.0;
-
-          if (abs(nbr_avg_eigenvalue[side])>abs(avg_eigenvalue))
-            jacobi_scaling[side] = abs(nbr_avg_eigenvalue[side]/avg_eigenvalue);
-          else
-            jacobi_scaling[side] = abs(avg_eigenvalue/nbr_avg_eigenvalue[side]);
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            if (abs(nbr_avg_eigenvalue[side])>abs(avg_eigenvalue))
+              jacobi_scaling[side][i] = abs(nbr_avg_eigenvalue[side]/avg_eigenvalue);
+            else
+              jacobi_scaling[side][i] = abs(avg_eigenvalue/nbr_avg_eigenvalue[side]);
+          }
           // if (neighbor_type[side] == 1)
           //   jacobi_scaling[side] /= std::pow(2, cycle);
         }
@@ -1076,9 +1083,9 @@ namespace mfe_biot
           }    
         // }   
         
-        if (preconditioner_type == 1) //Jacobi scaling
+        if (preconditioner_type != 0) //Jacobi scaling
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            interface_data_send[side][i] /= jacobi_scaling[side];
+            interface_data_send[side][i] /= jacobi_scaling[side][i];
 
         MPI_Sendrecv(interface_data_send[side].data(),
                       interface_dofs[side].size(),
@@ -1196,11 +1203,11 @@ namespace mfe_biot
           }         
         // }
 
-        if (preconditioner_type == 1) //Jacobi scaling
+        if (preconditioner_type != 0) //Jacobi scaling
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
-            r[side][i] /= jacobi_scaling[side];
-            r_b[side][i] /= jacobi_scaling[side];
+            r[side][i] /= jacobi_scaling[side][i];
+            r_b[side][i] /= jacobi_scaling[side][i];
           }
 
         MPI_Sendrecv(r_b[side].data(),
@@ -2843,7 +2850,10 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::run (unsigned int cycle)
   {
-    Assert(reps[0].size() == dim, ExcDimensionMismatch(reps[0].size(), dim));
+    Assert(initial_refinement.size() == 
+              dim, ExcDimensionMismatch(initial_refinement.size(), dim));
+    Assert(initial_refinement_mortar.size() == 
+              dim, ExcDimensionMismatch(initial_refinement_mortar.size(), dim));
 
     // if (mortar_flag)
     //   {
@@ -2872,13 +2882,13 @@ namespace mfe_biot
       //                                             p2);
       // else
       GridGenerator::subdivided_hyper_rectangle(triangulation,
-                                                reps[0],
+                                                initial_refinement,
                                                 p1,
                                                 p2);
 
       // if (mortar_flag)
         GridGenerator::subdivided_hyper_rectangle(triangulation_mortar,
-                                                  reps[n_processes],
+                                                  initial_refinement_mortar,
                                                   p1,
                                                   p2);
       for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)

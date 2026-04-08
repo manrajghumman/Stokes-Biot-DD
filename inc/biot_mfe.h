@@ -40,6 +40,8 @@ namespace mfe_biot
                       const unsigned int &subdomain_type,
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
+                      std::vector<unsigned int> &initial_refinement,
+                      std::vector<unsigned int> &initial_refinement_mortar,
                       MPI_Comm mpi_communicator_biot,
                       const unsigned int preconditioner_type,
                       const unsigned int mortar_type,
@@ -87,7 +89,7 @@ namespace mfe_biot
     const unsigned int n_processes_biot;
     double       avg_eigenvalue;
     std::vector<double> nbr_avg_eigenvalue;
-    std::vector<double> jacobi_scaling;
+    std::vector<std::vector<double>> jacobi_scaling;
     const unsigned int preconditioner_type;
 
     // Projector::Projector <dim> P_coarse2fine;
@@ -239,11 +241,12 @@ namespace mfe_biot
     bool stokes_neighbor;
     bool biot_neighbor;
     std::vector<unsigned int> external_bdry_ids;
-    std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
+    std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
+    std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
     std::vector<unsigned int> faces_on_interface;
     std::vector<unsigned int> faces_on_interface_mortar;
     std::vector <std::vector<unsigned int>> interface_dofs;
-    std::vector <double> interface_dofs_total;
+    std::vector <unsigned int> interface_dofs_total;
 
 
     unsigned long n_stress;
@@ -309,7 +312,8 @@ namespace mfe_biot
     std::vector<BlockVector<double>> solution_bar_mortar_temp;
     std::vector<BlockVector<double>> solution_star_mortar_temp;
     AffineConstraints<double> constraints_mortar;
-    std::vector <BlockVector<double>> multiscale_basis;
+    bool multiscale_basis_flag;
+    std::vector<BlockVector<double>> multiscale_basis;
 
     // Output extra
     ConditionalOStream pcout;

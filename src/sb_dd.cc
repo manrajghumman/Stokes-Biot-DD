@@ -157,6 +157,13 @@ namespace dd_stokes_biot
             else {y = n_domains[1] - this_mpi / n_domains[0] - 1;}
 
             subdomain_type = dd_info_matrix[y][x]; // for 2D
+            initial_refinement.resize(dim);
+            initial_refinement_mortar.resize(dim);
+            for (int i = 0; i < dim; ++i)
+            {
+              initial_refinement[i] = dd_refine_info_matrix[y][x][i];
+              initial_refinement_mortar[i] = dd_refine_info_matrix_mortar[y][x][i];
+            }
             break;
           }     
           case 3:
@@ -169,6 +176,23 @@ namespace dd_stokes_biot
         }
         pcout << "--------------------------------------------------------" << std::endl;
         MPI_Barrier(mpi_communicator);
+        for (unsigned int proc = 0; proc < n_processes; ++proc)
+        {
+          if (this_mpi == proc)
+          {
+            std::cout << "Process " << this_mpi 
+                      << ", initial refinement: " ;
+            for (int i = 0; i < dim; ++i)
+              std::cout << initial_refinement[i] << " ";
+            std::cout << std::endl;
+            for (int i = 0; i < dim; ++i)
+              std::cout << ", initial refinement mortar: " ;
+            for (int i = 0; i < dim; ++i)
+              std::cout << initial_refinement_mortar[i] << " ";
+            std::cout << std::endl;
+          }
+          MPI_Barrier(mpi_communicator);
+        }
 
         
         // Find neighbors
@@ -246,6 +270,8 @@ namespace dd_stokes_biot
                                               subdomain_type,
                                               neighbors,
                                               neighbor_type,
+                                              initial_refinement,
+                                              initial_refinement_mortar,
                                               mpi_communicator_stokes,
                                               preconditioner_type,
                                               mortar_degree,
@@ -274,6 +300,8 @@ namespace dd_stokes_biot
                                           subdomain_type,
                                           neighbors,
                                           neighbor_type,
+                                          initial_refinement,
+                                          initial_refinement_mortar,
                                           mpi_communicator_biot,
                                           preconditioner_type,
                                           mortar_type,

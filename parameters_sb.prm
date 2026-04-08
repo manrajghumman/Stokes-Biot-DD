@@ -4,20 +4,22 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 6
+set refinements  = 7
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
-set initial_grid_2D  = 2, 2
+set initial_grid_2D  = 3, 1
 set initial_grid_3D  = 1, 1, 1
 
-set initial_refinement_2D = 1, 1
+set initial_refinement_2D = 6, 6 | 4, 4 | 6, 6
 set initial_refinement_3D = 1, 1, 1
+
+set initial_refinement_mortar_2D = 2, 2 | 2, 2 | 2, 2
 
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
 # Note: Total subdomains should equal number of processes for mpirun
-set grid = 1, 1; 1, 1
+set grid = 1, 1, 1
 
 
 #################################################################################
@@ -29,8 +31,9 @@ subsection Stokes Parameters
     set quad_degree           = 5
 	set continuous_mortar     = yes
 	set stokes_mortar_degree  = 1
-	set gamma                 = 1000.0
+	set gamma                 = 100.0
 	set initial_val lambda    = 0.0
+	set multiscale_basis      = yes
 end
 
 #################################################################################
@@ -46,6 +49,7 @@ subsection Biot Parameters
 	set alpha_BJS           = 1.0
 	set Kinv                = 1, 0; 0, 1
 	set initial_val lambda  = 0.0
+	set multiscale_basis    = yes
 end
 
 #################################################################################
@@ -56,13 +60,14 @@ end
 # 2 sides Dirichlet
 
 subsection External Boundary Conditions
-	set boundary_2D         = D, D, D, D
+	set boundary_2D         = D, D, D, N
 	set boundary_3D         = D, D, D, D, D, D
 end
 
 #################################################################################
 # Parameters for solver ('GMRES')
 # Preconditioner: 0 - none, 1 - penalize S-B interface jump in mass matrix M_i
+#                 2 - Jacobi
 
 subsection Solver
 	set max_iter             = 1000

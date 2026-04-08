@@ -543,7 +543,7 @@ namespace dd_utilities
 
   template <int dim>
   void
-  compute_interface_dofs_size(std::vector<double> &interface_dofs_total,
+  compute_interface_dofs_size(std::vector<unsigned int> &interface_dofs_total,
                               const MPI_Comm      &mpi_communicator,
                               const unsigned int  &this_mpi,
                               const unsigned int  &n_processes,

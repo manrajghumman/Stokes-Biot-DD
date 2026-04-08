@@ -46,6 +46,8 @@ namespace mfe_stokes
                       const unsigned int &subdomain_type,
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
+                      std::vector<unsigned int> &initial_refinement,
+                      std::vector<unsigned int> &initial_refinement_mortar,
                       MPI_Comm mpi_communicator_stokes,
                       const unsigned int preconditioner_type,
                       const unsigned int mortar_degree = 2,
@@ -127,9 +129,11 @@ namespace mfe_stokes
     double       initial_val;
     double       avg_eigenvalue;
     std::vector<double> nbr_avg_eigenvalue;
-    std::vector<double> jacobi_scaling;
+    std::vector<std::vector<double>> jacobi_scaling;
+    bool multiscale_basis_flag;
     const unsigned int preconditioner_type;
-    std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
+    std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
+    std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
     // std::vector<int> neighbors;
     // std::vector<unsigned int> neighbor_type;
 
@@ -224,6 +228,12 @@ namespace mfe_stokes
             std::vector<std::vector<std::vector<double>>>	&Q_side,
             std::vector<std::vector<double>>	            &H);
 
+    void
+    compute_multiscale_basis(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                            FEFaceValues<dim>                &fe_face_values,
+                            FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                            std::vector<Projector::Projector<dim>> &P_mortar);
+
     unsigned int       gmres_iteration;
     unsigned int       maxiter;
     double             residual;
@@ -260,7 +270,7 @@ namespace mfe_stokes
     std::vector<unsigned int>              faces_on_interface_mortar;
     std::vector<std::vector<unsigned int>> interface_dofs;
     std::vector<std::vector<unsigned int>> interface_dofs_fe;
-    std::vector<double>                    interface_dofs_total;
+    std::vector<unsigned int>              interface_dofs_total;
     std::vector<std::vector<unsigned int>> interface_dofs_find_neumann;
     std::vector<unsigned int>              repeated_dofs;
     std::vector<unsigned int>              repeated_dofs_neumann;

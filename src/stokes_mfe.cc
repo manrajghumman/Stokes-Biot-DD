@@ -80,6 +80,8 @@ namespace mfe_stokes
     const unsigned int         &subdomain_type,
     std::vector<int>           &neighbors,
     std::vector<unsigned int>  &neighbor_type,
+    std::vector<unsigned int>  &initial_refinement,
+    std::vector<unsigned int>  &initial_refinement_mortar,
     MPI_Comm                   mpi_communicator_stokes,
     const unsigned int         preconditioner_type,
     const unsigned int         mortar_degree,
@@ -104,6 +106,8 @@ namespace mfe_stokes
     , cont_mortar_flag(cont_mortar_flag) // if mortar_degree is 0, use RT<dim> (0)
     , neighbors(neighbors)
     , neighbor_type(neighbor_type)
+    , initial_refinement(initial_refinement)
+    , initial_refinement_mortar(initial_refinement_mortar)
     , gmres_iteration(0)
     , preconditioner_type(preconditioner_type)
     , dof_handler(triangulation)
@@ -1068,6 +1072,7 @@ namespace mfe_stokes
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         if (neighbors[side] >= 0)
         {
+          jacobi_scaling[side].resize(interface_dofs[side].size());
           MPI_Sendrecv(&avg_eigenvalue,
                         1,
                         MPI_DOUBLE,
@@ -1083,11 +1088,13 @@ namespace mfe_stokes
                         &mpi_status);
 
           // jacobi_scaling[side] = 1.0;              
-
-          if (abs(nbr_avg_eigenvalue[side])>abs(avg_eigenvalue))
-            jacobi_scaling[side] = abs(nbr_avg_eigenvalue[side]/avg_eigenvalue);
-          else
-            jacobi_scaling[side] = abs(avg_eigenvalue/nbr_avg_eigenvalue[side]);
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            if (abs(nbr_avg_eigenvalue[side])>abs(avg_eigenvalue))
+              jacobi_scaling[side][i] = abs(nbr_avg_eigenvalue[side]/avg_eigenvalue);
+            else
+              jacobi_scaling[side][i] = abs(avg_eigenvalue/nbr_avg_eigenvalue[side]);
+          }
           // if (neighbor_type[side] == 2)
           //   jacobi_scaling[side] /= std::pow(2, cycle);
         }
@@ -1099,6 +1106,65 @@ namespace mfe_stokes
     //     if (neighbors[side] >= 0)
     //       std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side] << std::endl;
     // }
+  }
+
+  template <int dim>
+  void
+  MixedStokesProblem<dim>::compute_multiscale_basis(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                                    FEFaceValues<dim>                &fe_face_values,
+                                                    FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                                                    std::vector<Projector::Projector<dim>> &P_mortar)
+  {
+    unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+    Quadrature<dim - 1> quad;
+    quad = QGauss<dim - 1>(qdegree);
+    multiscale_basis.resize(interface_dofs_total.size());
+
+    if (this_mpi == 1)
+    {
+      std::cout << "Computing multiscale basis functions...\n"
+            << "interface_dofs_total.size() = " << interface_dofs_total.size() << std::endl;
+    }
+
+    unsigned int ind = 0;
+    for (unsigned int side = 0; side <n_faces_per_cell; ++side)
+      for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          interface_fe_function[side] = 0;
+          if (neighbor_type[side] == 1)
+          {
+            multiscale_basis[ind].reinit(mortar_vec);
+            // tmp_basis[side].reinit(mortar_vec);
+          }
+          else if (neighbor_type[side] == 2)
+          {
+            multiscale_basis[ind].reinit(mortar_vec_biot);
+            // tmp_basis[side].reinit(mortar_vec_biot);
+          }
+          multiscale_basis[ind] = 0;
+
+          interface_fe_function[side]                          = 0;
+          interface_fe_function[side][interface_dofs[side][i]] = 1.0;
+          
+
+          // interface_fe_function[side].block(2) = 0;
+          assemble_rhs_star(interface_function,
+                            fe_face_values,
+                            fe_face_values_mortar_biot);
+          solve_star();
+
+          multiscale_basis[ind] = solution_star;
+          ind += 1;
+          if (this_mpi == 1)
+          {
+            std::cout << "\r ..." << ind
+                  << " basis functions computed so far." << std::flush;
+          }
+        }
+        if (this_mpi == 1)
+        {
+          std::cout << std::endl;
+        }
   }
 
   // MixedStokesProblemDD::solvers
@@ -1233,11 +1299,30 @@ namespace mfe_stokes
         interface_fe_function[side][interface_dofs[side][i]] = 
           interface_data[side][i];
 
-    // interface_fe_function.block(1) = 0;
-    assemble_rhs_star(interface_function,
-                      fe_face_values,
-                      fe_face_values_mortar_biot);
-    solve_star();
+    if (multiscale_basis_flag)
+    {
+      // Instead of solving subdomain problems we compute the response using
+      // basis
+      solution_star = 0;
+      unsigned int j = 0;
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            solution_star.block(0).sadd(
+              1.0,
+              interface_fe_function[side][interface_dofs[side][i]],
+              multiscale_basis[j].block(0));
+            j += 1;
+          }
+    }
+    else
+    {
+      // interface_fe_function.block(1) = 0;
+      assemble_rhs_star(interface_function,
+                        fe_face_values,
+                        fe_face_values_mortar_biot);
+      solve_star();
+    }
 
     for (unsigned int i = 0; i < solution_star.size(); ++i)
       AssertIsFinite(solution_star[i]);
@@ -1268,9 +1353,9 @@ namespace mfe_stokes
           }
         }
 
-        if (preconditioner_type == 1) //Jacobi scaling
+        if (preconditioner_type != 0) //Jacobi scaling
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            interface_data_send[side][i] /= jacobi_scaling[side];
+            interface_data_send[side][i] /= jacobi_scaling[side][i];
 
         MPI_Sendrecv(interface_data_send[side].data(),
                       static_cast<int>(interface_dofs[side].size()),
@@ -1325,10 +1410,29 @@ namespace mfe_stokes
           interface_data[side][i];
       }
 
-    assemble_rhs_star(interface_function,
-                      fe_face_values,
-                      fe_face_values_mortar_biot);
-    solve_star();
+    if (multiscale_basis_flag)
+    {
+      // Instead of solving subdomain problems we compute the response using
+      // basis
+      solution_star = 0;
+      unsigned int j = 0;
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          solution_star.block(0).sadd(
+            1.0,
+            interface_fe_function[side][interface_dofs[side][i]],
+            multiscale_basis[j].block(0));
+          j += 1;
+        }
+    }
+    else
+    {
+      assemble_rhs_star(interface_function,
+                        fe_face_values,
+                        fe_face_values_mortar_biot);
+      solve_star();
+    }
 
     //for computing rhs b for
     // Ax = b in interface problem below
@@ -1382,8 +1486,8 @@ namespace mfe_stokes
         if (preconditioner_type == 1) //Jacobi scaling
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
-            r[side][i] /= jacobi_scaling[side];
-            r_b[side][i] /= jacobi_scaling[side];
+            r[side][i] /= jacobi_scaling[side][i];
+            r_b[side][i] /= jacobi_scaling[side][i];
           }
 
         MPI_Sendrecv(r_b[side].data(),
@@ -2361,6 +2465,14 @@ namespace mfe_stokes
     }
     solution_bar_function = std::make_unique<FEFunction>(dof_handler, solution_bar);
     solution_star_function = std::make_unique<FEFunction>(dof_handler, solution_star);
+
+    if (multiscale_basis_flag == true)
+    {
+      compute_multiscale_basis(interface_function,
+                              fe_face_values,
+                              fe_face_values_mortar_biot,
+                              P_mortar);
+    }
     //Calculating r-norm(same as b-norm)-----
     double r_norm =0;
     double b_norm =0;
@@ -3327,7 +3439,10 @@ namespace mfe_stokes
     // tolerance = tol;
     // qdegree   = quad_degree;
 
-    Assert(reps[0].size() == dim, ExcDimensionMismatch(reps[0].size(), dim));
+    Assert(initial_refinement.size() == 
+              dim, ExcDimensionMismatch(initial_refinement.size(), dim));
+    Assert(initial_refinement_mortar.size() == 
+              dim, ExcDimensionMismatch(initial_refinement_mortar.size(), dim));
 
     // if (mortar_flag)
     //   {
@@ -3356,13 +3471,13 @@ namespace mfe_stokes
       //                                             p2);
       // else
         GridGenerator::subdivided_hyper_rectangle(triangulation,
-                                                  reps[0],
+                                                  initial_refinement,
                                                   p1,
                                                   p2);
 
       // if (mortar_flag)
         GridGenerator::subdivided_hyper_rectangle(triangulation_mortar,
-                                                  reps[0],
+                                                  initial_refinement_mortar,
                                                   p1,
                                                   p2);
       for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)

@@ -90,6 +90,36 @@ namespace dd_stokes_biot
                         ") does not match the number of MPI processes (" +
                         std::to_string(n_processes) + ")."));
 
+            // initial refinement 
+            std::string refine_info = prm.get("initial_refinement_2D");
+            rows = Utilities::split_string_list(refine_info, ';');
+            for (std::string &r : rows) 
+            {
+                std::vector<std::string> int_vec = Utilities::split_string_list(r, '|');
+                std::vector<std::vector<signed int>> row_int(int_vec.size());
+                for (unsigned int ref = 0; ref < int_vec.size(); ++ref)
+                {
+                    row_int[ref] = Utilities::string_to_int(Utilities::split_string_list(int_vec[ref], ','));
+                }
+                // std::vector<unsigned int> row_uint(int_vec.begin(), int_vec.end());
+                dd_refine_info_matrix.push_back(row_int);
+            }
+
+            // initial refinement mortar
+            std::string refine_info_mortar = prm.get("initial_refinement_mortar_2D");
+            rows = Utilities::split_string_list(refine_info_mortar, ';');
+            for (std::string &r : rows) 
+            {
+                std::vector<std::string> int_vec = Utilities::split_string_list(r, '|');
+                std::vector<std::vector<signed int>> row_int(int_vec.size());
+                for (unsigned int ref = 0; ref < int_vec.size(); ++ref)
+                {
+                    row_int[ref] = Utilities::string_to_int(Utilities::split_string_list(int_vec[ref], ','));
+                }
+                // std::vector<unsigned int> row_uint(int_vec.begin(), int_vec.end());
+                dd_refine_info_matrix_mortar.push_back(row_int);
+            }
+
             prm.enter_subsection("Solver");
             {
                 preconditioner_type = prm.get_integer("preconditioner_type");
@@ -121,41 +151,42 @@ namespace mfe_stokes
             qdegree  = prm.get_integer("quad_degree");  
             gamma    = prm.get_double("gamma");
             initial_val = prm.get_double("initial_val lambda");
+            multiscale_basis_flag = prm.get("multiscale_basis") == "yes" ? true : false;
         }
         prm.leave_subsection();
         // make initial refinement matrix (reps) for each subdomain
-        switch (dim)
-        {   
-            case 2:
-            {
-                // Get the string and split into a vector of strings
-                std::vector<int> bvec = Utilities::string_to_int(
-                                Utilities::split_string_list(prm.get("initial_refinement_2D"))); 
-                AssertThrow(bvec.size() == dim, 
-                            ExcMessage("Initial grid size must match the dimension."));
-                // Initialize mesh_m2d with 2D grid sizes
-                // Uniform initial mesh for all processes
-                for (unsigned int i = 0; i < n_processes + 1; ++i)
-                    reps.push_back({static_cast<unsigned int>(bvec[0]), static_cast<unsigned int>(bvec[1])}); 
-                break;
-            }
-            case 3:
-            {
-                // Get the string and split into a vector of strings
-                std::vector<int> bvec = Utilities::string_to_int(
-                                Utilities::split_string_list(prm.get("initial_refinement_3D"))); 
-                AssertThrow(bvec.size() == dim, 
-                            ExcMessage("Initial refinement must match the dimension."));
-                // Initialize mesh_m2d with 3D grid sizes
-                // Uniform initial mesh for all processes
-                for (unsigned int i = 0; i < n_processes + 1; ++i)
-                    reps.push_back({static_cast<unsigned int>(bvec[0]), 
-                        static_cast<unsigned int>(bvec[1]), static_cast<unsigned int>(bvec[2])}); 
-                break;
-            }
-            default:
-                AssertThrow(false, ExcMessage("Dimension must be either 2 or 3."));
-        }
+        // switch (dim)
+        // {   
+        //     case 2:
+        //     {
+        //         // Get the string and split into a vector of strings
+        //         std::vector<int> bvec = Utilities::string_to_int(
+        //                         Utilities::split_string_list(prm.get("initial_refinement_2D"))); 
+        //         AssertThrow(bvec.size() == dim, 
+        //                     ExcMessage("Initial grid size must match the dimension."));
+        //         // Initialize mesh_m2d with 2D grid sizes
+        //         // Uniform initial mesh for all processes
+        //         for (unsigned int i = 0; i < n_processes + 1; ++i)
+        //             reps.push_back({static_cast<unsigned int>(bvec[0]), static_cast<unsigned int>(bvec[1])}); 
+        //         break;
+        //     }
+        //     case 3:
+        //     {
+        //         // Get the string and split into a vector of strings
+        //         std::vector<int> bvec = Utilities::string_to_int(
+        //                         Utilities::split_string_list(prm.get("initial_refinement_3D"))); 
+        //         AssertThrow(bvec.size() == dim, 
+        //                     ExcMessage("Initial refinement must match the dimension."));
+        //         // Initialize mesh_m2d with 3D grid sizes
+        //         // Uniform initial mesh for all processes
+        //         for (unsigned int i = 0; i < n_processes + 1; ++i)
+        //             reps.push_back({static_cast<unsigned int>(bvec[0]), 
+        //                 static_cast<unsigned int>(bvec[1]), static_cast<unsigned int>(bvec[2])}); 
+        //         break;
+        //     }
+        //     default:
+        //         AssertThrow(false, ExcMessage("Dimension must be either 2 or 3."));
+        // }
         
         // Interpret external boundary conditions
         prm.enter_subsection("External Boundary Conditions");
@@ -238,41 +269,42 @@ namespace mfe_biot
         {
             qdegree  = prm.get_integer("quad_degree"); 
             initial_val = prm.get_double("initial_val lambda"); 
+            multiscale_basis_flag = prm.get("multiscale_basis") == "yes" ? true : false;
         }
         prm.leave_subsection();
         // make initial refinement matrix (reps) for each subdomain
-        switch (dim)
-        {   
-            case 2:
-            {
-                // Get the string and split into a vector of strings
-                std::vector<int> bvec = Utilities::string_to_int(
-                                Utilities::split_string_list(prm.get("initial_refinement_2D"))); 
-                AssertThrow(bvec.size() == dim, 
-                            ExcMessage("Initial grid size must match the dimension."));
-                // Initialize mesh_m2d with 2D grid sizes
-                // Uniform initial mesh for all processes
-                for (unsigned int i = 0; i < n_processes + 1; ++i)
-                    reps.push_back({static_cast<unsigned int>(bvec[0]), static_cast<unsigned int>(bvec[1])}); 
-                break;
-            }
-            case 3:
-            {
-                // Get the string and split into a vector of strings
-                std::vector<int> bvec = Utilities::string_to_int(
-                                Utilities::split_string_list(prm.get("initial_refinement_3D"))); 
-                AssertThrow(bvec.size() == dim, 
-                            ExcMessage("Initial refinement must match the dimension."));
-                // Initialize mesh_m2d with 3D grid sizes
-                // Uniform initial mesh for all processes
-                for (unsigned int i = 0; i < n_processes + 1; ++i)
-                    reps.push_back({static_cast<unsigned int>(bvec[0]), 
-                        static_cast<unsigned int>(bvec[1]), static_cast<unsigned int>(bvec[2])}); 
-                break;
-            }
-            default:
-                AssertThrow(false, ExcMessage("Dimension must be either 2 or 3."));
-        }
+        // switch (dim)
+        // {   
+        //     case 2:
+        //     {
+        //         // Get the string and split into a vector of strings
+        //         std::vector<int> bvec = Utilities::string_to_int(
+        //                         Utilities::split_string_list(prm.get("initial_refinement_2D"))); 
+        //         AssertThrow(bvec.size() == dim, 
+        //                     ExcMessage("Initial grid size must match the dimension."));
+        //         // Initialize mesh_m2d with 2D grid sizes
+        //         // Uniform initial mesh for all processes
+        //         for (unsigned int i = 0; i < n_processes + 1; ++i)
+        //             reps.push_back({static_cast<unsigned int>(bvec[0]), static_cast<unsigned int>(bvec[1])}); 
+        //         break;
+        //     }
+        //     case 3:
+        //     {
+        //         // Get the string and split into a vector of strings
+        //         std::vector<int> bvec = Utilities::string_to_int(
+        //                         Utilities::split_string_list(prm.get("initial_refinement_3D"))); 
+        //         AssertThrow(bvec.size() == dim, 
+        //                     ExcMessage("Initial refinement must match the dimension."));
+        //         // Initialize mesh_m2d with 3D grid sizes
+        //         // Uniform initial mesh for all processes
+        //         for (unsigned int i = 0; i < n_processes + 1; ++i)
+        //             reps.push_back({static_cast<unsigned int>(bvec[0]), 
+        //                 static_cast<unsigned int>(bvec[1]), static_cast<unsigned int>(bvec[2])}); 
+        //         break;
+        //     }
+        //     default:
+        //         AssertThrow(false, ExcMessage("Dimension must be either 2 or 3."));
+        // }
         
         // Interpret external boundary conditions
         prm.enter_subsection("External Boundary Conditions");

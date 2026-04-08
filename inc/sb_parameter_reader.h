@@ -42,13 +42,17 @@ class StokesBiotParameterReader : public Subscriptor
                         Patterns::Anything(),
                         "Initial grid size for 3D (x, y, z) "
                         "in number of cells per direction");
-    prm.declare_entry("initial_refinement_2D", "1, 1",
+    prm.declare_entry("initial_refinement_2D", "1, 1 | 2, 2 ; 2, 2 | 1, 1",
                         Patterns::Anything(),
                         "Initial refinement for 2D (x, y) "
                         "in number of cells per direction");
     prm.declare_entry("initial_refinement_3D", "1, 1, 1",
                         Patterns::Anything(),
                         "Initial refinement for 3D (x, y, z) "
+                        "in number of cells per direction");
+    prm.declare_entry("initial_refinement_mortar_2D", "1, 1 | 1, 1 ; 1, 1 | 1, 1",
+                        Patterns::Anything(),
+                        "Initial refinement for 2D mortar mesh (x, y) "
                         "in number of cells per direction");
     prm.declare_entry("grid", "1, 1",
                       Patterns::Anything(),
@@ -73,6 +77,8 @@ class StokesBiotParameterReader : public Subscriptor
       prm.declare_entry("initial_val lambda", "0.0",
                         Patterns::Double(),
                         "Initial value for lambda in Stokes mesh");
+      prm.declare_entry("multiscale_basis", "no",
+                    Patterns::Selection("yes|no"));
     }
     prm.leave_subsection();
 
@@ -106,6 +112,8 @@ class StokesBiotParameterReader : public Subscriptor
       prm.declare_entry("initial_val lambda", "0.0",
                     Patterns::Double(),
                     "Initial value for lambda in Biot mesh");
+      prm.declare_entry("multiscale_basis", "no",
+                    Patterns::Selection("yes|no"));
     }
     prm.leave_subsection();
 
