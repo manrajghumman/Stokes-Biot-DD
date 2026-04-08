@@ -126,6 +126,8 @@ class StokesBiotParameterReader : public Subscriptor
                       Patterns::Integer());
         prm.declare_entry("tol", "1e-8",
                       Patterns::Double(0.0));
+        prm.declare_entry("preconditioner_type", "0",
+                      Patterns::Integer());
     }
     prm.leave_subsection();
   }

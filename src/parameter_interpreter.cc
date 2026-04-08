@@ -89,6 +89,12 @@ namespace dd_stokes_biot
                         std::to_string(total_domains) +
                         ") does not match the number of MPI processes (" +
                         std::to_string(n_processes) + ")."));
+
+            prm.enter_subsection("Solver");
+            {
+                preconditioner_type = prm.get_integer("preconditioner_type");
+            }
+            prm.leave_subsection();
         }
 
   // Explicit template instantiation
@@ -207,6 +213,7 @@ namespace mfe_stokes
             maxiter = prm.get_integer("max_iter");
             tol = prm.get_double("tol");
         }
+        prm.leave_subsection();
     }
     // Explicit template instantiation
   template class MixedStokesProblem<2>;
@@ -323,6 +330,7 @@ namespace mfe_biot
             maxiter = prm.get_integer("max_iter");
             tol = prm.get_double("tol");
         }
+        prm.leave_subsection();
     }
     // Explicit template instantiation
   template class MixedBiotProblem<2>;

@@ -204,6 +204,8 @@ namespace dd_stokes_biot
         }
         MPI_Barrier(mpi_communicator);
 
+        // unsigned int preconditioner_type = 1;
+
         // initialize the respective stokes and biot problem objects
         // based on subdomain_type
         if (subdomain_type == 1) // Stokes
@@ -245,6 +247,7 @@ namespace dd_stokes_biot
                                               neighbors,
                                               neighbor_type,
                                               mpi_communicator_stokes,
+                                              preconditioner_type,
                                               mortar_degree,
                                               mortar_type,
                                               mortar_degree_biot,
@@ -272,6 +275,7 @@ namespace dd_stokes_biot
                                           neighbors,
                                           neighbor_type,
                                           mpi_communicator_biot,
+                                          preconditioner_type,
                                           mortar_type,
                                           mortar_degree);
           biot->run(cycle);

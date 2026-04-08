@@ -17,7 +17,7 @@ set initial_refinement_3D = 1, 1, 1
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
 # Note: Total subdomains should equal number of processes for mpirun
-set grid = 1, 2; 1, 2
+set grid = 1, 1; 1, 1
 
 
 #################################################################################
@@ -26,7 +26,7 @@ set grid = 1, 2; 1, 2
 
 subsection Stokes Parameters
     set degree                = 1
-    set quad_degree           = 11
+    set quad_degree           = 5
 	set continuous_mortar     = yes
 	set stokes_mortar_degree  = 1
 	set gamma                 = 1000.0
@@ -39,8 +39,8 @@ end
 
 subsection Biot Parameters
     set degree              = 1
-    set quad_degree         = 11
-	set mortar_type         = 3
+    set quad_degree         = 5
+	set mortar_type         = 0
 	set mortar_degree       = 1
 	set s_0                 = 1.0
 	set alpha_BJS           = 1.0
@@ -56,14 +56,16 @@ end
 # 2 sides Dirichlet
 
 subsection External Boundary Conditions
-	set boundary_2D         = D, D, D, N
+	set boundary_2D         = D, D, D, D
 	set boundary_3D         = D, D, D, D, D, D
 end
 
 #################################################################################
 # Parameters for solver ('GMRES')
+# Preconditioner: 0 - none, 1 - penalize S-B interface jump in mass matrix M_i
 
 subsection Solver
-	set max_iter = 1000
-	set tol      = 1e-8
+	set max_iter             = 1000
+	set tol                  = 1e-8
+	set preconditioner_type  = 0
 end

@@ -47,6 +47,7 @@ namespace mfe_stokes
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
                       MPI_Comm mpi_communicator_stokes,
+                      const unsigned int preconditioner_type,
                       const unsigned int mortar_degree = 2,
                       const unsigned int mortar_type = 0,
                       const unsigned int mortar_degree_biot = 1,
@@ -59,6 +60,10 @@ namespace mfe_stokes
     assemble_rhs_star(std::vector<std::unique_ptr<FEFunction>> &interface_function,
                       FEFaceValues<dim> &fe_face_values,
                       FEFaceValues<dim> &fe_face_values_mortar_biot);
+
+    void 
+    preconditioner(unsigned int cycle,
+                   unsigned int preconditioner_type);
 
     void
     solve_bar();
@@ -121,6 +126,9 @@ namespace mfe_stokes
     double       tol;
     double       initial_val;
     double       avg_eigenvalue;
+    std::vector<double> nbr_avg_eigenvalue;
+    std::vector<double> jacobi_scaling;
+    const unsigned int preconditioner_type;
     std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
     // std::vector<int> neighbors;
     // std::vector<unsigned int> neighbor_type;

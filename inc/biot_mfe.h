@@ -41,6 +41,7 @@ namespace mfe_biot
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
                       MPI_Comm mpi_communicator_biot,
+                      const unsigned int preconditioner_type,
                       const unsigned int mortar_type,
                       const unsigned int mortar_degree);
 
@@ -85,6 +86,9 @@ namespace mfe_biot
     const unsigned int this_mpi_biot;
     const unsigned int n_processes_biot;
     double       avg_eigenvalue;
+    std::vector<double> nbr_avg_eigenvalue;
+    std::vector<double> jacobi_scaling;
+    const unsigned int preconditioner_type;
 
     // Projector::Projector <dim> P_coarse2fine;
     // Projector::Projector <dim> P_fine2coarse;
@@ -97,6 +101,10 @@ namespace mfe_biot
     void assemble_system();
 
     void get_interface_dofs();
+
+    void 
+    preconditioner(unsigned int cycle,
+                   unsigned int preconditioner_type);
 
     void solve_bar();
 

@@ -81,6 +81,7 @@ namespace mfe_stokes
     std::vector<int>           &neighbors,
     std::vector<unsigned int>  &neighbor_type,
     MPI_Comm                   mpi_communicator_stokes,
+    const unsigned int         preconditioner_type,
     const unsigned int         mortar_degree,
     const unsigned int         mortar_type,
     const unsigned int         mortar_degree_biot,
@@ -104,6 +105,7 @@ namespace mfe_stokes
     , neighbors(neighbors)
     , neighbor_type(neighbor_type)
     , gmres_iteration(0)
+    , preconditioner_type(preconditioner_type)
     , dof_handler(triangulation)
     , dof_handler_biot_mortar(triangulation_mortar)                          
     , dof_handler_mortar(triangulation_mortar)
@@ -1040,6 +1042,64 @@ namespace mfe_stokes
     }
   }
 
+  // MixedStokesProblemDD - simple jacobi type preconditioner for the 
+  // interface problem penalizing the difference in central eigenvalues of 
+  // two neighbouring subdomain problems on their shared interface
+  template <int dim>
+  void MixedStokesProblem<dim>::preconditioner(unsigned int cycle,
+                                               unsigned int preconditioner_type)
+  {
+    if (preconditioner_type == 1)
+    {
+      double trace = 0.0;
+      for (unsigned int b = 0; b < system_matrix.n_block_rows(); ++b)
+      {
+        const SparseMatrix<double> &block = system_matrix.block(b,b);
+
+        for (unsigned int i = 0; i < block.m(); ++i)
+          trace += block.diag_element(i);
+      }
+      avg_eigenvalue = trace / system_matrix.m();
+
+      unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+      nbr_avg_eigenvalue.resize(n_faces_per_cell);
+      jacobi_scaling.resize(n_faces_per_cell);
+
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          MPI_Sendrecv(&avg_eigenvalue,
+                        1,
+                        MPI_DOUBLE,
+                        neighbors[side],
+                        this_mpi,  // send tag
+
+                        &nbr_avg_eigenvalue[side],
+                        1,
+                        MPI_DOUBLE,
+                        neighbors[side],
+                        neighbors[side],  // recv tag
+                        mpi_communicator,
+                        &mpi_status);
+
+          // jacobi_scaling[side] = 1.0;              
+
+          if (abs(nbr_avg_eigenvalue[side])>abs(avg_eigenvalue))
+            jacobi_scaling[side] = abs(nbr_avg_eigenvalue[side]/avg_eigenvalue);
+          else
+            jacobi_scaling[side] = abs(avg_eigenvalue/nbr_avg_eigenvalue[side]);
+          // if (neighbor_type[side] == 2)
+          //   jacobi_scaling[side] /= std::pow(2, cycle);
+        }
+    }
+    // if (this_mpi == 2)
+    // {
+    //   std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
+    //   for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
+    //     if (neighbors[side] >= 0)
+    //       std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side] << std::endl;
+    // }
+  }
 
   // MixedStokesProblemDD::solvers
   template <int dim>
@@ -1049,15 +1109,6 @@ namespace mfe_stokes
     A_direct.initialize (system_matrix);
     A_direct.vmult(solution_bar, system_rhs_bar);
 
-    double trace = 0.0;
-    for (unsigned int b = 0; b < system_matrix.n_block_rows(); ++b)
-    {
-      const SparseMatrix<double> &block = system_matrix.block(b,b);
-
-      for (unsigned int i = 0; i < block.m(); ++i)
-        trace += block.diag_element(i);
-    }
-    avg_eigenvalue = trace / system_matrix.m();
     // solution_bar *= avg_eigenvalue;
   }
 
@@ -1217,6 +1268,10 @@ namespace mfe_stokes
           }
         }
 
+        if (preconditioner_type == 1) //Jacobi scaling
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            interface_data_send[side][i] /= jacobi_scaling[side];
+
         MPI_Sendrecv(interface_data_send[side].data(),
                       static_cast<int>(interface_dofs[side].size()),
                       MPI_DOUBLE,
@@ -1323,6 +1378,13 @@ namespace mfe_stokes
             }                
           }
         }
+
+        if (preconditioner_type == 1) //Jacobi scaling
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            r[side][i] /= jacobi_scaling[side];
+            r_b[side][i] /= jacobi_scaling[side];
+          }
 
         MPI_Sendrecv(r_b[side].data(),
                     r_b[side].size(),
@@ -3340,6 +3402,8 @@ namespace mfe_stokes
     get_interface_dofs();
 
     assemble_system();
+    if (preconditioner_type == 1)
+      preconditioner(cycle, preconditioner_type);
     solve_bar();
     if(n_processes == 1)
       solution = solution_bar;

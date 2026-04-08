@@ -98,8 +98,10 @@ namespace dd_stokes_biot
     std::vector<unsigned int> external_bdry_ids;
     bool stokes_mortar_flag, stokes_cont_mortar_flag;
     unsigned int stokes_mortar_degree;
-    unsigned int                           gmres_iteration;
-    double                                 residual;
+
+    unsigned int              gmres_iteration;
+    double                    residual;
+    unsigned int              preconditioner_type;
 
     // Subdomain coordinates (assuming logically rectangular blocks)
     Point<dim> p1;
