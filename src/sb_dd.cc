@@ -193,6 +193,7 @@ namespace dd_stokes_biot
           }
           MPI_Barrier(mpi_communicator);
         }
+        MPI_Barrier(mpi_communicator);
 
         
         // Find neighbors

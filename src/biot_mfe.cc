@@ -2868,7 +2868,7 @@ namespace mfe_biot
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
 
       subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
       
@@ -2908,6 +2908,9 @@ namespace mfe_biot
     else {
       triangulation.refine_global();
       triangulation_mortar.refine_global();
+
+      
+      // triangulation_mortar.refine_global();
     }
 
     // for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell; ++side)

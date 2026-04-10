@@ -1118,7 +1118,9 @@ namespace mfe_stokes
     unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     Quadrature<dim - 1> quad;
     quad = QGauss<dim - 1>(qdegree);
-    multiscale_basis.resize(interface_dofs_total.size());
+    multiscale_basis.resize(n_faces_per_cell);
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      multiscale_basis[side].resize(interface_dofs[side].size());
 
     if (this_mpi == 1)
     {
@@ -1127,23 +1129,20 @@ namespace mfe_stokes
     }
 
     unsigned int ind = 0;
-    for (unsigned int side = 0; side <n_faces_per_cell; ++side)
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    {
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+      {
+        if (neighbors[side] >= 0)
         {
-          interface_fe_function[side] = 0;
-          if (neighbor_type[side] == 1)
-          {
-            multiscale_basis[ind].reinit(mortar_vec);
-            // tmp_basis[side].reinit(mortar_vec);
-          }
-          else if (neighbor_type[side] == 2)
-          {
-            multiscale_basis[ind].reinit(mortar_vec_biot);
-            // tmp_basis[side].reinit(mortar_vec_biot);
-          }
-          multiscale_basis[ind] = 0;
+          // interface_fe_function[side] = 0;
+          multiscale_basis[side][i].reinit(solution_star);
+          multiscale_basis[side][i] = 0;
 
-          interface_fe_function[side]                          = 0;
+          for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+            interface_fe_function[face] = 0;
+
+          // interface_fe_function[side]                          = 0;
           interface_fe_function[side][interface_dofs[side][i]] = 1.0;
           
 
@@ -1153,7 +1152,7 @@ namespace mfe_stokes
                             fe_face_values_mortar_biot);
           solve_star();
 
-          multiscale_basis[ind] = solution_star;
+          multiscale_basis[side][i] = solution_star;
           ind += 1;
           if (this_mpi == 1)
           {
@@ -1161,10 +1160,13 @@ namespace mfe_stokes
                   << " basis functions computed so far." << std::flush;
           }
         }
-        if (this_mpi == 1)
-        {
-          std::cout << std::endl;
-        }
+      }
+    }
+    if (this_mpi == 1)
+    {
+      std::cout << std::endl;
+    }
+    MPI_Barrier(mpi_communicator_stokes);
   }
 
   // MixedStokesProblemDD::solvers
@@ -1174,8 +1176,6 @@ namespace mfe_stokes
       // TimerOutput::Scope t(computing_timer, "Solve bar stokes");
     A_direct.initialize (system_matrix);
     A_direct.vmult(solution_bar, system_rhs_bar);
-
-    // solution_bar *= avg_eigenvalue;
   }
 
 
@@ -1184,7 +1184,6 @@ namespace mfe_stokes
   {
     // TimerOutput::Scope t(computing_timer, "Solve star");
     A_direct.vmult (solution_star, system_rhs_star);
-    // solution_star *= avg_eigenvalue; 
   }
 
   //Functions for GMRES:-------------------
@@ -1304,16 +1303,16 @@ namespace mfe_stokes
       // Instead of solving subdomain problems we compute the response using
       // basis
       solution_star = 0;
-      unsigned int j = 0;
+      // unsigned int j = 0;
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          {
-            solution_star.block(0).sadd(
-              1.0,
-              interface_fe_function[side][interface_dofs[side][i]],
-              multiscale_basis[j].block(0));
-            j += 1;
-          }
+        {
+          solution_star.block(0).sadd(
+            1.0,
+            interface_fe_function[side][interface_dofs[side][i]],
+            multiscale_basis[side][i].block(0));
+          // j += 1;
+        }
     }
     else
     {
@@ -1415,15 +1414,15 @@ namespace mfe_stokes
       // Instead of solving subdomain problems we compute the response using
       // basis
       solution_star = 0;
-      unsigned int j = 0;
+      // unsigned int j = 0;
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         {
           solution_star.block(0).sadd(
             1.0,
             interface_fe_function[side][interface_dofs[side][i]],
-            multiscale_basis[j].block(0));
-          j += 1;
+            multiscale_basis[side][i].block(0));
+          // j += 1;
         }
     }
     else
@@ -2607,10 +2606,34 @@ namespace mfe_stokes
       for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         interface_fe_function[side][interface_dofs[side][i]] = interface_data[side][i];
 
-    assemble_rhs_star(interface_function,
-                      fe_face_values,
-                      fe_face_values_mortar_biot);
-    solve_star();
+    if (multiscale_basis_flag)
+    {
+      // Instead of solving subdomain problems we compute the response using
+      // basis
+      solution_star = 0;
+      // unsigned int j = 0;
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          solution_star.sadd(
+            1.0,
+            interface_fe_function[side][interface_dofs[side][i]],
+            multiscale_basis[side][i]);
+          // j += 1;
+        }
+    }
+    else
+    {
+      assemble_rhs_star(interface_function,
+                        fe_face_values,
+                        fe_face_values_mortar_biot);
+      solve_star();
+    }
+
+    // assemble_rhs_star(interface_function,
+    //                   fe_face_values,
+    //                   fe_face_values_mortar_biot);
+    // solve_star();
     solution.reinit(solution_bar);
     solution = solution_bar;
     solution.sadd(1.0, solution_star);
@@ -3457,7 +3480,7 @@ namespace mfe_stokes
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
 
       subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
 
@@ -3497,6 +3520,8 @@ namespace mfe_stokes
     else {
       triangulation.refine_global();
       triangulation_mortar.refine_global();
+
+      // triangulation_mortar.refine_global();
       // triangulation_mortar.clear();
       // triangulation_mortar.copy_triangulation(triangulation);
     }

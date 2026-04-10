@@ -349,7 +349,7 @@ namespace mfe_stokes
     std::vector<BlockVector<double>>   solution_star_mortar_temp;
     BlockVector<double>                mortar_vec;
     BlockVector<double>                mortar_vec_biot;
-    std::vector<BlockVector<double>>   multiscale_basis;
+    std::vector<std::vector<BlockVector<double>>>   multiscale_basis;
 
 
     // Output extra
