@@ -1,0 +1,44 @@
+# Listing of Manufactured solution for Stokes subdomain (only 2D)
+# Assumes Stokes-Biot partition along y = 1 for domain (0, 2) x (0, 4)
+# The Stokes region is (0, 2) x (2, 4)
+# dir condition is imposed on left side
+# example is for modeling coupling of surface and subsurface
+# hydrological flow taken from paper with Tongtong, Yotov ESAIM.
+# ---------------------
+#################################################################################
+# Right hand side and Boundary Conditions
+# function constant to indicate assumptions
+# to change them is hard will need to change at various
+# different places in this and biot.prm file
+subsection RHS vector
+    set Function constants = mu=1.0
+    set Function expression = 0;0
+    set Variable names = x, y
+end
+subsection RHS scalar 
+    set Function expression = 0
+    set Variable names      = x, y
+end
+subsection BC Dirichlet 
+    set Function expression = if(x>0, 0, -40*(y-1)*(y-2));0
+    set Variable names      = x, y
+end
+# Give values of Stress, normal stress will be calculated from it
+subsection BC Neumann
+    set Function expression = -sin(pi*x)*cos(2*pi*y)-6; pi*(2*cos(2*pi*x)-sin(pi*y));pi*(2*cos(2*pi*x)-sin(pi*y));-sin(pi*x)*cos(2*pi*y)+2
+    set Variable names      = x, y
+end
+#################################################################################
+# Exact solution values
+subsection Exact solution 
+  # Order: velocity, pressure
+  set Function expression = -3*x+cos(pi*y);y+sin(2*pi*x);sin(pi*x)*cos(2*pi*y)
+  set Variable names      = x, y
+end
+#################################################################################
+# Exact solution, gradient values 
+subsection Exact gradient
+  # Order: velocity
+  set Function expression = -3;-pi*sin(pi*y);2*pi*cos(2*pi*x);1;pi*cos(pi*x)*cos(2*pi*y);-2*pi*sin(pi*x)*sin(2*pi*y)
+  set Variable names      = x,y
+end

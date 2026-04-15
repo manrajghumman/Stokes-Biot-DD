@@ -165,7 +165,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/stokes.prm");
+    param.read_parameters("../test function/dd realeg1/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -1791,14 +1791,24 @@ namespace mfe_stokes
                   }                                                   
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                   {
-                    for (unsigned int s = 0; s < dim; ++s)
-                      phi_eta[k][s] = fe_face_values_mortar_biot[stresses[s]].value (k, q_point)
-                                    * fe_face_values_mortar_biot.normal_vector(q_point)
-                                    * get_normal_direction<dim>(side);
+                    if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                local_dof_indices[k]) != interface_dofs[side].end())
+                    {
+                      for (unsigned int s = 0; s < dim; ++s)
+                        phi_eta[k][s] = fe_face_values_mortar_biot[stresses[s]].value (k, q_point)
+                                      * fe_face_values_mortar_biot.normal_vector(q_point)
+                                      * get_normal_direction<dim>(side);
 
-                    phi_p[k] = fe_face_values_mortar_biot[velocity].value (k, q_point)
-                              * fe_face_values_mortar_biot.normal_vector(q_point)
-                              * get_normal_direction<dim>(side);
+                      phi_p[k] = fe_face_values_mortar_biot[velocity].value (k, q_point)
+                                * fe_face_values_mortar_biot.normal_vector(q_point)
+                                * get_normal_direction<dim>(side);
+                    }
+                    else
+                    {
+                      for (unsigned int s = 0; s < dim; ++s)
+                        phi_eta[k][s] = 0;
+                      phi_p[k] = 0;
+                    }
                   }
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                   {
@@ -2991,7 +3001,7 @@ namespace mfe_stokes
     DataOut<dim> data_out;
     data_out.attach_dof_handler(dof_handler);
     
-    data_out.add_data_vector(error,
+    data_out.add_data_vector(solution,
                             solution_names,
                             DataOut<dim>::type_dof_data,
                             data_component_interpretation);
@@ -3512,7 +3522,7 @@ namespace mfe_stokes
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
 
       subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
 
