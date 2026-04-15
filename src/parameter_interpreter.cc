@@ -269,6 +269,8 @@ namespace mfe_biot
         {
             qdegree  = prm.get_integer("quad_degree"); 
             initial_val = prm.get_double("initial_val lambda"); 
+            s0 = prm.get_double("s_0");
+            alpha = prm.get_double("alpha");
             multiscale_basis_flag = prm.get("multiscale_basis") == "yes" ? true : false;
         }
         prm.leave_subsection();

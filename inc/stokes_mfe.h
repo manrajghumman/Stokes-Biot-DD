@@ -134,6 +134,7 @@ namespace mfe_stokes
     const unsigned int preconditioner_type;
     std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
     std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
+    unsigned int refinement;
     // std::vector<int> neighbors;
     // std::vector<unsigned int> neighbor_type;
 

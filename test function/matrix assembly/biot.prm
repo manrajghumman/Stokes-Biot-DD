@@ -14,7 +14,7 @@ subsection RHS vector
 end
 subsection RHS scalar 
     set Function constants  = s0=1.0, alpha_BJS=1.0
-    set Function expression = 6 + (5*pi*pi+1)*sin(pi*x)*cos(2*pi*y)
+    set Function expression = s0*6 + (5*pi*pi+s0)*sin(pi*x)*cos(2*pi*y)
     set Variable names      = x, y
 end
 subsection BC Dirichlet Displacement

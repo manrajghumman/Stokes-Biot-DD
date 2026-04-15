@@ -3200,16 +3200,36 @@ namespace mfe_stokes
     if (n_processes > 1)
       n_dofs = interface_dofs_size;
 
+    // find the max cell width h
+    // first find local subdomain celll width h_local
+
+    // first get an iterator to the min element
+    auto it = std::min_element(initial_refinement.begin(), initial_refinement.end());
+    unsigned int h_local = 0;
+
+    if (it != initial_refinement.end()) // check if the vector is not empty
+      h_local = (*it) * std::pow(2, cycle+1); // get the value of the minimum element, scale according to domain size
+    else
+      AssertThrow(false, ExcMessage("Error: initial_refinement vector is empty."));
+    
+    MPI_Allreduce(&h_local, //sending this data
+                  &refinement, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_UNSIGNED, //type of each element
+                  MPI_MIN, //min of all elements received
+                  mpi_communicator); //communicator
+
     convergence_table_l2.add_value("cells", n_active_cells);
-    convergence_table_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_l2.add_value("h", "1/"+Utilities::int_to_string(refinement));
     convergence_table_l2.add_value("dofs", n_dofs);
-    convergence_table_l2.add_value("u_L2", u_l2_error/u_l2_norm);
-    convergence_table_l2.add_value("p_L2", p_l2_error/p_l2_norm);
     convergence_table_l2.add_value("gmres_iter", gmres_iteration);
-    convergence_table_l2.add_value("residual", residual);
+    // convergence_table_l2.add_value("u_L2", u_l2_error/u_l2_norm);
+    convergence_table_l2.add_value("u_H1", u_H1_error/u_H1_norm);
+    convergence_table_l2.add_value("p_L2", p_l2_error/p_l2_norm);
+    // convergence_table_l2.add_value("residual", residual);
 
     convergence_table_h1.add_value("cells", n_active_cells);
-    convergence_table_h1.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_h1.add_value("h", "1/"+Utilities::int_to_string(refinement));
     convergence_table_h1.add_value("dofs", n_dofs);
     convergence_table_h1.add_value("u_H1", u_H1_error/u_H1_norm);
     convergence_table_h1.add_value("p_H1", p_H1_error/p_H1_norm);
@@ -3217,16 +3237,18 @@ namespace mfe_stokes
     // convergence_table_h1.add_value("uy_H1", uy_H1_error);
     // convergence_table_h1.add_value("gmres_iter", gmres_iteration);
 
-    convergence_table_l2_total.add_value("cells", n_active_cells);
-    convergence_table_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    // convergence_table_l2_total.add_value("cells", n_active_cells);
+    convergence_table_l2_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
     convergence_table_l2_total.add_value("dofs", n_dofs);
-    convergence_table_l2_total.add_value("u_L2", u_l2_error_total/u_l2_norm_total);
-    convergence_table_l2_total.add_value("p_L2", p_l2_error_total/p_l2_norm_total);
     convergence_table_l2_total.add_value("gmres_iter", gmres_iteration);
-    convergence_table_l2_total.add_value("residual", residual);
+    // convergence_table_l2_total.add_value("u_L2", u_l2_error_total/u_l2_norm_total);
+    convergence_table_l2_total.add_value("u_H1", u_H1_error_total/u_H1_norm_total);
+    convergence_table_l2_total.add_value("p_L2", p_l2_error_total/p_l2_norm_total);
+    // convergence_table_l2_total.add_value("gmres_iter", gmres_iteration);
+    // convergence_table_l2_total.add_value("residual", residual);
 
     convergence_table_h1_total.add_value("cells", n_active_cells);
-    convergence_table_h1_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle)));
+    convergence_table_h1_total.add_value("h","1/"+Utilities::int_to_string(refinement));
     convergence_table_h1_total.add_value("dofs", n_dofs);
     convergence_table_h1_total.add_value("u_H1", u_H1_error_total/u_H1_norm_total);
     convergence_table_h1_total.add_value("p_H1", p_H1_error_total/p_H1_norm_total);
@@ -3235,23 +3257,28 @@ namespace mfe_stokes
   template <int dim>
   void MixedStokesProblem<dim>::print_individual_convg_table_l2()
   {
-    convergence_table_l2.set_precision("residual", 3);
-    convergence_table_l2.set_precision("u_L2", 3);
-    convergence_table_l2.set_precision("p_L2", 3);
+    // convergence_table_l2.set_precision("residual", 3);
+    convergence_table_l2.set_precision("u_L2", 2);
+    convergence_table_l2.set_precision("u_H1", 2);
+    convergence_table_l2.set_precision("p_L2", 2);
 
-    convergence_table_l2.set_scientific("residual", true);
-    convergence_table_l2.set_scientific("u_L2", true);
+    // convergence_table_l2.set_scientific("residual", true);
+    // convergence_table_l2.set_scientific("u_L2", true);
+    convergence_table_l2.set_scientific("u_H1", true);
     convergence_table_l2.set_scientific("p_L2", true);
 
-    convergence_table_l2.set_tex_caption("cells", "\\ cells");
+    // convergence_table_l2.set_tex_caption("cells", "\\ cells");
     convergence_table_l2.set_tex_caption("dofs", "\\# dofs");
-    convergence_table_l2.set_tex_caption("residual", "residual");
+    // convergence_table_l2.set_tex_caption("residual", "residual");
     convergence_table_l2.set_tex_caption("gmres_iter", "iter");
-    convergence_table_l2.set_tex_caption("u_L2", "$||u_f-u_{fh}||_{L^2}$");
+    // convergence_table_l2.set_tex_caption("u_L2", "$||u_f-u_{fh}||_{L^2}$");
+    convergence_table_l2.set_tex_caption("u_L2", "$||u_f-u_{fh}||_{H^1}$");
     convergence_table_l2.set_tex_caption("p_L2", "$||p_f-p_{fh}||_{L^2}$");
 
+    // convergence_table_l2.evaluate_convergence_rates(
+    //       "u_L2", ConvergenceTable::reduction_rate_log2);
     convergence_table_l2.evaluate_convergence_rates(
-          "u_L2", ConvergenceTable::reduction_rate_log2);
+          "u_H1", ConvergenceTable::reduction_rate_log2);
     convergence_table_l2.evaluate_convergence_rates(
           "p_L2", ConvergenceTable::reduction_rate_log2);
 
@@ -3365,22 +3392,27 @@ namespace mfe_stokes
   {
     if (this_mpi_stokes == 0)
     {
-      convergence_table_l2_total.set_precision("residual", 3);
-      convergence_table_l2_total.set_precision("u_L2", 3);
-      convergence_table_l2_total.set_precision("p_L2", 3);
-      convergence_table_l2_total.set_scientific("residual", true);
-      convergence_table_l2_total.set_scientific("u_L2", true);
+      // convergence_table_l2_total.set_precision("residual", 3);
+      // convergence_table_l2_total.set_precision("u_L2", 3);
+      convergence_table_l2_total.set_precision("u_H1", 2);
+      convergence_table_l2_total.set_precision("p_L2", 2);
+      // convergence_table_l2_total.set_scientific("residual", true);
+      // convergence_table_l2_total.set_scientific("u_L2", true);
+      convergence_table_l2_total.set_scientific("u_H1", true);
       convergence_table_l2_total.set_scientific("p_L2", true);
 
-      convergence_table_l2_total.set_tex_caption("cells", "\\ cells");
-      convergence_table_l2_total.set_tex_caption("dofs", "\\# dofs");
-      convergence_table_l2_total.set_tex_caption("residual", "residual");
-      convergence_table_l2_total.set_tex_caption("gmres_iter", "iter");
-      convergence_table_l2_total.set_tex_caption("u_L2", "$||u_f-u_{fh}||_{L^2}$");
-      convergence_table_l2_total.set_tex_caption("p_L2", "$||p_f-p_{fh}||_{L^2}$");
+      // convergence_table_l2_total.set_tex_caption("cells", "\\ cells");
+      convergence_table_l2_total.set_tex_caption("dofs", "dofs");
+      // convergence_table_l2_total.set_tex_caption("residual", "residual");
+      convergence_table_l2_total.set_tex_caption("gmres_iter", "\\# GMRES");
+      // convergence_table_l2_total.set_tex_caption("u_L2", "$||u_f-u_{fh}||_{L^2}$");
+      convergence_table_l2_total.set_tex_caption("u_H1", "$||u_f-u_{fh}||_{1,\\Omega_f}$");
+      convergence_table_l2_total.set_tex_caption("p_L2", "$||p_f-p_{fh}||_{\\Omega_f}$");
 
+      // convergence_table_l2_total.evaluate_convergence_rates(
+      //       "u_L2", ConvergenceTable::reduction_rate_log2);
       convergence_table_l2_total.evaluate_convergence_rates(
-            "u_L2", ConvergenceTable::reduction_rate_log2);
+            "u_H1", ConvergenceTable::reduction_rate_log2);
       convergence_table_l2_total.evaluate_convergence_rates(
             "p_L2", ConvergenceTable::reduction_rate_log2);
       convergence_table_l2_total.evaluate_convergence_rates(
@@ -3409,8 +3441,8 @@ namespace mfe_stokes
     if (this_mpi_stokes == 0)
     {
       // convergence_table_h1.set_precision("residual", 3);
-      convergence_table_h1_total.set_precision("u_H1", 3);
-      convergence_table_h1_total.set_precision("p_H1", 3);
+      convergence_table_h1_total.set_precision("u_H1", 2);
+      convergence_table_h1_total.set_precision("p_H1", 2);
       // convergence_table_h1.set_precision("ux_H1", 3);
       // convergence_table_h1.set_precision("uy_H1", 3);
 
@@ -3442,7 +3474,7 @@ namespace mfe_stokes
       std::string conv_filename = "../output/convg_table_total/stokes_table_total_h1" + std::string(".tex");
 
       std::cout << "total error\n" << std::endl;
-      convergence_table_h1_total.write_text(std::cout);
+      // convergence_table_h1_total.write_text(std::cout);
       std::ofstream table_file(conv_filename, std::ios::out);
       table_file << "\\documentclass[10pt]{report}\n"
                   << "\\usepackage{float}\n"
@@ -3480,7 +3512,7 @@ namespace mfe_stokes
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
       subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
 

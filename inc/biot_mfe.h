@@ -243,6 +243,7 @@ namespace mfe_biot
     std::vector<unsigned int> external_bdry_ids;
     std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
     std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
+    unsigned int refinement;
     std::vector<unsigned int> faces_on_interface;
     std::vector<unsigned int> faces_on_interface_mortar;
     std::vector <std::vector<unsigned int>> interface_dofs;
@@ -280,6 +281,8 @@ namespace mfe_biot
     // Star and bar problem data structures
     BlockSparsityPattern sparsity_pattern;
     BlockSparseMatrix<double> system_matrix;
+    double s0 = 1.0;
+    double alpha = 1.0; // Biot-Willis constant    
 
     SparseDirectUMFPACK A_direct;
     SparseDirectUMFPACK A_direct_non_diff; //for solving non-differentiated elasticity form for monolithic BIot

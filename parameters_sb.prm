@@ -4,22 +4,22 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 6
+set refinements  = 5
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
-set initial_grid_2D  = 2, 1
+set initial_grid_2D  = 4, 2
 set initial_grid_3D  = 1, 1, 1
 
-set initial_refinement_2D = 1, 1 | 1, 1 
+set initial_refinement_2D = 2, 2 | 2, 2 | 2, 2 | 2, 2 ; 2, 2 | 2, 2 | 2, 2 | 2, 2 
 set initial_refinement_3D = 1, 1, 1
 
-set initial_refinement_mortar_2D = 1, 1 | 1, 1 
+set initial_refinement_mortar_2D = 2, 2 | 2, 2 | 2, 2 | 2, 2 ; 2, 2 | 2, 2 | 2, 2 | 2, 2 
 
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
 # Note: Total subdomains should equal number of processes for mpirun
-set grid = 1, 1
+set grid = 1, 1, 2, 2; 1, 1, 2,  2
 
 
 #################################################################################
@@ -30,10 +30,10 @@ subsection Stokes Parameters
     set degree                = 1
     set quad_degree           = 5
 	set continuous_mortar     = yes
-	set stokes_mortar_degree  = 1
+	set stokes_mortar_degree  = 2
 	set gamma                 = 100.0
 	set initial_val lambda    = 0.0
-	set multiscale_basis      = yes
+	set multiscale_basis      = no
 end
 
 #################################################################################
@@ -45,7 +45,8 @@ subsection Biot Parameters
     set quad_degree         = 5
 	set mortar_type         = 0
 	set mortar_degree       = 1
-	set s_0                 = 1.0
+	set s_0                 = 1e-3
+	set alpha               = 1.0
 	set alpha_BJS           = 1.0
 	set Kinv                = 1, 0; 0, 1
 	set initial_val lambda  = 0.0

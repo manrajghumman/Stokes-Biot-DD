@@ -97,9 +97,12 @@ class StokesBiotParameterReader : public Subscriptor
       prm.declare_entry("s_0", "1.0",
                     Patterns::Double(),
                     "Storativity coefficient");
+      prm.declare_entry("alpha", "1.0",
+                    Patterns::Double(),
+                    "Biot-Willis constant");
       prm.declare_entry("alpha_BJS", "1.0",
                     Patterns::Double(),
-                    "Biot-Willis coefficient");
+                    "BJS friction coefficient for BJS interface");
       prm.declare_entry("lame_mu", "1.0",
                     Patterns::Double(),
                     "Lame's first parameter - mu");

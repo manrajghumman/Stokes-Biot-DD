@@ -110,7 +110,7 @@ namespace mfe_biot
                               FE_BDM<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
                               FE_Nothing<dim>(), 1);
         else if (mortar_type == 1) // RT(k), k>=0
-          return FESystem<dim>(FE_RaviartThomas<dim>(mortar_degree), dim,    // displacement lagrange multiplier on mortar
+          return FESystem<dim>(FE_BDM<dim>(mortar_degree), dim,    // displacement lagrange multiplier on mortar
                               FE_Nothing<dim>(), dim,
                               FE_Nothing<dim>(), 0.5*dim*(dim-1), 
                               FE_RaviartThomas<dim>(mortar_degree), 1,    // pressure lagrange multiplier on mortar
@@ -473,8 +473,8 @@ namespace mfe_biot
   {
     pcout << "Assembling system..." << std::endl;
     // TimerOutput::Scope t(computing_timer, "Assemble system"); 
-    double s0 = 1.0;
-    double alpha = 1.0;         
+    // double s0 = 1.0;
+    // double alpha = 1.0;         
     system_matrix = 0;
     system_rhs_bar = 0;
 
@@ -2441,8 +2441,27 @@ namespace mfe_biot
     if (n_processes > 1)
       n_dofs = interface_dofs_size;
 
+    // find the max cell width h
+    // first find local subdomain celll width h_local
+
+    // first get an iterator to the min element
+    auto it = std::min_element(initial_refinement.begin(), initial_refinement.end());
+    unsigned int h_local = 0;
+
+    if (it != initial_refinement.end()) // check if the vector is not empty
+      h_local = (*it) * std::pow(2, cycle+1); // get the value of the minimum element, scale according to domain size
+    else
+      AssertThrow(false, ExcMessage("Error: initial_refinement vector is empty."));
+    
+    MPI_Allreduce(&h_local, //sending this data
+                  &refinement, //receiving the result here
+                  1, //number of elements in alpha and alpha_buffer = 1+1
+                  MPI_UNSIGNED, //type of each element
+                  MPI_MIN, //min of all elements received
+                  mpi_communicator); //communicator
+
     convergence_table_darcy_l2.add_value("cells", n_active_cells);
-    convergence_table_darcy_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
+    convergence_table_darcy_l2.add_value("h", "1/"+Utilities::int_to_string(refinement));
     convergence_table_darcy_l2.add_value("dofs", n_dofs);
     convergence_table_darcy_l2.add_value("||u-u_h||_L2", u_l2_error/u_l2_norm);
     convergence_table_darcy_l2.add_value("||p-p_h||_L2", p_l2_error/p_l2_norm);
@@ -2450,7 +2469,7 @@ namespace mfe_biot
     convergence_table_darcy_l2.add_value("residual", residual);
 
     convergence_table_elast_l2.add_value("cells", n_active_cells);
-    convergence_table_elast_l2.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
+    convergence_table_elast_l2.add_value("h", "1/"+Utilities::int_to_string(refinement));
     convergence_table_elast_l2.add_value("dofs", n_dofs);
     convergence_table_elast_l2.add_value("||d-d_h||_L2", d_l2_error/d_l2_norm);
     convergence_table_elast_l2.add_value("||r-r_h||_L2", r_l2_error/r_l2_norm);
@@ -2459,36 +2478,41 @@ namespace mfe_biot
     // convergence_table_elast_l2.add_value("residual", residual);
     
     convergence_table_hdiv.add_value("cells", n_active_cells);
-    convergence_table_hdiv.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
+    convergence_table_hdiv.add_value("h", "1/"+Utilities::int_to_string(refinement));
     convergence_table_hdiv.add_value("dofs", n_dofs);
     convergence_table_hdiv.add_value("||u-u_h||_Hdiv", u_hdiv_error/u_hdiv_norm);
     convergence_table_hdiv.add_value("||s-s_h||_Hdiv", s_hdiv_error/s_hdiv_norm);
     convergence_table_hdiv.add_value("gmres_iter", gmres_iteration);
     // convergence_table_hdiv.add_value("residual", residual);
 
-    convergence_table_darcy_l2_total.add_value("cells", n_active_cells);
-    convergence_table_darcy_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
-    convergence_table_darcy_l2_total.add_value("dofs", n_dofs);
-    convergence_table_darcy_l2_total.add_value("||u-u_h||_L2", u_l2_error_total/u_l2_norm_total);
+    // convergence_table_darcy_l2_total.add_value("cells", n_active_cells);
+    convergence_table_darcy_l2_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
+    // convergence_table_darcy_l2_total.add_value("dofs", n_dofs);
+    // convergence_table_darcy_l2_total.add_value("gmres_iter", gmres_iteration);
     convergence_table_darcy_l2_total.add_value("||p-p_h||_L2", p_l2_error_total/p_l2_norm_total);
-    convergence_table_darcy_l2_total.add_value("gmres_iter", gmres_iteration);
-    convergence_table_darcy_l2_total.add_value("residual", residual);
+    convergence_table_darcy_l2_total.add_value("||u-u_h||_L2", u_l2_error_total/u_l2_norm_total);
+    convergence_table_darcy_l2_total.add_value("||u-u_h||_Hdiv", u_hdiv_error_total/u_hdiv_norm_total);
+    convergence_table_darcy_l2_total.add_value("||s-s_h||_L2", s_l2_error_total/s_l2_norm_total);
+    convergence_table_darcy_l2_total.add_value("||s-s_h||_Hdiv", s_hdiv_error_total/s_hdiv_norm_total);
 
-    convergence_table_elast_l2_total.add_value("cells", n_active_cells);
-    convergence_table_elast_l2_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
-    convergence_table_elast_l2_total.add_value("dofs", n_dofs);
+    // convergence_table_darcy_l2_total.add_value("gmres_iter", gmres_iteration);
+    // convergence_table_darcy_l2_total.add_value("residual", residual);
+
+    // convergence_table_elast_l2_total.add_value("cells", n_active_cells);
+    // convergence_table_elast_l2_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
+    // convergence_table_elast_l2_total.add_value("dofs", n_dofs);
     convergence_table_elast_l2_total.add_value("||d-d_h||_L2", d_l2_error_total/d_l2_norm_total);
     convergence_table_elast_l2_total.add_value("||r-r_h||_L2", r_l2_error_total/r_l2_norm_total);
-    convergence_table_elast_l2_total.add_value("||s-s_h||_L2", s_l2_error_total/s_l2_norm_total);
-    convergence_table_elast_l2_total.add_value("gmres_iter", gmres_iteration);
+    // convergence_table_elast_l2_total.add_value("||s-s_h||_L2", s_l2_error_total/s_l2_norm_total);
+    // convergence_table_elast_l2_total.add_value("gmres_iter", gmres_iteration);
     // convergence_table_elast_l2_total.add_value("residual", residual);
     
-    convergence_table_hdiv_total.add_value("cells", n_active_cells);
-    convergence_table_hdiv_total.add_value("h", "1/"+Utilities::int_to_string(std::pow(2,cycle+2)));
-    convergence_table_hdiv_total.add_value("dofs", n_dofs);
-    convergence_table_hdiv_total.add_value("||u-u_h||_Hdiv", u_hdiv_error_total/u_hdiv_norm_total);
-    convergence_table_hdiv_total.add_value("||s-s_h||_Hdiv", s_hdiv_error_total/s_hdiv_norm_total);
-    convergence_table_hdiv_total.add_value("gmres_iter", gmres_iteration);
+    // convergence_table_hdiv_total.add_value("cells", n_active_cells);
+    // convergence_table_hdiv_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
+    // convergence_table_hdiv_total.add_value("dofs", n_dofs);
+    // convergence_table_hdiv_total.add_value("||u-u_h||_Hdiv", u_hdiv_error_total/u_hdiv_norm_total);
+    // convergence_table_hdiv_total.add_value("||s-s_h||_Hdiv", s_hdiv_error_total/s_hdiv_norm_total);
+    // convergence_table_hdiv_total.add_value("gmres_iter", gmres_iteration);
     // convergence_table_hdiv_total.add_value("residual", residual);
   }
 
@@ -2699,34 +2723,48 @@ namespace mfe_biot
     // only one process prints this data
     if (this_mpi_biot == 0)
     {
-      convergence_table_darcy_l2_total.set_precision("residual", 3);
-      convergence_table_darcy_l2_total.set_precision("||u-u_h||_L2", 3);
-      convergence_table_darcy_l2_total.set_precision("||p-p_h||_L2", 3);
-      
+      // convergence_table_darcy_l2_total.set_precision("residual", 3);
+      convergence_table_darcy_l2_total.set_precision("||p-p_h||_L2", 2);
+      convergence_table_darcy_l2_total.set_precision("||u-u_h||_L2", 2);
+      convergence_table_darcy_l2_total.set_precision("||u-u_h||_Hdiv", 2);
+      convergence_table_darcy_l2_total.set_precision("||s-s_h||_L2", 2);
+      convergence_table_darcy_l2_total.set_precision("||s-s_h||_Hdiv", 2);
 
-      convergence_table_darcy_l2_total.set_scientific("residual", true);
-      convergence_table_darcy_l2_total.set_scientific("||u-u_h||_L2", true);
+      // convergence_table_darcy_l2_total.set_scientific("residual", true);
       convergence_table_darcy_l2_total.set_scientific("||p-p_h||_L2", true);
+      convergence_table_darcy_l2_total.set_scientific("||u-u_h||_L2", true);
+      convergence_table_darcy_l2_total.set_scientific("||u-u_h||_Hdiv", true);
+      convergence_table_darcy_l2_total.set_scientific("||s-s_h||_L2", true);
+      convergence_table_darcy_l2_total.set_scientific("||s-s_h||_Hdiv", true);
       // convergence_table_l2.set_scientific("||d-d_h||_L2", true);
       // convergence_table_l2.set_scientific("||r-r_h||_L2", true);
       // convergence_table_l2.set_scientific("||s-s_h||_L2", true);
 
-      convergence_table_darcy_l2_total.set_tex_caption("cells", "\\ cells");
-      convergence_table_darcy_l2_total.set_tex_caption("dofs", "\\# dofs");
-      convergence_table_darcy_l2_total.set_tex_caption("residual", "residual");
-      convergence_table_darcy_l2_total.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
-      convergence_table_darcy_l2_total.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
-      convergence_table_darcy_l2_total.set_tex_caption("gmres_iter", "iter");
+      // convergence_table_darcy_l2_total.set_tex_caption("cells", "\\ cells");
+      // convergence_table_darcy_l2_total.set_tex_caption("dofs", "dofs");
+      // convergence_table_darcy_l2_total.set_tex_caption("gmres_iter", "iter");
+      // convergence_table_darcy_l2_total.set_tex_caption("residual", "residual");
+      convergence_table_darcy_l2_total.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{\\Omega_p}$");
+      convergence_table_darcy_l2_total.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{\\Omega_p}$");
+      convergence_table_darcy_l2_total.set_tex_caption("||u-u_h||_Hdiv", "$||u_p-u_{ph}||_{\\mathbf{H}(\\text{div}, \\Omega_p)}$");
+      convergence_table_darcy_l2_total.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{\\Omega_p}$");
+      convergence_table_darcy_l2_total.set_tex_caption("||s-s_h||_Hdiv", "$||\\sigma_p-\\sigma_{ph}||_{\\mathbf{H}(\\text{div}, \\Omega_p)}$");
       // convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
       // convergence_table_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
       // convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
 
-      convergence_table_darcy_l2_total.evaluate_convergence_rates("||u-u_h||_L2",
-                                                ConvergenceTable::reduction_rate_log2);
+      // convergence_table_darcy_l2_total.evaluate_convergence_rates("gmres_iter",
+      //                                           ConvergenceTable::reduction_rate_log2);
       convergence_table_darcy_l2_total.evaluate_convergence_rates("||p-p_h||_L2",
                                                 ConvergenceTable::reduction_rate_log2);
-      convergence_table_darcy_l2_total.evaluate_convergence_rates("gmres_iter",
+      convergence_table_darcy_l2_total.evaluate_convergence_rates("||u-u_h||_L2",
                                                 ConvergenceTable::reduction_rate_log2);
+      convergence_table_darcy_l2_total.evaluate_convergence_rates("||u-u_h||_Hdiv",
+                                                ConvergenceTable::reduction_rate_log2);
+      convergence_table_darcy_l2_total.evaluate_convergence_rates("||s-s_h||_L2",
+                                                ConvergenceTable::reduction_rate_log2);                                          
+      convergence_table_darcy_l2_total.evaluate_convergence_rates("||s-s_h||_Hdiv",
+                                                ConvergenceTable::reduction_rate_log2);                                          
       // convergence_table_l2.evaluate_convergence_rates("||d-d_h||_L2",
       //                                           ConvergenceTable::reduction_rate_log2);
       // convergence_table_l2.evaluate_convergence_rates("||r-r_h||_L2",
@@ -2756,26 +2794,26 @@ namespace mfe_biot
     if (this_mpi_biot == 0)
     {
       // convergence_table_elast_l2.set_precision("residual", 3);
-      convergence_table_elast_l2_total.set_precision("||d-d_h||_L2", 3);
-      convergence_table_elast_l2_total.set_precision("||r-r_h||_L2", 3);
-      convergence_table_elast_l2_total.set_precision("||s-s_h||_L2", 3);
+      convergence_table_elast_l2_total.set_precision("||d-d_h||_L2", 2);
+      convergence_table_elast_l2_total.set_precision("||r-r_h||_L2", 2);
+      // convergence_table_elast_l2_total.set_precision("||s-s_h||_L2", 2);
 
       // convergence_table_elast_l2.set_scientific("residual", true);
       // convergence_table_l2.set_scientific("||u-u_h||_L2", true);
       // convergence_table_l2.set_scientific("||p-p_h||_L2", true);
       convergence_table_elast_l2_total.set_scientific("||d-d_h||_L2", true);
       convergence_table_elast_l2_total.set_scientific("||r-r_h||_L2", true);
-      convergence_table_elast_l2_total.set_scientific("||s-s_h||_L2", true);
+      // convergence_table_elast_l2_total.set_scientific("||s-s_h||_L2", true);
 
-      convergence_table_elast_l2_total.set_tex_caption("cells", "\\ cells");
-      convergence_table_elast_l2_total.set_tex_caption("dofs", "\\# dofs");
+      // convergence_table_elast_l2_total.set_tex_caption("cells", "\\ cells");
+      // convergence_table_elast_l2_total.set_tex_caption("dofs", "\\# dofs");
       // convergence_table_elast_l2.set_tex_caption("residual", "residual");
       // convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
       // convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
-      convergence_table_elast_l2_total.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
-      convergence_table_elast_l2_total.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
-      convergence_table_elast_l2_total.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
-      convergence_table_elast_l2_total.set_tex_caption("gmres_iter", "iter");
+      convergence_table_elast_l2_total.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{\\Omega_p}$");
+      convergence_table_elast_l2_total.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{\\Omega_p}$");
+      // convergence_table_elast_l2_total.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{\\Omega_p}$");
+      // convergence_table_elast_l2_total.set_tex_caption("gmres_iter", "iter");
 
       // convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
       //                                           ConvergenceTable::reduction_rate_log2);
@@ -2785,8 +2823,8 @@ namespace mfe_biot
                                                 ConvergenceTable::reduction_rate_log2);
       convergence_table_elast_l2_total.evaluate_convergence_rates("||r-r_h||_L2",
                                                 ConvergenceTable::reduction_rate_log2);                                          
-      convergence_table_elast_l2_total.evaluate_convergence_rates("||s-s_h||_L2",
-                                                ConvergenceTable::reduction_rate_log2);
+      // convergence_table_elast_l2_total.evaluate_convergence_rates("||s-s_h||_L2",
+      //                                           ConvergenceTable::reduction_rate_log2);
 
       std::string conv_filename = "../output/convg_table_total/elast_table_total_l2" + std::string(".tex");
 
@@ -2817,12 +2855,12 @@ namespace mfe_biot
       convergence_table_hdiv_total.set_scientific("||u-u_h||_Hdiv", true);
       convergence_table_hdiv_total.set_scientific("||s-s_h||_Hdiv", true);
 
-      convergence_table_hdiv_total.set_tex_caption("cells", "\\ cells");
-      convergence_table_hdiv_total.set_tex_caption("dofs", "\\# dofs");
+      // convergence_table_hdiv_total.set_tex_caption("cells", "\\ cells");
+      // convergence_table_hdiv_total.set_tex_caption("dofs", "\\# dofs");
       // convergence_table_hdiv.set_tex_caption("residual", "residual");
       convergence_table_hdiv_total.set_tex_caption("||u-u_h||_Hdiv", "$||u_p-u_{ph}||_{H(div)}$");
       convergence_table_hdiv_total.set_tex_caption("||s-s_h||_Hdiv", "$||\\sigma_p-\\sigma_{ph}||_{H(div)}$");
-      convergence_table_hdiv_total.set_tex_caption("gmres_iter", "iter");
+      // convergence_table_hdiv_total.set_tex_caption("gmres_iter", "iter");
 
       convergence_table_hdiv_total.evaluate_convergence_rates("||u-u_h||_Hdiv",
                                                 ConvergenceTable::reduction_rate_log2);
@@ -2868,7 +2906,7 @@ namespace mfe_biot
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
       subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
       
