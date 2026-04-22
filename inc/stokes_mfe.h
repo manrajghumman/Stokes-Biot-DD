@@ -19,6 +19,7 @@
 #include <deal.II/base/smartpointer.h>
 
 #include <deal.II/numerics/fe_field_function.h>
+#include <deal.II/numerics/data_postprocessor.h>
 
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
@@ -64,8 +65,17 @@ namespace mfe_stokes
                       FEFaceValues<dim> &fe_face_values_mortar_biot);
 
     void 
-    preconditioner(unsigned int cycle,
-                   unsigned int preconditioner_type);
+    preconditioner(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                  std::unique_ptr<FEFunction>       &solution_bar_function,
+                  std::unique_ptr<FEFunction>       &solution_star_function,
+                  std::vector<std::vector<double>> &interface_data,
+                  std::vector<std::vector<double>> &interface_data_send,
+                  std::vector<std::vector<double>> &interface_data_receive,
+                  FEFaceValues<dim>                &fe_face_values,
+                  FEFaceValues<dim>                &fe_face_values_mortar,
+                  FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                  std::vector<Projector::Projector<dim>> &P_mortar,
+                  std::vector<std::vector<double>> &Ap);
 
     void
     solve_bar();
@@ -131,7 +141,7 @@ namespace mfe_stokes
     std::vector<double> nbr_avg_eigenvalue;
     std::vector<std::vector<double>> jacobi_scaling;
     bool multiscale_basis_flag;
-    const unsigned int preconditioner_type;
+    unsigned int preconditioner_type;
     std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
     std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
     unsigned int refinement;
@@ -360,7 +370,22 @@ namespace mfe_stokes
     ConvergenceTable   convergence_table_l2_total;
     ConvergenceTable   convergence_table_h1_total;
     // TimerOutput        computing_timer;
+
+    // Postprocessor for computing the normal fluid stress in the domain \Omega_f
+    // at quadrature points and will be outputted using output_results() function.
+    class StressPostprocessor : public DataPostprocessorTensor<dim>
+    {
+      public:
+        StressPostprocessor();
+
+        virtual void
+        evaluate_vector_field(
+          const DataPostprocessorInputs::Vector<dim> &inputs,
+          std::vector<Vector<double>> &computed_quantities) const override;
+    };
   };
 } // namespace mfe_stokes
+
+#include "stokes_datapostprocess.templates.h"
 
 #endif // STOKES_MFE_STOKES_MFE_H

@@ -140,7 +140,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd realeg1/biot.prm");
+    param.read_parameters("../test function/dd test/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -856,9 +856,18 @@ namespace mfe_biot
   // interface problem penalizing the difference in central eigenvalues of 
   // two neighbouring subdomain problems on their shared interface
   template <int dim>
-  void MixedBiotProblem<dim>::preconditioner(unsigned int cycle,
-                                               unsigned int preconditioner_type)
+  void MixedBiotProblem<dim>::preconditioner(std::unique_ptr<FEFunction> &solution_bar_function,
+                                            std::unique_ptr<FEFunction> &solution_star_function,
+                                            std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                            std::vector<std::vector<double>> &interface_data,
+                                            std::vector<std::vector<double>> &interface_data_send,
+                                            std::vector<std::vector<double>> &interface_data_receive,
+                                            FEFaceValues<dim>                &fe_face_values,
+                                            FEFaceValues<dim>                &fe_face_values_mortar,
+                                            std::vector<Projector::Projector<dim>> &P_mortar,
+                                            std::vector<std::vector<double>> &Ap)
   {
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
     if (preconditioner_type == 1)
     {
       double trace = 0.0;
@@ -871,7 +880,6 @@ namespace mfe_biot
       }
       avg_eigenvalue = trace / system_matrix.m();
 
-      unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
       nbr_avg_eigenvalue.resize(n_faces_per_cell);
       jacobi_scaling.resize(n_faces_per_cell);
 
@@ -905,6 +913,155 @@ namespace mfe_biot
           //   jacobi_scaling[side] /= std::pow(2, cycle);
         }
     }
+    else if (preconditioner_type == 2) // implement jacobi preconditioner
+    {
+      //compute <Se_i,e_i> on the interface where e_i is the
+      // i-th interface basis function, and S is the interface
+      // operator, to use as a scaling in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        jacobi_scaling[side].resize(interface_dofs[side].size());
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          if (neighbors[side] >= 0)
+          {
+            // interface_fe_function[side] = 0;
+            // multiscale_basis[side][i].reinit(solution_star);
+            // multiscale_basis[side][i] = 0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+            // // interface_fe_function[side]                          = 0;
+            // // interface_fe_function[side][interface_dofs[side][i]] = 1.0;
+            // interface_data[side][i] = 1.0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+            // interface_fe_function[side]                          = 0;
+            interface_fe_function[side][interface_dofs[side][i]] = 1.0;
+            
+            // interface_operator(interface_function,
+            //                   solution_bar_function,
+            //                   solution_star_function,
+            //                   interface_data,
+            //                   interface_data_send,
+            //                   interface_data_receive,
+            //                   fe_face_values,
+            //                   fe_face_values_mortar,
+            //                   fe_face_values_mortar_biot,
+            //                   P_mortar,
+            //                   Ap);
+
+            // interface operator has to be done explitly ow wrong info sent and received
+            // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+            //   for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            //     interface_fe_function[side][interface_dofs[side][i]] = 
+            //       interface_data[side][i];
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+                for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+                {
+                  solution_star.block(0).sadd(
+                    1.0,
+                    interface_fe_function[side][interface_dofs[side][i]],
+                    multiscale_basis[side][i].block(0));
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    P_mortar);
+            
+            // Create vector of u\dot n to send
+            if (neighbor_type[side] == 1) //Stokes-Stokes interface
+            {
+              for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+                interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
+            }
+            else if (neighbor_type[side] == 2) //Stokes-Biot interface
+            {
+              for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+              {
+                if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
+                  interface_data_send[side][i] = solution_star_mortar[side][interface_dofs[side][i]];
+                else // pressure lagrange multiplier test space
+                  interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
+              }
+            }
+
+            MPI_Sendrecv(interface_data_send[side].data(),
+                          static_cast<int>(interface_dofs[side].size()),
+                          MPI_DOUBLE,
+                          neighbors[side],
+                          this_mpi,  // send tag
+
+                          interface_data_receive[side].data(),
+                          static_cast<int>(interface_dofs[side].size()),
+                          MPI_DOUBLE,
+                          neighbors[side],
+                          neighbors[side],  // recv tag
+
+                          mpi_communicator,
+                          &mpi_status);
+
+            // Compute Ap and with it compute alpha
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            {
+              Ap[side][i] = (interface_data_send[side][i] +
+                              interface_data_receive[side][i]);
+            }
+            // interface_fe_function[side].block(2) = 0;
+            // assemble_rhs_star(interface_function,
+            //                   fe_face_values,
+            //                   fe_face_values_mortar_biot);
+            // solve_star();
+            // pcout << "Computing jacobi, side = " << side << " , i = " << i 
+            //       << " Ap[side][i] = " << Ap[side][i] << std::endl;
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+
+            jacobi_scaling[side][i] = inner_product_mortar(Ap, 
+                                                           interface_data, 
+                                                           fe_face_values_mortar);
+
+            // multiscale_basis[side][i] = solution_star;
+            ind += 1;
+            if (this_mpi == 1)
+            {
+              std::cout << "\r jacobi for S<e_i,e_i>, i = " << ind << " computed so far. on side " << side << std::flush;
+            }
+          }
+        }
+      }
+    }
     // if (this_mpi == 1)
     // {
     //   std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
@@ -912,6 +1069,65 @@ namespace mfe_biot
     //     if (neighbors[side] >= 0)
     //       std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side] << std::endl;
     // }
+  }
+
+  template <int dim>
+  void
+  MixedBiotProblem<dim>::compute_multiscale_basis(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                                    FEFaceValues<dim>                &fe_face_values,
+                                                    std::vector<Projector::Projector<dim>> &P_mortar)
+  {
+    unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+    // Quadrature<dim - 1> quad;
+    // quad = QGauss<dim - 1>(qdegree);
+    multiscale_basis.resize(n_faces_per_cell);
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      multiscale_basis[side].resize(interface_dofs[side].size());
+
+    if (this_mpi == 1)
+    {
+      std::cout << "Computing multiscale basis functions...\n"
+            << "interface_dofs_total.size() = " << interface_dofs_total.size() << std::endl;
+    }
+
+    unsigned int ind = 0;
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    {
+      for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+      {
+        if (neighbors[side] >= 0)
+        {
+          // interface_fe_function[side] = 0;
+          multiscale_basis[side][i].reinit(solution_star);
+          multiscale_basis[side][i] = 0;
+
+          for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+            interface_fe_function[face] = 0;
+
+          // interface_fe_function[side]                          = 0;
+          interface_fe_function[side][interface_dofs[side][i]] = 1.0;
+          
+
+          // interface_fe_function[side].block(2) = 0;
+          assemble_rhs_star(interface_function,
+                            fe_face_values);
+          solve_star();
+
+          multiscale_basis[side][i] = solution_star;
+          ind += 1;
+          if (this_mpi == 1)
+          {
+            std::cout << "\r ..." << ind
+                  << " basis functions computed so far." << std::flush;
+          }
+        }
+      }
+    }
+    if (this_mpi == 1)
+    {
+      std::cout << std::endl;
+    }
+    MPI_Barrier(mpi_communicator_biot);
   }
     
   // MixedBiotProblem::solvers
@@ -922,8 +1138,12 @@ namespace mfe_biot
     A_direct.initialize (system_matrix);
     A_direct.vmult(solution_bar, system_rhs_bar);
     pcout << "Solve bar completed." << std::endl;
+
+    if (std::isnan(solution_bar.l2_norm()))
+      std::cout << "Warning: NaN values in solution_bar!" << std::endl;
     
     // solution_bar *= avg_eigenvalue;
+    // solution_bar.print(std::cout);
   }
 
   template <int dim>
@@ -932,6 +1152,8 @@ namespace mfe_biot
     // TimerOutput::Scope t(computing_timer, "Solve star");
     A_direct.vmult (solution_star, system_rhs_star);
     // solution_star *= avg_eigenvalue; 
+    if (std::isnan(solution_star.l2_norm()))
+      std::cout << "Warning: NaN values in solution_star!" << std::endl;
   }
 
   //Functions for GMRES:-------------------
@@ -1894,7 +2116,17 @@ namespace mfe_biot
                                               update_quadrature_points |
                                               update_JxW_values);
 
-    
+    if (preconditioner_type != 0)
+      preconditioner(solution_bar_function,
+                    solution_star_function,
+                    interface_function,
+                    interface_data,
+                    interface_data_send,
+                    interface_data_receive,
+                    fe_face_values,
+                    fe_face_values_mortar,
+                    P_mortar,
+                    Ap);
     //Calculating r-norm(same as b-norm)-----
     double r_norm =0;
     double b_norm =0;
@@ -2156,8 +2388,8 @@ namespace mfe_biot
     std::ofstream output(
       "../output/paraview_data/sol_dd-" + Utilities::int_to_string(this_mpi)
       + "_" + Utilities::int_to_string(cycle, 2) 
-      + ".vtk");
-    data_out.write_vtk(output);
+      + ".vtu");
+    data_out.write_vtu(output);
   }
 
 
@@ -2968,8 +3200,6 @@ namespace mfe_biot
     get_interface_dofs();
 
     assemble_system();
-    if (preconditioner_type == 1)
-      preconditioner(cycle, preconditioner_type);
 
     solve_bar();
     if(n_processes == 1)

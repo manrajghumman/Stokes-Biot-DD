@@ -90,7 +90,7 @@ namespace mfe_biot
     double       avg_eigenvalue;
     std::vector<double> nbr_avg_eigenvalue;
     std::vector<std::vector<double>> jacobi_scaling;
-    const unsigned int preconditioner_type;
+    unsigned int preconditioner_type;
 
     // Projector::Projector <dim> P_coarse2fine;
     // Projector::Projector <dim> P_fine2coarse;
@@ -105,8 +105,16 @@ namespace mfe_biot
     void get_interface_dofs();
 
     void 
-    preconditioner(unsigned int cycle,
-                   unsigned int preconditioner_type);
+    preconditioner(std::unique_ptr<FEFunction> &solution_bar_function,
+                    std::unique_ptr<FEFunction> &solution_star_function,
+                    std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                    std::vector<std::vector<double>> &interface_data,
+                    std::vector<std::vector<double>> &interface_data_send,
+                    std::vector<std::vector<double>> &interface_data_receive,
+                    FEFaceValues<dim>                &fe_face_values,
+                    FEFaceValues<dim>                &fe_face_values_mortar,
+                    std::vector<Projector::Projector<dim>> &P_mortar,
+                    std::vector<std::vector<double>> &Ap);
 
     void solve_bar();
 
@@ -185,7 +193,10 @@ namespace mfe_biot
             std::vector<std::vector<std::vector<double>>>	&Q_side,
             std::vector<std::vector<double>>	            &H);
 
-    void compute_multiscale_basis();
+    void
+    compute_multiscale_basis(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                            FEFaceValues<dim>                &fe_face_values,
+                            std::vector<Projector::Projector<dim>> &P_mortar);
 
     void reset_mortars();
     // //For implementing GMRES
@@ -316,7 +327,7 @@ namespace mfe_biot
     std::vector<BlockVector<double>> solution_star_mortar_temp;
     AffineConstraints<double> constraints_mortar;
     bool multiscale_basis_flag;
-    std::vector<BlockVector<double>> multiscale_basis;
+    std::vector<std::vector<BlockVector<double>>>   multiscale_basis;
 
     // Output extra
     ConditionalOStream pcout;

@@ -165,7 +165,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd realeg1/stokes.prm");
+    param.read_parameters("../test function/dd test/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -1050,9 +1050,20 @@ namespace mfe_stokes
   // interface problem penalizing the difference in central eigenvalues of 
   // two neighbouring subdomain problems on their shared interface
   template <int dim>
-  void MixedStokesProblem<dim>::preconditioner(unsigned int cycle,
-                                               unsigned int preconditioner_type)
+  void MixedStokesProblem<dim>::preconditioner(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                                              std::unique_ptr<FEFunction>       &solution_bar_function,
+                                              std::unique_ptr<FEFunction>       &solution_star_function,
+                                              std::vector<std::vector<double>> &interface_data,
+                                              std::vector<std::vector<double>> &interface_data_send,
+                                              std::vector<std::vector<double>> &interface_data_receive,
+                                              FEFaceValues<dim>                &fe_face_values,
+                                              FEFaceValues<dim>                &fe_face_values_mortar,
+                                              FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                                              std::vector<Projector::Projector<dim>> &P_mortar,
+                                              std::vector<std::vector<double>> &Ap)
   {
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+
     if (preconditioner_type == 1)
     {
       double trace = 0.0;
@@ -1065,7 +1076,6 @@ namespace mfe_stokes
       }
       avg_eigenvalue = trace / system_matrix.m();
 
-      unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
       nbr_avg_eigenvalue.resize(n_faces_per_cell);
       jacobi_scaling.resize(n_faces_per_cell);
 
@@ -1099,13 +1109,201 @@ namespace mfe_stokes
           //   jacobi_scaling[side] /= std::pow(2, cycle);
         }
     }
-    // if (this_mpi == 2)
-    // {
-    //   std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
-    //   for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
-    //     if (neighbors[side] >= 0)
-    //       std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side] << std::endl;
-    // }
+    else if (preconditioner_type == 2) // implement jacobi preconditioner
+    {
+      //compute <Se_i,e_i> on the interface where e_i is the
+      // i-th interface basis function, and S is the interface
+      // operator, to use as a scaling in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      // to avoid jacobi scaling while 
+      // computing preconditioner action for each e_i
+      preconditioner_type = 0; 
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        jacobi_scaling[side].resize(interface_dofs[side].size());
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          if (neighbors[side] >= 0)
+          {
+            // interface_fe_function[side] = 0;
+            // multiscale_basis[side][i].reinit(solution_star);
+            // multiscale_basis[side][i] = 0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+            // // interface_fe_function[side]                          = 0;
+            // // interface_fe_function[side][interface_dofs[side][i]] = 1.0;
+            // interface_data[side][i] = 1.0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+            // interface_fe_function[side]                          = 0;
+            interface_fe_function[side][interface_dofs[side][i]] = 1.0;
+            
+            // interface_operator(interface_function,
+            //                   solution_bar_function,
+            //                   solution_star_function,
+            //                   interface_data,
+            //                   interface_data_send,
+            //                   interface_data_receive,
+            //                   fe_face_values,
+            //                   fe_face_values_mortar,
+            //                   fe_face_values_mortar_biot,
+            //                   P_mortar,
+            //                   Ap);
+
+            // interface operator has to be done explitly ow wrong info sent and received
+            // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+            //   for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            //     interface_fe_function[side][interface_dofs[side][i]] = 
+            //       interface_data[side][i];
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  solution_star.block(0).sadd(
+                    1.0,
+                    interface_fe_function[face][interface_dofs[face][j]],
+                    multiscale_basis[face][j].block(0));
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values,
+                                fe_face_values_mortar_biot);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(interface_function,
+                                    solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    fe_face_values_mortar_biot,
+                                    P_mortar);
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {                   
+                // Create vector of u\dot n to send
+                if (neighbor_type[face] == 1) //Stokes-Stokes interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                    interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                }
+                else if (neighbor_type[face] == 2) //Stokes-Biot interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    if (interface_dofs[face][j] < n_stress_mortar) // displacement lagrange multiplier test space
+                      interface_data_send[face][j] = solution_star_mortar[face][interface_dofs[face][j]];
+                    else // pressure lagrange multiplier test space
+                      interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                  }
+                }
+              }
+
+            MPI_Sendrecv(interface_data_send[side].data(),
+                          static_cast<int>(interface_dofs[side].size()),
+                          MPI_DOUBLE,
+                          neighbors[side],
+                          this_mpi,  // send tag
+
+                          interface_data_receive[side].data(),
+                          static_cast<int>(interface_dofs[side].size()),
+                          MPI_DOUBLE,
+                          neighbors[side],
+                          neighbors[side],  // recv tag
+
+                          mpi_communicator,
+                          &mpi_status);
+
+            // MPI_Send(&interface_data_send[side][0],
+            //           interface_dofs[side].size(),
+            //           MPI_DOUBLE,
+            //           neighbors[side],
+            //           this_mpi,
+            //           mpi_communicator);
+            // MPI_Recv(&interface_data_receive[side][0],
+            //           interface_dofs[side].size(),
+            //           MPI_DOUBLE,
+            //           neighbors[side],
+            //           neighbors[side],
+            //           mpi_communicator,
+            //           &mpi_status);
+
+            // Compute Ap and with it compute alpha
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                if (face == side)
+                {
+                  for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+                  {
+                    Ap[face][j] = (interface_data_send[face][j] +
+                                    interface_data_receive[face][j]);
+                  }
+                }
+                else
+                {
+                  for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+                    Ap[face][j] = interface_data_send[face][j];
+                }
+              }
+            // interface_fe_function[side].block(2) = 0;
+            // assemble_rhs_star(interface_function,
+            //                   fe_face_values,
+            //                   fe_face_values_mortar_biot);
+            // solve_star();
+            // pcout << "Computing jacobi, side = " << side << " , i = " << i 
+            //       << " Ap[side][i] = " << Ap[side][i] << std::endl;
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+
+            jacobi_scaling[side][i] = inner_product_mortar(Ap, 
+                                                           interface_data, 
+                                                           fe_face_values_mortar, 
+                                                           fe_face_values_mortar_biot);
+
+            // multiscale_basis[side][i] = solution_star;
+            ind += 1;
+            // if (this_mpi == 1)
+            // {
+            //   std::cout << "\r jacobi for S<e_i,e_i>, i = " << ind << " computed so far. on side " << side << std::flush;
+            // }
+          }
+        }
+      }
+      preconditioner_type = 2;
+    }
+    if (this_mpi == 0)
+    {
+      // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
+      for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
+        if (neighbors[side] >= 0)
+          for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
+            std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side][i] << std::endl;
+    }
   }
 
   template <int dim>
@@ -1116,8 +1314,8 @@ namespace mfe_stokes
                                                     std::vector<Projector::Projector<dim>> &P_mortar)
   {
     unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
-    Quadrature<dim - 1> quad;
-    quad = QGauss<dim - 1>(qdegree);
+    // Quadrature<dim - 1> quad;
+    // quad = QGauss<dim - 1>(qdegree);
     multiscale_basis.resize(n_faces_per_cell);
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       multiscale_basis[side].resize(interface_dofs[side].size());
@@ -1482,7 +1680,7 @@ namespace mfe_stokes
           }
         }
 
-        if (preconditioner_type == 1) //Jacobi scaling
+        if (preconditioner_type != 0) //Jacobi scaling
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
             r[side][i] /= jacobi_scaling[side][i];
@@ -2482,6 +2680,18 @@ namespace mfe_stokes
                               fe_face_values_mortar_biot,
                               P_mortar);
     }
+    if (preconditioner_type != 0)
+      preconditioner(interface_function,
+                      solution_bar_function,
+                      solution_star_function,
+                      interface_data,
+                      interface_data_send,
+                      interface_data_receive,
+                      fe_face_values,
+                      fe_face_values_mortar,
+                      fe_face_values_mortar_biot,
+                      P_mortar,
+                      Ap);
     //Calculating r-norm(same as b-norm)-----
     double r_norm =0;
     double b_norm =0;
@@ -3005,13 +3215,17 @@ namespace mfe_stokes
                             solution_names,
                             DataOut<dim>::type_dof_data,
                             data_component_interpretation);
+
+    StressPostprocessor stress_postprocessor;
+    data_out.add_data_vector(solution, stress_postprocessor);
+
     data_out.build_patches();
 
     std::ofstream output(
       "../output/paraview_data/sol_dd-" + Utilities::int_to_string(this_mpi)
       + "_" + Utilities::int_to_string(cycle, 2) 
-      + ".vtk");
-    data_out.write_vtk(output);
+      + ".vtu");
+    data_out.write_vtu(output);
   }
 
   template <int dim>
@@ -3584,8 +3798,6 @@ namespace mfe_stokes
     get_interface_dofs();
 
     assemble_system();
-    if (preconditioner_type == 1)
-      preconditioner(cycle, preconditioner_type);
     solve_bar();
     if(n_processes == 1)
       solution = solution_bar;
