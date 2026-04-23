@@ -1611,9 +1611,29 @@ namespace mfe_stokes
           Ap[side][i] = (interface_data_send[side][i] +
                           interface_data_receive[side][i]);
         }
+        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)    
+        //   if (this_mpi == 0)
+        //   {
+        //     if (preconditioner_type != 0)
+        //     std::cout << "jacobi_scaling[" << side << "][" << i << "] = " << jacobi_scaling[side][i] 
+        //               << ". before scaling, Ap[" << side << "][" << i << "] = " << Ap[side][i] << std::endl;
+        //     else          
+        //       std::cout << "Ap[" << side << "][" << i << "] = " << Ap[side][i] << std::endl;
+        //   }
         if (preconditioner_type != 0) //Jacobi scaling
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             Ap[side][i] /= jacobi_scaling[side][i];
+
+        // if (preconditioner_type != 0) //Jacobi scaling
+          // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)    
+          //   if (this_mpi == 0)
+          //   {
+          //     if (preconditioner_type != 0)
+          //     std::cout << "jacobi_scaling[" << side << "][" << i << "] = " << jacobi_scaling[side][i] 
+          //               << ". After scaling, Ap[" << side << "][" << i << "] = " << Ap[side][i] << std::endl;
+          //     else          
+          //       std::cout << "Ap[" << side << "][" << i << "] = " << Ap[side][i] << std::endl;
+          //   }
       }
   }
 
@@ -1761,6 +1781,17 @@ namespace mfe_stokes
             r[side][i] /= jacobi_scaling[side][i];
             r_b[side][i] /= jacobi_scaling[side][i];
           }
+        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        //   if (this_mpi == 0)
+        //   {
+        //     if (preconditioner_type != 0)
+        //       std::cout << "jacobi_scaling[" << side << "][" << i << "] = " << jacobi_scaling[side][i]
+        //                 << ". After scaling, r[side][" << side << "][" << i << "] = " << r[side][i] 
+        //                 << ", r_b[side][" << side << "][" << i << "] = " << r_b[side][i] << std::endl;
+        //     else
+        //       std::cout << "r[side][" << side << "][" << i << "] = " << r[side][i] 
+        //                 << ", r_b[side][" << side << "][" << i << "] = " << r_b[side][i] << std::endl;          
+        //   }
       }
 
       r_norm = inner_product_mortar(r, r, fe_face_values_mortar, fe_face_values_mortar_biot);
@@ -2816,6 +2847,15 @@ namespace mfe_stokes
     double r_norm =0;
     double b_norm =0;
     //computing the residual r=b-Ax
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        std::fill(interface_data[side].begin(), interface_data[side].end(), initial_val);
+        interface_fe_function[side] = 0;
+        std::fill(interface_data_send[side].begin(), interface_data_send[side].end(), 0.0);
+        std::fill(interface_data_receive[side].begin(), interface_data_receive[side].end(), 0.0);
+        std::fill(Ap[side].begin(), Ap[side].end(), 0.0);
+      }
     compute_residual(interface_function,
                      solution_bar_function,
                      solution_star_function,

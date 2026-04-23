@@ -2227,6 +2227,15 @@ namespace mfe_biot
     double r_norm =0;
     double b_norm =0;
     //computing the residual r=b-Ax
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+      {
+        std::fill(interface_data[side].begin(), interface_data[side].end(), initial_val);
+        interface_fe_function[side] = 0;
+        std::fill(interface_data_send[side].begin(), interface_data_send[side].end(), 0.0);
+        std::fill(interface_data_receive[side].begin(), interface_data_receive[side].end(), 0.0);
+        std::fill(Ap[side].begin(), Ap[side].end(), 0.0);
+      }
     compute_residual(solution_bar_function,
                      solution_star_function,
                      interface_function,
