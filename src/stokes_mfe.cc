@@ -1231,14 +1231,14 @@ namespace mfe_stokes
                 }
               }
 
-            MPI_Sendrecv(interface_data_send[side].data(),
-                          static_cast<int>(interface_dofs[side].size()),
+            MPI_Sendrecv(&interface_data_send[side][i],
+                          1,
                           MPI_DOUBLE,
                           neighbors[side],
                           this_mpi,  // send tag
 
-                          interface_data_receive[side].data(),
-                          static_cast<int>(interface_dofs[side].size()),
+                          &interface_data_receive[side][i],
+                          1,
                           MPI_DOUBLE,
                           neighbors[side],
                           neighbors[side],  // recv tag
@@ -1260,10 +1260,12 @@ namespace mfe_stokes
             //           mpi_communicator,
             //           &mpi_status);
 
-            // Compute Ap and with it compute alpha
-            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
-              Ap[side][j] = (interface_data_send[side][j] +
-                                      interface_data_receive[side][j]);
+            // // Compute Ap and with it compute alpha
+            // for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+            //   Ap[side][j] = (interface_data_send[side][j] +
+            //                           interface_data_receive[side][j]);
+            Ap[side][i] = (interface_data_send[side][i] +
+                                      interface_data_receive[side][i]);                          
             // for (unsigned int face = 0; face < n_faces_per_cell; ++face)
             //   if (neighbors[face] >= 0)
             //   {
@@ -1288,9 +1290,9 @@ namespace mfe_stokes
             // solve_star();
             // pcout << "Computing jacobi, side = " << side << " , i = " << i 
             //       << " Ap[side][i] = " << Ap[side][i] << std::endl;
-            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
-              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-                interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+            // for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+            //   for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+            //     interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
 
             // if (side == 1 && this_mpi == 0)
             // {
@@ -1503,10 +1505,13 @@ namespace mfe_stokes
   	for(int i=k; i>=0; i--)
     {
   		y[i]= beta[i]/H[i][i];
-  		for(int j = i+1; j<=k-1; j++)
-      {
-  			y[i]-= H[j][i]*y[j]/H[i][i];
-  		}
+      if (k == 0)
+        y[0] = beta[0]/H[0][0];
+      else
+        for(int j = i+1; j<=k-1; j++)
+        {
+          y[i]-= H[j][i]*y[j]/H[i][i];
+        }
   	}
   }
 
@@ -1692,7 +1697,7 @@ namespace mfe_stokes
 
     //for computing rhs b for
     // Ax = b in interface problem below
-    solve_bar();
+    // solve_bar();
 
 
     //for computing the inner products
@@ -2893,6 +2898,7 @@ namespace mfe_stokes
 
     unsigned int k_counter = 0; //same as the count of the iteration
     gmres_iteration = 0;
+    std::vector<double> y;
     while (k_counter < maxiter)
     {
       gmres_iteration++;
@@ -2929,13 +2935,57 @@ namespace mfe_stokes
       //saving the combined error at each iteration
       e_all_iter.push_back(combined_error_iter);
       
-      residual = combined_error_iter;
+      if (preconditioner_type == 0)
+        residual = combined_error_iter;
+      else // recompute the actual residual
+      {
+        //Calculating the result from H ,Q_side and Beta
+        //Finding y which has size k_counter using back sove function
+        y.resize(k_counter+1,0);
+        assert(Beta.size()==k_counter+2); // gives error if exceed maxiter, do break if size is too much and going to exceed maxiter
+        back_solve(H,Beta,y,k_counter);
+
+        // reset lambda to zero, x = 0, lambda = x + Q*y
+        for (int side = 0; side < n_faces_per_cell; ++side)
+          if (neighbors[side] >= 0)
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+              lambda[side][i] = initial_val;
+        //updating X(lambda) to get the final lambda value before solving the final star problem
+        for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+          if (neighbors[side] >= 0)
+            for (unsigned int i = 0; i < interface_data[side].size(); ++i)
+              for(unsigned int j=0; j<=k_counter; ++j)
+                lambda[side][i] += Q_side[side][j][i]*y[j];
+        
+        // do not scale while computing the residual for the exit criterion, 
+        // otherwise it will be wrong. We can still use preconditioner to 
+        // compute the residual but we should not scale it and just use the 
+        // norm of r to compute the residual for exit criterion. This is 
+        // because the preconditioner changes the norm and we want to check 
+        // the actual residual in the original norm for convergence.
+        unsigned int tmp_preconditioner_type = preconditioner_type;
+        preconditioner_type = 0; 
+        compute_residual(interface_function,
+                        solution_bar_function,
+                        solution_star_function,
+                        fe_face_values,
+                        fe_face_values_mortar,
+                        fe_face_values_mortar_biot,
+                        lambda,
+                        P_mortar,
+                        r,
+                        r_norm,
+                        r_b,
+                        b_norm);
+        residual = r_norm/b_norm; // relative residual for exit criterion
+        preconditioner_type = tmp_preconditioner_type;
+      }
 
       pcout << "\r  ..." << gmres_iteration
-            << " iterations completed, (residual = " << combined_error_iter
+            << " iterations completed, (residual = " << residual
             << ")..." << std::flush;
       // Exit criterion
-      if (combined_error_iter < tol)
+      if (residual < tol)
       {
         pcout << "\n  GMRES converges in " << gmres_iteration << " iterations!\n";
         break;
@@ -2964,20 +3014,25 @@ namespace mfe_stokes
       k_counter++;
     }//end of the while loop(k_counter<max iteration)
 
-    //Calculating the result from H ,Q_side and Beta
-    //Finding y which has size k_counter using back sove function
-    std::vector<double> y(k_counter+1,0);
-    // std::cout << "\n this_mpi: " << this_mpi << " size of Beta: " << Beta.size() << " k_counter: " << k_counter << "\n";
-    // assert(Beta.size()==k_counter+2); // gives error if exceed maxiter, do break if size is too much and going to exceed maxiter
-    back_solve(H,Beta,y,k_counter);
-    
-    //updating X(lambda) to get the final lambda value 
-    //lambda = x_initial + Q*y before solving the final star problem
-    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-      if (neighbors[side] >= 0)
-        for (unsigned int i = 0; i < interface_data[side].size(); ++i)
-          for(unsigned int j=0; j<=k_counter; ++j)
-            lambda[side][i] += Q_side[side][j][i]*y[j];
+    if (preconditioner_type == 0)
+    {
+      //Calculating the result from H ,Q_side and Beta
+      //Finding y which has size k_counter using back sove function
+      // std::vector<double> y(k_counter+1,0);
+      y.resize(k_counter+1,0);
+      // std::cout << "\n this_mpi: " << this_mpi << " size of Beta: " << Beta.size() << " k_counter: " << k_counter << "\n";
+      // assert(Beta.size()==k_counter+2); // gives error if exceed maxiter, do break if size is too much and going to exceed maxiter
+      back_solve(H,Beta,y,k_counter);
+
+      //updating X(lambda) to get the final lambda value 
+      //lambda = x_initial + Q*y before solving the final star problem
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+          for (unsigned int i = 0; i < interface_data[side].size(); ++i)
+            for(unsigned int j=0; j<=k_counter; ++j)
+              lambda[side][i] += Q_side[side][j][i]*y[j];
+    }
+            
 
 
     //we can replace interface_data here and just add lambda(skip one step below)
@@ -3592,7 +3647,7 @@ namespace mfe_stokes
     unsigned int h_local = 0;
 
     if (it != initial_refinement.end()) // check if the vector is not empty
-      h_local = (*it) * std::pow(2, cycle+1); // get the value of the minimum element, scale according to domain size
+      h_local = (*it) * std::pow(2, cycle); // get the value of the minimum element, scale according to domain size
     else
       AssertThrow(false, ExcMessage("Error: initial_refinement vector is empty."));
     

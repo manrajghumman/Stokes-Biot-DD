@@ -49,6 +49,10 @@ namespace mfe_biot
 
     void run(unsigned int cycle);
 
+    void solve_bar();
+
+    void solve_star();
+
     void
     output_dof_results(const unsigned int cycle) const;
 
@@ -115,10 +119,6 @@ namespace mfe_biot
                     FEFaceValues<dim>                &fe_face_values_mortar,
                     std::vector<Projector::Projector<dim>> &P_mortar,
                     std::vector<std::vector<double>> &Ap);
-
-    void solve_bar();
-
-    void solve_star();
 
     void 
     assemble_rhs_star(std::vector<std::unique_ptr<FEFunction>> &interface_function,

@@ -79,7 +79,7 @@ namespace mfe_stokes
 
     void
     solve_bar();
-
+                  
     void
     solve_star();
 

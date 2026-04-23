@@ -4,17 +4,17 @@
 # Global Grid and Discretization 
 
 set dim          = 2
-set refinements  = 5
+set refinements  = 6
 
 #initial grid for 2D is m x n or 3D m x n x l, enter below m, n or m, n, l
 
 set initial_grid_2D  = 2, 2
 set initial_grid_3D  = 1, 1, 1
 
-set initial_refinement_2D = 2, 2 | 2, 2; 2, 2 | 2, 2
+set initial_refinement_2D = 2, 2 | 2, 2 ; 2, 2 | 2, 2
 set initial_refinement_3D = 1, 1, 1
 
-set initial_refinement_mortar_2D = 2, 2 | 2, 2; 2, 2 | 2, 2
+set initial_refinement_mortar_2D = 2, 2 | 2, 2 ; 2, 2 | 2, 2
 
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
@@ -72,6 +72,6 @@ end
 
 subsection Solver
 	set max_iter             = 1000
-	set tol                  = 1e-8
+	set tol                  = 1e-7
 	set preconditioner_type  = 2
 end

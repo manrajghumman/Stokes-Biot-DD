@@ -331,6 +331,7 @@ namespace dd_stokes_biot
       {
         if (subdomain_type == 1)
         {
+          // stokes->solve_bar();
           stokes->output_results(cycle);
           stokes->output_dof_results(cycle);
           stokes->compute_errors(cycle);
@@ -339,6 +340,7 @@ namespace dd_stokes_biot
         }
         else if (subdomain_type == 2)
         {
+          // biot->solve_bar();
           biot->output_results(cycle);
           biot->output_dof_results(cycle);
           biot->compute_errors(cycle);
