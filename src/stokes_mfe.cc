@@ -1305,7 +1305,7 @@ namespace mfe_stokes
               //                                               fe_face_values_mortar,
               //                                               fe_face_values_mortar_biot);
             // else
-              jacobi_scaling[side][i] = Ap[side][i];
+              jacobi_scaling[side][i] = abs(Ap[side][i]);
             
             // if (this_mpi == 0)
             // {

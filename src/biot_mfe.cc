@@ -1064,7 +1064,7 @@ namespace mfe_biot
             //   std::cout << std::endl;
             // }
             // if (this_mpi == 0 && side == 1)
-              jacobi_scaling[side][i] = Ap[side][i];
+              jacobi_scaling[side][i] = abs(Ap[side][i]);
             // else
             //   jacobi_scaling[side][i] = Ap[side][i];                                          
 
@@ -1343,10 +1343,6 @@ namespace mfe_biot
               interface_data_send[side][i] = - solution_star_mortar[side][interface_dofs[side][i]];
           }    
         // }   
-        
-        if (preconditioner_type != 0) //Jacobi scaling
-          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            interface_data_send[side][i] /= jacobi_scaling[side][i];
 
         MPI_Sendrecv(interface_data_send[side].data(),
                       interface_dofs[side].size(),
@@ -1369,6 +1365,9 @@ namespace mfe_biot
           Ap[side][i] = (interface_data_send[side][i] +
                           interface_data_receive[side][i]);
         }
+        if (preconditioner_type != 0) //Jacobi scaling
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            Ap[side][i] /= jacobi_scaling[side][i];
       }
   }
 
@@ -1486,13 +1485,6 @@ namespace mfe_biot
           }         
         // }
 
-        if (preconditioner_type != 0) //Jacobi scaling
-          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          {
-            r[side][i] /= jacobi_scaling[side][i];
-            r_b[side][i] /= jacobi_scaling[side][i];
-          }
-
         MPI_Sendrecv(r_b[side].data(),
                     r_b[side].size(),
                     MPI_DOUBLE,
@@ -1527,6 +1519,12 @@ namespace mfe_biot
           {
             r[side][i] += r_receive_buffer[i];
             r_b[side][i] += r_b_receive_buffer[i];
+          }
+        if (preconditioner_type != 0) //Jacobi scaling
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          {
+            r[side][i] /= jacobi_scaling[side][i];
+            r_b[side][i] /= jacobi_scaling[side][i];
           }
       }
       r_norm = inner_product_mortar(r, r, fe_face_values_mortar);
