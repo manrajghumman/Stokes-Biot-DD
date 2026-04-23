@@ -1042,23 +1042,9 @@ namespace mfe_biot
             //           &mpi_status);
 
             // Compute Ap and with it compute alpha
-            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
-              if (neighbors[face] >= 0)
-              {
-                if (face == side)
-                {
-                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-                  {
-                    Ap[face][j] = (interface_data_send[face][j] +
-                                    interface_data_receive[face][j]);
-                  }
-                }
-                else
-                {
-                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-                    Ap[face][j] = interface_data_send[face][j];
-                }
-              }
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              Ap[side][j] = (interface_data_send[side][j] +
+                                      interface_data_receive[side][j]);
             // interface_fe_function[side].block(2) = 0;
             // assemble_rhs_star(interface_function,
             //                   fe_face_values,
@@ -1078,9 +1064,7 @@ namespace mfe_biot
             //   std::cout << std::endl;
             // }
             // if (this_mpi == 0 && side == 1)
-              jacobi_scaling[side][i] = inner_product_mortar(Ap, 
-                                                            interface_data, 
-                                                            fe_face_values_mortar);
+              jacobi_scaling[side][i] = Ap[side][i];
             // else
             //   jacobi_scaling[side][i] = Ap[side][i];                                          
 
