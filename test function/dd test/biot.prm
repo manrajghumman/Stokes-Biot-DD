@@ -13,7 +13,7 @@ subsection RHS vector
     set Variable names = x, y
 end
 subsection RHS scalar 
-    set Function constants  = s0=1, alpha_BJS=1.0
+    set Function constants  = s0=1.0, alpha_BJS=1.0
     set Function expression = (2/3) + s0*6 + (8*pi*pi+s0)*sin(pi*x)*cos(2*pi*y)-pi*pi*cos(pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)
     set Variable names      = x, y
 end

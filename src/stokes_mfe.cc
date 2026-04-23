@@ -305,6 +305,15 @@ namespace mfe_stokes
     mortar_vec.block(1).reinit(n_p_mortar);
     mortar_vec.collect_sizes();
     mortar_vec = 0;
+
+    // if (this_mpi == 0)
+    // {
+    //   std::cout << "n_blocks = " << mortar_vec.n_blocks() << std::endl;
+    //   for (unsigned int b = 0; b < mortar_vec.n_blocks(); ++b)
+    //     std::cout << "block " << b << " size = "
+    //               << mortar_vec.block(b).size() << std::endl;
+    // }
+    // std::cout << "total dofs = " << dof_handler_mortar.n_dofs() << std::endl;
   }
 
   // MixedStokesProblemDD - setup system for biot
@@ -1176,10 +1185,10 @@ namespace mfe_stokes
               for (unsigned int face = 0; face < n_faces_per_cell; ++face)
                 for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
                 {
-                  solution_star.block(0).sadd(
+                  solution_star.sadd(
                     1.0,
                     interface_fe_function[face][interface_dofs[face][j]],
-                    multiscale_basis[face][j].block(0));
+                    multiscale_basis[face][j]);
                   // j += 1;
                 }
             }
@@ -1252,23 +1261,26 @@ namespace mfe_stokes
             //           &mpi_status);
 
             // Compute Ap and with it compute alpha
-            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
-              if (neighbors[face] >= 0)
-              {
-                if (face == side)
-                {
-                  for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
-                  {
-                    Ap[face][j] = (interface_data_send[face][j] +
-                                    interface_data_receive[face][j]);
-                  }
-                }
-                else
-                {
-                  for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
-                    Ap[face][j] = interface_data_send[face][j];
-                }
-              }
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              Ap[side][j] = (interface_data_send[side][j] +
+                                      interface_data_receive[side][j]);
+            // for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+            //   if (neighbors[face] >= 0)
+            //   {
+            //     if (face == side)
+            //     {
+            //       for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+            //       {
+            //         Ap[face][j] = (interface_data_send[face][j] +
+            //                         interface_data_receive[face][j]);
+            //       }
+            //     }
+            //     else
+            //     {
+            //       for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+            //         Ap[face][j] = interface_data_send[face][j];
+            //     }
+            //   }
             // interface_fe_function[side].block(2) = 0;
             // assemble_rhs_star(interface_function,
             //                   fe_face_values,
@@ -1280,10 +1292,38 @@ namespace mfe_stokes
               for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
                 interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
 
-            jacobi_scaling[side][i] = inner_product_mortar(Ap, 
-                                                           interface_data, 
-                                                           fe_face_values_mortar, 
-                                                           fe_face_values_mortar_biot);
+            // if (side == 1 && this_mpi == 0)
+            // {
+            //   std::cout << "interface_data on side " << side << " for i = " << i << " is: ";
+            //   for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+            //     std::cout << interface_data[side][j] << " ";
+            //   std::cout << std::endl;
+            // }
+            // if (this_mpi == 0 && side == 1)
+              // jacobi_scaling[side][i] = inner_product_mortar(Ap,
+              //                                               interface_data,
+              //                                               fe_face_values_mortar,
+              //                                               fe_face_values_mortar_biot);
+            // else
+              jacobi_scaling[side][i] = Ap[side][i];
+            
+            // if (this_mpi == 0)
+            // {
+            //   std::cout << "this_mpi = " << this_mpi;
+            //   for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+            //     std::cout << ", Ap[" << side << "][" << j << "] = " << Ap[side][j]; 
+            //   std::cout << ", jacobi_scaling[" << side << "][" << i << "] = " << jacobi_scaling[side][i] << std::endl;
+            // }
+            // MPI_Barrier(mpi_communicator);
+            // if (this_mpi == 1)
+            // {
+            //   std::cout << "this_mpi = " << this_mpi;
+            //   for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+            //     std::cout << ", Ap[" << side << "][" << j << "] = " << Ap[side][j]; 
+            //   std::cout << ", jacobi_scaling[" << side << "][" << i << "] = " << jacobi_scaling[side][i] << std::endl;
+            // }
+            // else
+            //   jacobi_scaling[side][i] = Ap[side][i];                                          
 
             // multiscale_basis[side][i] = solution_star;
             ind += 1;
@@ -1296,14 +1336,14 @@ namespace mfe_stokes
       }
       preconditioner_type = 2;
     }
-    if (this_mpi == 0)
-    {
-      // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
-      for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
-        if (neighbors[side] >= 0)
-          for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
-            std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side][i] << std::endl;
-    }
+    // if (this_mpi == 0)
+    // {
+    //   // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
+    //   for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
+    //     if (neighbors[side] >= 0)
+    //       for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
+    //         std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side][i] << std::endl;
+    // }
   }
 
   template <int dim>
@@ -1550,10 +1590,6 @@ namespace mfe_stokes
           }
         }
 
-        if (preconditioner_type != 0) //Jacobi scaling
-          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            interface_data_send[side][i] /= jacobi_scaling[side][i];
-
         MPI_Sendrecv(interface_data_send[side].data(),
                       static_cast<int>(interface_dofs[side].size()),
                       MPI_DOUBLE,
@@ -1575,6 +1611,9 @@ namespace mfe_stokes
           Ap[side][i] = (interface_data_send[side][i] +
                           interface_data_receive[side][i]);
         }
+        if (preconditioner_type != 0) //Jacobi scaling
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            Ap[side][i] /= jacobi_scaling[side][i];
       }
   }
 
@@ -1680,13 +1719,6 @@ namespace mfe_stokes
           }
         }
 
-        if (preconditioner_type != 0) //Jacobi scaling
-          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-          {
-            r[side][i] /= jacobi_scaling[side][i];
-            r_b[side][i] /= jacobi_scaling[side][i];
-          }
-
         MPI_Sendrecv(r_b[side].data(),
                     r_b[side].size(),
                     MPI_DOUBLE,
@@ -1719,15 +1751,31 @@ namespace mfe_stokes
                     &mpi_status);
 
         for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          r[side][i] += r_receive_buffer[i];
+          r_b[side][i] += r_b_receive_buffer[i];
+        }
+        if (preconditioner_type != 0) //Jacobi scaling
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
-            r[side][i] += r_receive_buffer[i];
-            r_b[side][i] += r_b_receive_buffer[i];
+            r[side][i] /= jacobi_scaling[side][i];
+            r_b[side][i] /= jacobi_scaling[side][i];
           }
       }
 
       r_norm = inner_product_mortar(r, r, fe_face_values_mortar, fe_face_values_mortar_biot);
       b_norm = inner_product_mortar(r_b, r_b, fe_face_values_mortar, fe_face_values_mortar_biot);
-
+    // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+    // {
+    //   r_norm_side[side] = vect_norm(r[side]);
+    //   r_b_norm_side[side] = vect_norm(r_b[side]);
+    // }
+    // for(unsigned int side=0; side<n_faces_per_cell;++side)
+    //   if (neighbors[side] >= 0)
+    //   {
+    //     r_norm+=r_norm_side[side]*r_norm_side[side];
+    //     b_norm+=r_b_norm_side[side]*r_b_norm_side[side];
+    //   }
     // //Calculating r-norm(same as b-norm)-----
     double r_norm_buffer =0;
     double b_norm_buffer =0;
@@ -1824,27 +1872,31 @@ namespace mfe_stokes
               {
                 for (unsigned int k = 0; k < dofs_per_cell; ++k)
                 {
-                  if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                                local_dof_indices[k]) != interface_dofs[side].end())
-                  {                      
+                  // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                  //               local_dof_indices[k]) != interface_dofs[side].end())
+                  // {                      
                     phi_mu[k]  = fe_face_values_mortar[velocities].value(k, q_point)
                                 * get_normal_direction<dim>(side); // multiply by normal direction to get correct sign
-                  }
-                  else
-                    phi_mu[k] = 0;
+                  // }
+                  // else
+                  //   phi_mu[k] = 0;
                 }
 
                 for (unsigned int i = 0; i < dofs_per_cell; ++i)
                 {
-                  for (unsigned int s = 0; s < dim; ++s)
-                  {
-                    solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                      (phi_mu[i][s] * bar_values[s][q_point]) // <mu(x_q), u_bar(x_q)>
-                        * fe_face_values_mortar.JxW(q_point); // dx
+                  if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                local_dof_indices[i]) != interface_dofs[side].end())
+                  {  
+                    for (unsigned int s = 0; s < dim; ++s)
+                    {
+                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                          (phi_mu[i][s] * bar_values[s][q_point]) // <mu(x_q), u_bar(x_q)>
+                            * fe_face_values_mortar.JxW(q_point); // dx
 
-                    solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                      (phi_mu[i][s] * star_values[s][q_point])  // <mu(x_q), u_star(x_q)>
-                        * fe_face_values_mortar.JxW(q_point);   // dx
+                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                          (phi_mu[i][s] * star_values[s][q_point])  // <mu(x_q), u_star(x_q)>
+                            * fe_face_values_mortar.JxW(q_point);   // dx
+                    }
                   }
                 }
               }
@@ -1989,9 +2041,9 @@ namespace mfe_stokes
                   }                                                   
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                   {
-                    if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                                local_dof_indices[k]) != interface_dofs[side].end())
-                    {
+                    // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                    //             local_dof_indices[k]) != interface_dofs[side].end())
+                    // {
                       for (unsigned int s = 0; s < dim; ++s)
                         phi_eta[k][s] = fe_face_values_mortar_biot[stresses[s]].value (k, q_point)
                                       * fe_face_values_mortar_biot.normal_vector(q_point)
@@ -2000,55 +2052,59 @@ namespace mfe_stokes
                       phi_p[k] = fe_face_values_mortar_biot[velocity].value (k, q_point)
                                 * fe_face_values_mortar_biot.normal_vector(q_point)
                                 * get_normal_direction<dim>(side);
-                    }
-                    else
-                    {
-                      for (unsigned int s = 0; s < dim; ++s)
-                        phi_eta[k][s] = 0;
-                      phi_p[k] = 0;
-                    }
+                    // }
+                    // else
+                    // {
+                    //   for (unsigned int s = 0; s < dim; ++s)
+                    //     phi_eta[k][s] = 0;
+                    //   phi_p[k] = 0;
+                    // }
                   }
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                   {
                     // contribution from the coupling term in the 
                     // displacement lagrange multiplier test function
-                    for (unsigned int s = 0; s < dim; ++s)
+                    if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                local_dof_indices[i]) != interface_dofs[side].end())
                     {
-                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                        - (const_bjs * bar_values[s][q_point] * tangent_vector[s]
-                          * phi_eta[i] * tangent_vector) // - c_bjs<u_bar_f * t_f, mu_d * t_f>
-                        * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                      for (unsigned int s = 0; s < dim; ++s)
+                      {
+                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                          - (const_bjs * bar_values[s][q_point] * tangent_vector[s]
+                            * phi_eta[i] * tangent_vector) // - c_bjs<u_bar_f * t_f, mu_d * t_f>
+                          * fe_face_values_mortar_biot.JxW(q_point);    // dx
 
-                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                      - (const_bjs * star_values[s][q_point] * tangent_vector[s]
-                          * phi_eta[i] * tangent_vector) // - c_bjs<u_star_f * t_f, mu_d * t_f>
+                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                        - (const_bjs * star_values[s][q_point] * tangent_vector[s]
+                            * phi_eta[i] * tangent_vector) // - c_bjs<u_star_f * t_f, mu_d * t_f>
+                          * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                      }
+                      solution_star_mortar_temp[side][local_dof_indices[i]] +=
+                        ((- phi_eta[i] * fe_face_values_mortar_biot.normal_vector(q_point) 
+                          * lambda_p) // <phi_eta(x_q) * n_p, lambda_p> the extra negative sign as n_p = -n_f
+                          + const_bjs * (lambda_d * tangent_vector) 
+                          * (phi_eta[i] * tangent_vector)) // c_bjs<lambda_d * t_f,  phi_eta * t_f>
+                        * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                      
+                      // contribution from the coupling term in the 
+                      // pressure lagrange multiplier test function
+                      for (unsigned int s = 0; s < dim; ++s)
+                      {
+                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                          ((bar_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
+                            * phi_p[i])   // <u_bar * n, mu_p>
+                          * fe_face_values_mortar_biot.JxW(q_point);    // dx
+
+                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                          ((star_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
+                            * phi_p[i])   // <u_star * n, mu_p>
+                          * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                      }
+                      solution_star_mortar_temp[side][local_dof_indices[i]] +=
+                      - ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
+                        * phi_p[i]) // <lambda_d * n, mu_p> extra negative sign as n_p = -n_f
                         * fe_face_values_mortar_biot.JxW(q_point);    // dx
                     }
-                    solution_star_mortar_temp[side][local_dof_indices[i]] +=
-                      ((- phi_eta[i] * fe_face_values_mortar_biot.normal_vector(q_point) 
-                        * lambda_p) // <phi_eta(x_q) * n_p, lambda_p> the extra negative sign as n_p = -n_f
-                        + const_bjs * (lambda_d * tangent_vector) 
-                        * (phi_eta[i] * tangent_vector)) // c_bjs<lambda_d * t_f,  phi_eta * t_f>
-                      * fe_face_values_mortar_biot.JxW(q_point);    // dx
-                    
-                    // contribution from the coupling term in the 
-                    // pressure lagrange multiplier test function
-                    for (unsigned int s = 0; s < dim; ++s)
-                    {
-                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                        ((bar_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
-                          * phi_p[i])   // <u_bar * n, mu_p>
-                        * fe_face_values_mortar_biot.JxW(q_point);    // dx
-
-                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                        ((star_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
-                          * phi_p[i])   // <u_star * n, mu_p>
-                        * fe_face_values_mortar_biot.JxW(q_point);    // dx
-                    }
-                    solution_star_mortar_temp[side][local_dof_indices[i]] +=
-                    - ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
-                      * phi_p[i]) // <lambda_d * n, mu_p> extra negative sign as n_p = -n_f
-                      * fe_face_values_mortar_biot.JxW(q_point);    // dx
                   }
                 }
               }
@@ -2119,60 +2175,64 @@ namespace mfe_stokes
 
                   for (unsigned int k = 0; k < dofs_per_cell; ++k)
                   {
-                    if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                                local_dof_indices[k]) != interface_dofs[side].end())
-                    {
+                    // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                    //             local_dof_indices[k]) != interface_dofs[side].end())
+                    // {
                       phi_eta[k] = fe_face_values_mortar_biot[displacement].value (k, q_point);
                       phi_p[k] = fe_face_values_mortar_biot[pressure].value (k, q_point);
-                    }
-                    else
-                    {
-                      phi_eta[k] = 0.0;
-                      phi_p[k] = 0.0;
-                    }
+                    // }
+                    // else
+                    // {
+                    //   phi_eta[k] = 0.0;
+                    //   phi_p[k] = 0.0;
+                    // }
                   }
 
                   for (unsigned int i = 0; i < dofs_per_cell; ++i)
                   {
                     // contribution from the coupling term in the 
                     // displacement lagrange multiplier test function
-                    for (unsigned int s = 0; s < dim; ++s)
+                    if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                local_dof_indices[i]) != interface_dofs[side].end())
                     {
-                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                       - (const_bjs * bar_values[s][q_point] * tangent_vector[s]
-                          * phi_eta[i] * tangent_vector) // - c_bjs<u_bar_f * t_f, mu_d * t_f>
-                        * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                      for (unsigned int s = 0; s < dim; ++s)
+                      {
+                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                        - (const_bjs * bar_values[s][q_point] * tangent_vector[s]
+                            * phi_eta[i] * tangent_vector) // - c_bjs<u_bar_f * t_f, mu_d * t_f>
+                          * fe_face_values_mortar_biot.JxW(q_point);    // dx
 
-                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                      - (const_bjs * star_values[s][q_point] * tangent_vector[s]
-                          * phi_eta[i] * tangent_vector) // - c_bjs<u_star_f * t_f, mu_d * t_f>
+                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                        - (const_bjs * star_values[s][q_point] * tangent_vector[s]
+                            * phi_eta[i] * tangent_vector) // - c_bjs<u_star_f * t_f, mu_d * t_f>
+                          * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                      }
+                      solution_star_mortar_temp[side][local_dof_indices[i]] +=
+                        ((- phi_eta[i] * fe_face_values_mortar_biot.normal_vector(q_point) 
+                          * interface_values_press[q_point]) // <phi_eta(x_q) * n_p * lambda_p> the extra negative sign as n_p = -n_f
+                          + const_bjs * (lambda_d * tangent_vector) 
+                          * (phi_eta[i] * tangent_vector)) // c_bjs<lambda_d * t_f,  phi_eta * t_f>
+                        * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                      
+                      // contribution from the coupling term in the 
+                      // pressure lagrange multiplier test function
+                      for (unsigned int s = 0; s < dim; ++s)
+                      {
+                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                          ((bar_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
+                            * phi_p[i])   // <u_bar * n, mu_p>
+                          * fe_face_values_mortar_biot.JxW(q_point);    // dx
+
+                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                          ((star_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
+                            * phi_p[i])   // <u_star * n, mu_p>
+                          * fe_face_values_mortar_biot.JxW(q_point);    // dx
+                      }
+                      solution_star_mortar_temp[side][local_dof_indices[i]] +=
+                      - ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
+                        * phi_p[i]) // <lambda_d * n, mu_p> extra negative sign as n_p = -n_f
                         * fe_face_values_mortar_biot.JxW(q_point);    // dx
                     }
-                    solution_star_mortar_temp[side][local_dof_indices[i]] +=
-                      ((- phi_eta[i] * fe_face_values_mortar_biot.normal_vector(q_point) 
-                        * interface_values_press[q_point]) // <phi_eta(x_q) * n_p * lambda_p> the extra negative sign as n_p = -n_f
-                        + const_bjs * (lambda_d * tangent_vector) 
-                        * (phi_eta[i] * tangent_vector)) // c_bjs<lambda_d * t_f,  phi_eta * t_f>
-                      * fe_face_values_mortar_biot.JxW(q_point);    // dx
-                    
-                    // contribution from the coupling term in the 
-                    // pressure lagrange multiplier test function
-                    for (unsigned int s = 0; s < dim; ++s)
-                    {
-                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                        ((bar_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
-                          * phi_p[i])   // <u_bar * n, mu_p>
-                        * fe_face_values_mortar_biot.JxW(q_point);    // dx
-
-                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                        ((star_values[s][q_point] * fe_face_values_mortar_biot.normal_vector(q_point)[s])
-                          * phi_p[i])   // <u_star * n, mu_p>
-                        * fe_face_values_mortar_biot.JxW(q_point);    // dx
-                    }
-                    solution_star_mortar_temp[side][local_dof_indices[i]] +=
-                    - ((lambda_d * fe_face_values_mortar_biot.normal_vector(q_point))
-                      * phi_p[i]) // <lambda_d * n, mu_p> extra negative sign as n_p = -n_f
-                      * fe_face_values_mortar_biot.JxW(q_point);    // dx
                   }
                 }                                    
               }
@@ -2236,19 +2296,41 @@ namespace mfe_stokes
 
       const FEValuesExtractors::Vector velocity (0);
 
-      BlockVector<double> vec_1(mortar_vec);
-      BlockVector<double> vec_2(mortar_vec);
-      vec_1 = 0;
-      vec_2 = 0;
+      std::vector<BlockVector<double>> vec_1(n_faces_per_cell, BlockVector<double>(mortar_vec));
+      std::vector<BlockVector<double>> vec_2(n_faces_per_cell, BlockVector<double>(mortar_vec));
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        vec_1[side] = 0;
+        vec_2[side] = 0;
+      }
+
+      // Vector<double> vec_1(dof_handler_mortar.n_dofs());
+      // Vector<double> vec_2(dof_handler_mortar.n_dofs());
+      // vec_1 = 0;
+      // vec_2 = 0;
 
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         if (neighbors[side] >= 0 && neighbor_type[side] == 1) //Stokes-Stokes interface
         {
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
-            vec_1(interface_dofs[side][i]) = v_1[side][i];
-            vec_2(interface_dofs[side][i]) = v_2[side][i];
+            vec_1[side](interface_dofs[side][i]) = v_1[side][i];
+            vec_2[side](interface_dofs[side][i]) = v_2[side][i];
+            // if (this_mpi == 0 && side == 1 && preconditioner_type == 0) // print out some values for debugging
+            // {
+            //   std::cout << "interface dof: " << interface_dofs[side][i] 
+            //             << ", value in Ap[" << side << "][" << i << "]: " << v_1[side][i] 
+            //             << ", value in interface_data[" << side << "][" << i << "]: " << v_2[side][i] << std::endl;
+            // }
           }
+          // if (this_mpi == 0 && side == 1 && preconditioner_type == 0) // print out some values for debugging
+          // {
+          //   std::cout << "After copying to BlockVector, values in vec_1 and vec_2 for the first 10 dofs: " << std::endl;
+          //   for (unsigned int i = 0; i < vec_2.size(); ++i)
+          //   {
+          //     std::cout << "dof " << i << ": vec_1 = " << vec_1(i) << ", vec_2 = " << vec_2(i) << std::endl;
+          //   }
+          // }
         }
 
       unsigned int side = 0;
@@ -2267,16 +2349,49 @@ namespace mfe_stokes
             if (neighbor_type[side] == 1) //Stokes-Stokes interface
             {
               fe_face_values_mortar.reinit(cell, face_n);
+
+              // if (this_mpi == 0 && preconditioner_type == 0) // print out some values for debugging
+              // {
+              //   std::cout << "Face-supporting global dofs on this face: ";
+              //   for (unsigned int j = 0; j < dofs_per_cell; ++j)
+              //   {
+              //     if (fe_mortar.has_support_on_face(j, face_n))
+              //     {
+              //       const auto comp = fe_mortar.system_to_component_index(j);
+              //       std::cout << "(" << local_dof_indices[j]
+              //                 << ", comp " << comp.first << ") ";
+              //       std::cout << std::endl;          
+              //     }
+              //   }
+              //   Vector<double> vec2_plain(dof_handler_mortar.n_dofs());
+              //   vec2_plain = 0;
+              //   vec2_plain(3) = 1.0;
+
+              //   std::vector<Tensor<1, dim>> vals(n_face_q_points, Tensor<1, dim>());
+              //   fe_face_values_mortar[velocity].get_function_values(vec2_plain, vals);
+
+              //   for (unsigned int q = 0; q < n_face_q_points; ++q)
+              //     std::cout << "q = " << q << ", val = " << vals[q] << std::endl;
+              // }
               fe_face_values_mortar[velocity].get_function_values(
-                vec_1, interface_values_v1_flux);
+                vec_1[side], interface_values_v1_flux);
               fe_face_values_mortar[velocity].get_function_values(
-                vec_2, interface_values_v2_flux);                                 
+                vec_2[side], interface_values_v2_flux);                                 
               
               for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
               {
                 inner_product += 
                   interface_values_v1_flux[q_point] * (interface_values_v2_flux[q_point]) // (u1 * u2)
                   * fe_face_values_mortar.JxW(q_point);    // dx
+                  // if (this_mpi == 0 && side == 1 && preconditioner_type == 0) // print out some values for debugging
+                  // {
+                  //   std::cout << "q_point: " << q_point 
+                  //             << ", Ap[" << side << "]: " << interface_values_v1_flux[q_point] 
+                  //             << ", interface_data: " << interface_values_v2_flux[q_point] 
+                  //             << ", contribution to inner product at this q_point: " 
+                  //             << (interface_values_v1_flux[q_point] * (interface_values_v2_flux[q_point]) * fe_face_values_mortar.JxW(q_point)) 
+                  //             << std::endl;
+                  // }
               }
             }
           }
@@ -2290,18 +2405,21 @@ namespace mfe_stokes
       // std::vector<double> phi_p(dofs_per_cell);
       // std::vector<Tensor<1, dim>> phi_eta(dofs_per_cell, Tensor<1, dim>());
 
-      BlockVector<double> vec_1(mortar_vec_biot);
-      BlockVector<double> vec_2(mortar_vec_biot);
-      vec_1 = 0;
-      vec_2 = 0;
+      std::vector<BlockVector<double>> vec_1(n_faces_per_cell, BlockVector<double>(mortar_vec_biot));
+      std::vector<BlockVector<double>> vec_2(n_faces_per_cell, BlockVector<double>(mortar_vec_biot));
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        vec_1[side] = 0;
+        vec_2[side] = 0;
+      }
 
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
         if (neighbors[side] >= 0 && neighbor_type[side] == 2) //Stokes-Biot interface
         {
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           {
-            vec_1(interface_dofs[side][i]) = v_1[side][i];
-            vec_2(interface_dofs[side][i]) = v_2[side][i];
+            vec_1[side](interface_dofs[side][i]) = v_1[side][i];
+            vec_2[side](interface_dofs[side][i]) = v_2[side][i];
           }
         }
       unsigned int side = 0;
@@ -2344,16 +2462,16 @@ namespace mfe_stokes
               {
                 fe_face_values_mortar_biot.reinit(cell, face_n);
                 fe_face_values_mortar_biot[velocity].get_function_values(
-                  vec_1, interface_values_v1_flux);
+                  vec_1[side], interface_values_v1_flux);
                 fe_face_values_mortar_biot[velocity].get_function_values(
-                  vec_2, interface_values_v2_flux);                                 
+                  vec_2[side], interface_values_v2_flux);                                 
                 
                 for (unsigned int s = 0 ; s < dim; ++s)
                 {
                   fe_face_values_mortar_biot[stresses[s]].get_function_values(
-                    vec_1, interface_values_v1_stress[s]);
+                    vec_1[side], interface_values_v1_stress[s]);
                   fe_face_values_mortar_biot[stresses[s]].get_function_values(
-                    vec_2, interface_values_v2_stress[s]);
+                    vec_2[side], interface_values_v2_stress[s]);
                 }
                 for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
                 {
@@ -2396,13 +2514,13 @@ namespace mfe_stokes
               {
                 fe_face_values_mortar_biot.reinit(cell, face_n);
                 fe_face_values_mortar_biot[displacement].get_function_values(
-                  vec_1, interface_values_v1_disp);
+                  vec_1[side], interface_values_v1_disp);
                 fe_face_values_mortar_biot[displacement].get_function_values(
-                  vec_2, interface_values_v2_disp);
+                  vec_2[side], interface_values_v2_disp);
                 fe_face_values_mortar_biot[pressure].get_function_values(
-                  vec_1, interface_values_v1_press);
+                  vec_1[side], interface_values_v1_press);
                 fe_face_values_mortar_biot[pressure].get_function_values(
-                  vec_2, interface_values_v2_press);
+                  vec_2[side], interface_values_v2_press);
                 
                 for (unsigned int q_point = 0; q_point < n_face_q_points; ++q_point)
                 {
@@ -2487,19 +2605,21 @@ namespace mfe_stokes
         q[side].resize(Ap[side].size(),0);
         assert(Ap[side].size()==Q_side[side][k_counter].size());
         q[side] = Ap[side];
-        for(unsigned int i=0; i<=k_counter; ++i)
-        {
-          for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-            for (unsigned int k = 0; k < q[side].size(); ++k)
-              Q_tmp[side][k]=Q_side[side][i][k];
-          h[i] = inner_product_mortar(Q_tmp, q, fe_face_values_mortar, fe_face_values_mortar_biot);
-
-          // for(unsigned int j=0; j<q[side].size();++j)
-          //   h[i]+=q[side][j]*Q_side[side][i][j];
-        }
       }
-     } //////-----------end of loop over side, q is calculated as AQ[][k] and Arnoldi Algorithm continued-------------------------------
+    }
+    for(unsigned int i=0; i<=k_counter; ++i)
+    {
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        for (unsigned int k = 0; k < q[side].size(); ++k)
+          Q_tmp[side][k]=Q_side[side][i][k];
+      h[i] = inner_product_mortar(Q_tmp, q, fe_face_values_mortar, fe_face_values_mortar_biot);
 
+      // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      //   if (neighbors[side] >= 0)
+      //     for(unsigned int j=0; j<q[side].size();++j)
+      //       h[i]+=q[side][j]*Q_side[side][i][j];
+    } //////-----------end of loop over side, q is calculated as AQ[][k] and Arnoldi Algorithm continued-------------------------------
+    
     //Arnoldi Algorithm continued
     //combining summing h[i] over all subdomains
     std::vector<double> h_buffer(k_counter+2,0);
