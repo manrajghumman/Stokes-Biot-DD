@@ -1012,14 +1012,14 @@ namespace mfe_biot
                 }    
               }
 
-            MPI_Sendrecv(&interface_data_send[side][i],
-                          1,
+            MPI_Sendrecv(interface_data_send[side].data(),
+                          static_cast<int>(interface_dofs[side].size()),
                           MPI_DOUBLE,
                           neighbors[side],
                           this_mpi,  // send tag
 
-                          &interface_data_receive[side][i],
-                          1,
+                          interface_data_receive[side].data(),
+                          static_cast<int>(interface_dofs[side].size()),
                           MPI_DOUBLE,
                           neighbors[side],
                           neighbors[side],  // recv tag

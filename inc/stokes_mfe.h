@@ -332,7 +332,7 @@ namespace mfe_stokes
     AffineConstraints<double> constraints_mortar;
     AffineConstraints<double> constraints_star;
     BlockSparsityPattern      preconditioner_sparsity_pattern;
-    BlockSparseMatrix<double> preconditioner_matrix;
+    // BlockSparseMatrix<double> preconditioner_matrix;
     FullMatrix<double>        interface_matrix;
 
 
@@ -361,6 +361,7 @@ namespace mfe_stokes
     BlockVector<double>                mortar_vec;
     BlockVector<double>                mortar_vec_biot;
     std::vector<std::vector<BlockVector<double>>>   multiscale_basis;
+    std::vector<std::vector<std::vector<double>>>   multiscale_basis_final;
 
 
     // Output extra

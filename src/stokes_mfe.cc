@@ -1127,6 +1127,12 @@ namespace mfe_stokes
       // are used to compute the action of the interface operator on e_i
       unsigned int ind = 0;
       jacobi_scaling.resize(n_faces_per_cell);
+      multiscale_basis_final.resize(n_faces_per_cell);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        multiscale_basis_final[side].resize(interface_dofs[side].size());
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          multiscale_basis_final[side][i].resize(interface_dofs[side].size());
       // to avoid jacobi scaling while 
       // computing preconditioner action for each e_i
       preconditioner_type = 0; 
@@ -1137,9 +1143,7 @@ namespace mfe_stokes
         {
           if (neighbors[side] >= 0)
           {
-            // interface_fe_function[side] = 0;
-            // multiscale_basis[side][i].reinit(solution_star);
-            // multiscale_basis[side][i] = 0;
+            // multiscale_basis_final[side][i].resize(interface_dofs[side].size());
 
             for (unsigned int face = 0; face < n_faces_per_cell; ++face)
               for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
@@ -1148,33 +1152,10 @@ namespace mfe_stokes
                 interface_data[face][j] = 0;
               }
 
-            // // interface_fe_function[side]                          = 0;
-            // // interface_fe_function[side][interface_dofs[side][i]] = 1.0;
-            // interface_data[side][i] = 1.0;
-
             for (unsigned int face = 0; face < n_faces_per_cell; ++face)
               interface_fe_function[face] = 0;
 
-            // interface_fe_function[side]                          = 0;
             interface_fe_function[side][interface_dofs[side][i]] = 1.0;
-            
-            // interface_operator(interface_function,
-            //                   solution_bar_function,
-            //                   solution_star_function,
-            //                   interface_data,
-            //                   interface_data_send,
-            //                   interface_data_receive,
-            //                   fe_face_values,
-            //                   fe_face_values_mortar,
-            //                   fe_face_values_mortar_biot,
-            //                   P_mortar,
-            //                   Ap);
-
-            // interface operator has to be done explitly ow wrong info sent and received
-            // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
-            //   for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            //     interface_fe_function[side][interface_dofs[side][i]] = 
-            //       interface_data[side][i];
 
             if (multiscale_basis_flag)
             {
@@ -1231,14 +1212,14 @@ namespace mfe_stokes
                 }
               }
 
-            MPI_Sendrecv(&interface_data_send[side][i],
-                          1,
+            MPI_Sendrecv(interface_data_send[side].data(),
+                          static_cast<int>(interface_dofs[side].size()),
                           MPI_DOUBLE,
                           neighbors[side],
                           this_mpi,  // send tag
 
-                          &interface_data_receive[side][i],
-                          1,
+                          interface_data_receive[side].data(),
+                          static_cast<int>(interface_dofs[side].size()),
                           MPI_DOUBLE,
                           neighbors[side],
                           neighbors[side],  // recv tag
@@ -1246,93 +1227,30 @@ namespace mfe_stokes
                           mpi_communicator,
                           &mpi_status);
 
-            // MPI_Send(&interface_data_send[side][0],
-            //           interface_dofs[side].size(),
-            //           MPI_DOUBLE,
-            //           neighbors[side],
-            //           this_mpi,
-            //           mpi_communicator);
-            // MPI_Recv(&interface_data_receive[side][0],
-            //           interface_dofs[side].size(),
-            //           MPI_DOUBLE,
-            //           neighbors[side],
-            //           neighbors[side],
-            //           mpi_communicator,
-            //           &mpi_status);
 
-            // // Compute Ap and with it compute alpha
-            // for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
-            //   Ap[side][j] = (interface_data_send[side][j] +
-            //                           interface_data_receive[side][j]);
+            // Store the flux response in mortar space for reuse
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                if (face == side)
+                  multiscale_basis_final[face][i][j] = (interface_data_send[face][j] +
+                                        interface_data_receive[face][j]);
+                else
+                  multiscale_basis_final[face][i][j] = interface_data_send[face][j];                   
+              }
+                // multiscale_basis_final[side][i][j] = (interface_data_send[side][j] +
+                //                         interface_data_receive[side][j]);
+
             Ap[side][i] = (interface_data_send[side][i] +
                                       interface_data_receive[side][i]);                          
-            // for (unsigned int face = 0; face < n_faces_per_cell; ++face)
-            //   if (neighbors[face] >= 0)
-            //   {
-            //     if (face == side)
-            //     {
-            //       for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-            //       {
-            //         Ap[face][j] = (interface_data_send[face][j] +
-            //                         interface_data_receive[face][j]);
-            //       }
-            //     }
-            //     else
-            //     {
-            //       for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-            //         Ap[face][j] = interface_data_send[face][j];
-            //     }
-            //   }
-            // interface_fe_function[side].block(2) = 0;
-            // assemble_rhs_star(interface_function,
-            //                   fe_face_values,
-            //                   fe_face_values_mortar_biot);
-            // solve_star();
-            // pcout << "Computing jacobi, side = " << side << " , i = " << i 
-            //       << " Ap[side][i] = " << Ap[side][i] << std::endl;
-            // for (unsigned int face = 0; face < n_faces_per_cell; ++face)
-            //   for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-            //     interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
-
-            // if (side == 1 && this_mpi == 0)
-            // {
-            //   std::cout << "interface_data on side " << side << " for i = " << i << " is: ";
-            //   for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
-            //     std::cout << interface_data[side][j] << " ";
-            //   std::cout << std::endl;
-            // }
-            // if (this_mpi == 0 && side == 1)
-              // jacobi_scaling[side][i] = inner_product_mortar(Ap,
-              //                                               interface_data,
-              //                                               fe_face_values_mortar,
-              //                                               fe_face_values_mortar_biot);
-            // else
-              jacobi_scaling[side][i] = abs(Ap[side][i]);
+      
+            jacobi_scaling[side][i] = abs(Ap[side][i]);
             
-            // if (this_mpi == 0)
-            // {
-            //   std::cout << "this_mpi = " << this_mpi;
-            //   for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
-            //     std::cout << ", Ap[" << side << "][" << j << "] = " << Ap[side][j]; 
-            //   std::cout << ", jacobi_scaling[" << side << "][" << i << "] = " << jacobi_scaling[side][i] << std::endl;
-            // }
-            // MPI_Barrier(mpi_communicator);
-            // if (this_mpi == 1)
-            // {
-            //   std::cout << "this_mpi = " << this_mpi;
-            //   for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
-            //     std::cout << ", Ap[" << side << "][" << j << "] = " << Ap[side][j]; 
-            //   std::cout << ", jacobi_scaling[" << side << "][" << i << "] = " << jacobi_scaling[side][i] << std::endl;
-            // }
-            // else
-            //   jacobi_scaling[side][i] = Ap[side][i];                                          
-
-            // multiscale_basis[side][i] = solution_star;
             ind += 1;
-            // if (this_mpi == 1)
-            // {
-            //   std::cout << "\r jacobi for S<e_i,e_i>, i = " << ind << " computed so far. on side " << side << std::flush;
-            // }
+            if (this_mpi == 1)
+            {
+              std::cout << "\r jacobi for S<e_i,e_i>, i = " << ind << " computed so far. on side " << side << std::flush;
+            }
           }
         }
       }
@@ -1568,12 +1486,15 @@ namespace mfe_stokes
 
     for (unsigned int i = 0; i < solution_star.size(); ++i)
       AssertIsFinite(solution_star[i]);
-    interface_inner_product(interface_function,
-                            solution_bar_function,
-                            solution_star_function,
-                            fe_face_values_mortar,
-                            fe_face_values_mortar_biot,
-                            P_mortar);
+
+    if (preconditioner_type < 2)
+    {
+      interface_inner_product(interface_function,
+                              solution_bar_function,
+                              solution_star_function,
+                              fe_face_values_mortar,
+                              fe_face_values_mortar_biot,
+                              P_mortar);
     
     for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       if (neighbors[side] >= 0)
@@ -1615,16 +1536,8 @@ namespace mfe_stokes
         {
           Ap[side][i] = (interface_data_send[side][i] +
                           interface_data_receive[side][i]);
-        }
-        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)    
-        //   if (this_mpi == 0)
-        //   {
-        //     if (preconditioner_type != 0)
-        //     std::cout << "jacobi_scaling[" << side << "][" << i << "] = " << jacobi_scaling[side][i] 
-        //               << ". before scaling, Ap[" << side << "][" << i << "] = " << Ap[side][i] << std::endl;
-        //     else          
-        //       std::cout << "Ap[" << side << "][" << i << "] = " << Ap[side][i] << std::endl;
-        //   }
+        }       
+
         if (preconditioner_type != 0) //Jacobi scaling
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             Ap[side][i] /= jacobi_scaling[side][i];
@@ -1640,6 +1553,30 @@ namespace mfe_stokes
           //       std::cout << "Ap[" << side << "][" << i << "] = " << Ap[side][i] << std::endl;
           //   }
       }
+    }
+    else
+    {
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+          std::fill(Ap[side].begin(), Ap[side].end(), 0.0);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+            if (neighbors[face] >= 0)
+            {
+              //use the computed flux response in the mortar space
+              for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  Ap[face][j] += interface_data[side][i]
+                                * multiscale_basis_final[face][i][j];
+            }
+
+          if (preconditioner_type != 0) //Jacobi scaling
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+              Ap[side][i] /= jacobi_scaling[side][i];        
+        }          
+    }
   }
 
   // computing the residual over all sides
@@ -1699,7 +1636,7 @@ namespace mfe_stokes
     // Ax = b in interface problem below
     // solve_bar();
 
-
+    //need to project the bar and star functions to the mortar space
     //for computing the inner products
     //in the mortar space
     interface_inner_product(interface_function,
