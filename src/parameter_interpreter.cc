@@ -154,6 +154,27 @@ namespace mfe_stokes
             multiscale_basis_flag = prm.get("multiscale_basis") == "yes" ? true : false;
         }
         prm.leave_subsection();
+        prm.enter_subsection("Biot Parameters");
+        {
+            lame_lambda = prm.get_double("lame_lambda");
+            lame_mu = prm.get_double("lame_mu");
+
+            std::string K_info = prm.get("K");
+            auto rows = Utilities::split_string_list(K_info, ';');
+
+            for (auto &r : rows) 
+            {
+                auto int_vec = Utilities::string_to_double(Utilities::split_string_list(r, ','));
+                for (unsigned int i = 0; i < int_vec.size(); ++i)
+                    Assert(int_vec[i] >= 0,
+                        ExcMessage("Negative value at index " + std::to_string(i) +
+                                " in row " + std::to_string(K_perm.size()) +
+                                ".\n Each entry in the grid must be Stokes (1) or Biot (2)."));
+                std::vector<double> double_vec(int_vec.begin(), int_vec.end());
+                K_perm.push_back(double_vec);
+            }
+        }
+        prm.leave_subsection();
         // make initial refinement matrix (reps) for each subdomain
         // switch (dim)
         // {   
@@ -271,7 +292,24 @@ namespace mfe_biot
             initial_val = prm.get_double("initial_val lambda"); 
             s0 = prm.get_double("s_0");
             alpha = prm.get_double("alpha");
+            lame_lambda = prm.get_double("lame_lambda");
+            lame_mu = prm.get_double("lame_mu");
             multiscale_basis_flag = prm.get("multiscale_basis") == "yes" ? true : false;
+
+            std::string K_info = prm.get("K");
+            auto rows = Utilities::split_string_list(K_info, ';');
+
+            for (auto &r : rows) 
+            {
+                auto int_vec = Utilities::string_to_double(Utilities::split_string_list(r, ','));
+                for (unsigned int i = 0; i < int_vec.size(); ++i)
+                    Assert(int_vec[i] >= 0,
+                        ExcMessage("Negative value at index " + std::to_string(i) +
+                                " in row " + std::to_string(K_permeability.size()) +
+                                ".\n Each entry in the grid must be Stokes (1) or Biot (2)."));
+                std::vector<double> double_vec(int_vec.begin(), int_vec.end());
+                K_permeability.push_back(double_vec);
+            }
         }
         prm.leave_subsection();
         // make initial refinement matrix (reps) for each subdomain

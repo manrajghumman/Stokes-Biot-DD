@@ -142,6 +142,9 @@ namespace mfe_stokes
     std::vector<std::vector<double>> jacobi_scaling;
     bool multiscale_basis_flag;
     unsigned int preconditioner_type;
+    double mesh_diameter;
+    double lame_lambda, lame_mu;
+    std::vector<std::vector<double>> K_perm;
     std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
     std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
     unsigned int refinement;
@@ -280,12 +283,13 @@ namespace mfe_stokes
     std::vector<unsigned int>              faces_on_interface;
     std::vector<unsigned int>              faces_on_interface_mortar;
     std::vector<std::vector<unsigned int>> interface_dofs;
-    std::vector<std::vector<unsigned int>> interface_dofs_fe;
+    std::vector<std::vector<unsigned int>> interface_dofs_dirichlet;
+    // std::vector<std::vector<unsigned int>> interface_dofs_fe;
     std::vector<unsigned int>              interface_dofs_total;
-    std::vector<std::vector<unsigned int>> interface_dofs_find_neumann;
-    std::vector<unsigned int>              repeated_dofs;
-    std::vector<unsigned int>              repeated_dofs_neumann;
-    std::vector<unsigned int>              repeated_dofs_neumann_corner;
+    // std::vector<std::vector<unsigned int>> interface_dofs_find_neumann;
+    // std::vector<unsigned int>              repeated_dofs;
+    // std::vector<unsigned int>              repeated_dofs_neumann;
+    // std::vector<unsigned int>              repeated_dofs_neumann_corner;
 
     unsigned long n_velocity_interface;
     unsigned long n_velocity_interface_fe;

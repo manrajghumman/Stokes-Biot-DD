@@ -243,6 +243,8 @@ namespace mfe_biot
     double tol;
     double initial_val;
     unsigned int qdegree;
+    double lame_lambda, lame_mu;
+    std::vector<std::vector<double>> K_permeability;
 
 
     // Neighbors and interface information

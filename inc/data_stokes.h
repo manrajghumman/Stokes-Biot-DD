@@ -23,11 +23,17 @@ namespace mfe_stokes
   template <int dim>
   class K_permeability : public TensorFunction<2,dim>
   {
-  public:
-    K_permeability () : TensorFunction<2,dim>() {}
+    public:
+      K_permeability (const std::vector<std::vector<double>> &K_perm) 
+        : TensorFunction<2,dim>(), 
+          K_perm(K_perm) 
+      {}
 
-    virtual void value_list (const std::vector<Point<dim> > &points,
-                              std::vector<Tensor<2,dim> >    &values) const;
+      virtual void value_list (const std::vector<Point<dim> > &points,
+                                std::vector<Tensor<2,dim> >    &values) const;
+
+    private:
+      std::vector<std::vector<double>> K_perm;                       
   };
 
   template <int dim>
@@ -48,10 +54,10 @@ namespace mfe_stokes
       switch (dim)
       {
         case 2:
-          values[p][0][0] = 1.0;
+          values[p][0][0] = K_perm[0][0];
           values[p][0][1] = 0.0;
           values[p][1][0] = 0.0;
-          values[p][1][1] = 1.0;
+          values[p][1][1] = K_perm[1][1];
           break;
         default:
         Assert(false, ExcMessage("The permeability tensor for dim != 2 is not provided"));

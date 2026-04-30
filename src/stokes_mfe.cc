@@ -110,6 +110,7 @@ namespace mfe_stokes
     , initial_refinement_mortar(initial_refinement_mortar)
     , gmres_iteration(0)
     , preconditioner_type(preconditioner_type)
+    , mesh_diameter(1.0)
     , dof_handler(triangulation)
     , dof_handler_biot_mortar(triangulation_mortar)                          
     , dof_handler_mortar(triangulation_mortar)
@@ -165,7 +166,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/stokes.prm");
+    param.read_parameters("../test function/dd realeg1/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -208,6 +209,38 @@ namespace mfe_stokes
     }
     pcout << "" << std::endl;
     for (const auto &cell : triangulation.active_cell_iterators()){
+      for (const auto &face : cell->face_iterators()){
+        if (face->center()[dim - 1] == 0)
+          if (external_bdry_ids[0] != 0)
+            face->set_all_boundary_ids(external_bdry_ids[0]);
+        if (face->center()[dim - 2] == 2)
+          if (external_bdry_ids[1] != 0)
+            face->set_all_boundary_ids(external_bdry_ids[1]);
+        if (face->center()[dim - 1] == 1)
+          if (external_bdry_ids[2] != 0)
+            face->set_all_boundary_ids(external_bdry_ids[2]);
+        if (face->center()[dim - 2] == 0)
+          if (external_bdry_ids[3] != 0)
+            face->set_all_boundary_ids(external_bdry_ids[3]);
+      }
+    }
+
+    // pcout << "Stokes Mortar Part:\n boundary condition:";
+    // for (unsigned int i = 0; i < external_bdry_ids.size(); ++i)
+    // {
+    //   if (external_bdry_ids[i] == 0)
+    //     external_bdry_ids[i] = 0;
+    //   else 
+    //     external_bdry_ids[i] = 7;
+    //   if (external_bdry_ids[i] == 7)
+    //     pcout << " N";
+    //   else if (external_bdry_ids[i] == 0)
+    //     pcout << " D";
+    //   else
+    //     AssertThrow(false, ExcMessage("Invalid boundary condition type. Use 0 for Dirichlet or 7 for Neumann."));
+    // }
+    // pcout << "" << std::endl;
+    for (const auto &cell : triangulation_mortar.active_cell_iterators()){
       for (const auto &face : cell->face_iterators()){
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
@@ -494,7 +527,14 @@ namespace mfe_stokes
             }
       }
     }
-    if (this_mpi == 1)
+    find_interface_dofs_dirichlet(dof_handler_mortar,
+                                  fe_mortar,
+                                  interface_dofs,
+                                  n_velocity_interface,
+                                  subdomain_type,
+                                  neighbor_type,
+                                  interface_dofs_dirichlet);
+    if (this_mpi == 0)
     {
       for (unsigned int side = 0; side < n_faces_per_cell; ++side)
       {
@@ -513,8 +553,12 @@ namespace mfe_stokes
           }
           // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
           //   std::cout << interface_dofs[side][i] << " ";
-          std::cout << std::endl;
+          // std::cout << std::endl;
         }
+        std::cout << "Interface_dofs on the Dirichlet part of the interface: ";
+          for (unsigned int i = 0; i < interface_dofs_dirichlet[side].size(); ++i)
+            std::cout << interface_dofs_dirichlet[side][i] << " on side " << side << " ";
+          std::cout << std::endl;
       }
     }
     // if (this_mpi == 0 || this_mpi == 2)
@@ -624,7 +668,7 @@ namespace mfe_stokes
     unsigned int side; 
     Tensor<1, dim> tangent_vector; // the tangent vector to a side
     double const_bjs = 0; 
-    const K_permeability<dim> k_permeability;
+    const K_permeability<dim> k_permeability(K_perm);
     std::vector<Tensor<2,dim>>  k_permeability_values(n_face_q_points);
                                              
     for (const auto &cell : dof_handler.active_cell_iterators())
@@ -632,7 +676,8 @@ namespace mfe_stokes
       fe_values.reinit(cell);
       local_matrix                = 0;
       local_rhs                   = 0;
-      double h_K                  = cell->diameter(); // std::pow(2, 0.5);                                          
+      double h_K                  = cell->diameter(); // std::pow(2, 0.5);  
+      mesh_diameter = std::min(mesh_diameter, h_K);                                        
 
       for (unsigned int q = 0; q < n_q_points; ++q)
       {
@@ -900,7 +945,7 @@ namespace mfe_stokes
 
       Tensor<1, dim> tangent_vector; // the tangent vector to a side                                                
       double const_bjs = 0; 
-      const K_permeability<dim> k_permeability;
+      const K_permeability<dim> k_permeability(K_perm);
       std::vector<Tensor<2,dim>>  k_permeability_values(n_face_q_points);
 
       unsigned int side;
@@ -1264,25 +1309,25 @@ namespace mfe_stokes
             // for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
             //   Ap[side][j] = (interface_data_send[side][j] +
             //                           interface_data_receive[side][j]);
-            Ap[side][i] = (interface_data_send[side][i] +
-                                      interface_data_receive[side][i]);                          
-            // for (unsigned int face = 0; face < n_faces_per_cell; ++face)
-            //   if (neighbors[face] >= 0)
-            //   {
-            //     if (face == side)
-            //     {
-            //       for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-            //       {
-            //         Ap[face][j] = (interface_data_send[face][j] +
-            //                         interface_data_receive[face][j]);
-            //       }
-            //     }
-            //     else
-            //     {
-            //       for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-            //         Ap[face][j] = interface_data_send[face][j];
-            //     }
-            //   }
+            // Ap[side][i] = (interface_data_send[side][i] +
+            //                           interface_data_receive[side][i]);                          
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                if (face == side)
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    Ap[face][j] = (interface_data_send[face][j] +
+                                    interface_data_receive[face][j]);
+                  }
+                }
+                else
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                    Ap[face][j] = interface_data_send[face][j];
+                }
+              }
             // interface_fe_function[side].block(2) = 0;
             // assemble_rhs_star(interface_function,
             //                   fe_face_values,
@@ -1290,9 +1335,9 @@ namespace mfe_stokes
             // solve_star();
             // pcout << "Computing jacobi, side = " << side << " , i = " << i 
             //       << " Ap[side][i] = " << Ap[side][i] << std::endl;
-            // for (unsigned int face = 0; face < n_faces_per_cell; ++face)
-            //   for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
-            //     interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
 
             // if (side == 1 && this_mpi == 0)
             // {
@@ -1338,13 +1383,51 @@ namespace mfe_stokes
       }
       preconditioner_type = 2;
     }
+    else if (preconditioner_type == 3)
+    {
+      jacobi_scaling.resize(n_faces_per_cell);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          jacobi_scaling[side].resize(interface_dofs[side].size());
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            if (std::find(interface_dofs_dirichlet[side].begin(),
+                          interface_dofs_dirichlet[side].end(),
+                          interface_dofs[side][i]) != interface_dofs_dirichlet[side].end())
+              jacobi_scaling[side][i] = mesh_diameter;
+            else
+               jacobi_scaling[side][i] = 1.0;
+        }
+    }
+    else if (preconditioner_type == 4)
+    {
+      jacobi_scaling.resize(n_faces_per_cell);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          jacobi_scaling[side].resize(interface_dofs[side].size());
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            if (neighbor_type[side] == 2) // Stokes-Biot interface
+            {
+              if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
+                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+              else // pressure lagrange multiplier test space
+              jacobi_scaling[side][i] = K_perm[0][0];
+            }
+            else // Stokes-Stokes interface
+              jacobi_scaling[side][i] = 1.0;
+        }
+    }
     // if (this_mpi == 0)
     // {
     //   // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
     //   for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
     //     if (neighbors[side] >= 0)
+    //     {
+    //       std::cout << "side " << side << std::endl;
     //       for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
-    //         std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side][i] << std::endl;
+    //         std::cout << "Jacobi scaling for dof: " << interface_dofs[side][i] << " : " << jacobi_scaling[side][i] << std::endl;
+    //     }
     // }
   }
 
@@ -1983,7 +2066,7 @@ namespace mfe_stokes
       std::vector<double> phi_p(dofs_per_cell);
       std::vector<Tensor<1, dim>> phi_eta(dofs_per_cell, Tensor<1, dim>());
 
-      const K_permeability<dim> k_permeability;
+      const K_permeability<dim> k_permeability(K_perm);
       std::vector<Tensor<2,dim>>  k_permeability_values(n_face_q_points);
 
       //first index for dim components, 0, 1: vel, 2: pressure

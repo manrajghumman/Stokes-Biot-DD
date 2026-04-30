@@ -21,13 +21,22 @@ namespace mfe_biot
   template <int dim>
   class LameParameters : public Function<dim>
   {
-  public:
-      LameParameters ()  : Function<dim>() {}
+    public:
+      LameParameters (const double lame_lambda,
+                      const double lame_mu)  
+        : Function<dim>(),
+          lame_lambda(lame_lambda),
+          lame_mu(lame_mu) 
+          {}
       virtual void vector_value (const Point<dim> &p,
                                   Vector<double>   &values) const;
 
       virtual void vector_value_list (const std::vector<Point<dim> > &points,
       std::vector<Vector<double> > &value_list) const;
+
+    private:
+      const double lame_lambda;
+      const double lame_mu;
   };
 
   template <int dim>
@@ -48,12 +57,12 @@ namespace mfe_biot
       switch (dim)
       {
           case 2:
-              values(0) = 1.0;
-              values(1) = 1.0;
+              values(0) = lame_lambda;
+              values(1) = lame_mu;
               break;
           case 3:
-              values(0) = 1.0;
-              values(1) = 1.0;
+              values(0) = lame_lambda;
+              values(1) = lame_mu;
               break;
           default:
               Assert(false, ExcNotImplemented());
@@ -77,11 +86,17 @@ namespace mfe_biot
   template <int dim>
   class KInverse : public TensorFunction<2,dim>
   {
-  public:
-    KInverse () : TensorFunction<2,dim>() {}
+    public:
+      KInverse (const std::vector<std::vector<double>> &K_permeability) 
+        : TensorFunction<2,dim>(), 
+          K_permeability(K_permeability) 
+      {}
 
-    virtual void value_list (const std::vector<Point<dim> > &points,
-                              std::vector<Tensor<2,dim> >    &values) const;
+      virtual void value_list (const std::vector<Point<dim> > &points,
+                                std::vector<Tensor<2,dim> >    &values) const;
+                        
+    private:
+      const std::vector<std::vector<double>> K_permeability;
   };
 
   template <int dim>
@@ -102,10 +117,10 @@ namespace mfe_biot
       switch (dim)
       {
         case 2:
-          values[p][0][0] = 1.0;
+          values[p][0][0] = 1.0/K_permeability[0][0];
           values[p][0][1] = 0.0;
           values[p][1][0] = 0.0;
-          values[p][1][1] = 1.0;
+          values[p][1][1] = 1.0/K_permeability[1][1];
           break;
         default:
         Assert(false, ExcMessage("The inverse of permeability tensor for dim != 2 is not provided"));
@@ -155,12 +170,12 @@ namespace mfe_biot
     if (dim == 3)
         z = p[2];
 
-    const LameParameters<dim> lame_function;
-    Vector<double> vec(2);
-    lame_function.vector_value(p,vec);
+    // const LameParameters<dim> lame_function;
+    // Vector<double> vec(2);
+    // lame_function.vector_value(p,vec);
 
-    const double lmbda = vec[0];
-    const double mu = vec[1];
+    // const double lmbda = vec[0];
+    // const double mu = vec[1];
 
     switch (dim)
     {
@@ -177,23 +192,24 @@ namespace mfe_biot
         values(9) = exact_solution_darcy_data.value(p, 2);
         break;
       case 3:
-        values(0) = lmbda*((exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0-exp(x)*sin(M_PI*y)*sin(M_PI*z)*(1.0/1.0E1))-mu*exp(x)*sin(M_PI*y)*sin(M_PI*z)*(1.0/5.0);
-        values(1) = mu*(exp(x)*(y-cos(M_PI/12.0)*(y-1.0/2.0)+sin(M_PI/12.0)*(z-1.0/2.0)-1.0/2.0)*(1.0/2.0)+M_PI*cos(M_PI*y)*sin(M_PI*z)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0))*-2.0;
-        values(2) = mu*(exp(x)*(-z+cos(M_PI/12.0)*(z-1.0/2.0)+sin(M_PI/12.0)*(y-1.0/2.0)+1.0/2.0)*(1.0/2.0)-M_PI*cos(M_PI*z)*sin(M_PI*y)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0))*2.0;
-        values(3) = mu*(exp(x)*(y-cos(M_PI/12.0)*(y-1.0/2.0)+sin(M_PI/12.0)*(z-1.0/2.0)-1.0/2.0)*(1.0/2.0)+M_PI*cos(M_PI*y)*sin(M_PI*z)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0))*-2.0;
-        values(4) = lmbda*((exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0-exp(x)*sin(M_PI*y)*sin(M_PI*z)*(1.0/1.0E1))+mu*(exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0;
-        values(5) = 0;
-        values(6) = mu*(exp(x)*(-z+cos(M_PI/12.0)*(z-1.0/2.0)+sin(M_PI/12.0)*(y-1.0/2.0)+1.0/2.0)*(1.0/2.0)-M_PI*cos(M_PI*z)*sin(M_PI*y)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0))*2.0;
-        values(7) = 0;
-        values(8) = lmbda*((exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0-exp(x)*sin(M_PI*y)*sin(M_PI*z)*(1.0/1.0E1))+mu*(exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0;
+        Assert(false, ExcNotImplemented());
+        // values(0) = lmbda*((exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0-exp(x)*sin(M_PI*y)*sin(M_PI*z)*(1.0/1.0E1))-mu*exp(x)*sin(M_PI*y)*sin(M_PI*z)*(1.0/5.0);
+        // values(1) = mu*(exp(x)*(y-cos(M_PI/12.0)*(y-1.0/2.0)+sin(M_PI/12.0)*(z-1.0/2.0)-1.0/2.0)*(1.0/2.0)+M_PI*cos(M_PI*y)*sin(M_PI*z)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0))*-2.0;
+        // values(2) = mu*(exp(x)*(-z+cos(M_PI/12.0)*(z-1.0/2.0)+sin(M_PI/12.0)*(y-1.0/2.0)+1.0/2.0)*(1.0/2.0)-M_PI*cos(M_PI*z)*sin(M_PI*y)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0))*2.0;
+        // values(3) = mu*(exp(x)*(y-cos(M_PI/12.0)*(y-1.0/2.0)+sin(M_PI/12.0)*(z-1.0/2.0)-1.0/2.0)*(1.0/2.0)+M_PI*cos(M_PI*y)*sin(M_PI*z)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0))*-2.0;
+        // values(4) = lmbda*((exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0-exp(x)*sin(M_PI*y)*sin(M_PI*z)*(1.0/1.0E1))+mu*(exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0;
+        // values(5) = 0;
+        // values(6) = mu*(exp(x)*(-z+cos(M_PI/12.0)*(z-1.0/2.0)+sin(M_PI/12.0)*(y-1.0/2.0)+1.0/2.0)*(1.0/2.0)-M_PI*cos(M_PI*z)*sin(M_PI*y)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0))*2.0;
+        // values(7) = 0;
+        // values(8) = lmbda*((exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0-exp(x)*sin(M_PI*y)*sin(M_PI*z)*(1.0/1.0E1))+mu*(exp(x)-1.0)*(cos(M_PI/12.0)-1.0)*2.0;
 
-        values(9) = -sin(M_PI*y)*sin(M_PI*z)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1);
-        values(10) = -(exp(x)-1.0)*(y-cos(M_PI/12.0)*(y-1.0/2.0)+sin(M_PI/12.0)*(z-1.0/2.0)-1.0/2.0);
-        values(11) = (exp(x)-1.0)*(-z+cos(M_PI/12.0)*(z-1.0/2.0)+sin(M_PI/12.0)*(y-1.0/2.0)+1.0/2.0);
+        // values(9) = -sin(M_PI*y)*sin(M_PI*z)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1);
+        // values(10) = -(exp(x)-1.0)*(y-cos(M_PI/12.0)*(y-1.0/2.0)+sin(M_PI/12.0)*(z-1.0/2.0)-1.0/2.0);
+        // values(11) = (exp(x)-1.0)*(-z+cos(M_PI/12.0)*(z-1.0/2.0)+sin(M_PI/12.0)*(y-1.0/2.0)+1.0/2.0);
 
-        values(12) = sin(M_PI/12.0)*(exp(x)-1.0);
-        values(13) = exp(x)*(-z+cos(M_PI/12.0)*(z-1.0/2.0)+sin(M_PI/12.0)*(y-1.0/2.0)+1.0/2.0)*(-1.0/2.0)-M_PI*cos(M_PI*z)*sin(M_PI*y)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0);
-        values(14) = exp(x)*(y-cos(M_PI/12.0)*(y-1.0/2.0)+sin(M_PI/12.0)*(z-1.0/2.0)-1.0/2.0)*(-1.0/2.0)+M_PI*cos(M_PI*y)*sin(M_PI*z)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0);
+        // values(12) = sin(M_PI/12.0)*(exp(x)-1.0);
+        // values(13) = exp(x)*(-z+cos(M_PI/12.0)*(z-1.0/2.0)+sin(M_PI/12.0)*(y-1.0/2.0)+1.0/2.0)*(-1.0/2.0)-M_PI*cos(M_PI*z)*sin(M_PI*y)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0);
+        // values(14) = exp(x)*(y-cos(M_PI/12.0)*(y-1.0/2.0)+sin(M_PI/12.0)*(z-1.0/2.0)-1.0/2.0)*(-1.0/2.0)+M_PI*cos(M_PI*y)*sin(M_PI*z)*(exp(x)*(1.0/1.0E1)-1.0/1.0E1)*(1.0/2.0);
         break;
       default:
         Assert(false, ExcNotImplemented());

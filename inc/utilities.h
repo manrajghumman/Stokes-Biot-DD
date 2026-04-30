@@ -588,6 +588,102 @@ namespace dd_utilities
       throw std::runtime_error("dim = 3 not yet implemented!");
   }
 
+  // Extracting the dirichlet dofs on the outside bdry shared between subdomains 
+  template <int dim, int spacedim = dim>
+  void 
+  find_interface_dofs_dirichlet (DoFHandler<dim, spacedim>                &dof_handler_mortar,
+                                FESystem<dim>                             &fe_mortar,
+                                std::vector<std::vector<unsigned int>>    &interface_dofs,
+                                unsigned long                             &n_velocity_interface,
+                                const unsigned int                        &subdomain_type,
+                                std::vector<unsigned int>                 &neighbor_type,
+                                std::vector<std::vector<unsigned int>>    &interface_dofs_dirichlet)
+  { 
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+    interface_dofs_dirichlet.clear();
+    interface_dofs_dirichlet.resize(n_faces_per_cell);
+    std::vector<types::global_dof_index> local_face_dof_indices;
+    unsigned int side = 0;
+    unsigned int side_prev, side_next;
+
+    local_face_dof_indices.resize(fe_mortar.dofs_per_cell);
+
+    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
+      for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
+        if (cell->at_boundary(face_n) &&
+              (cell->face(face_n)->boundary_id() == 0)) // check if it is on dirichlet exterior boundary
+        {
+          // std::cout << "Hello-0!!!!!!" << std::endl;
+          // cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
+          cell->get_dof_indices(local_face_dof_indices);
+          // side = cell->face(face_n)->boundary_id() - 1; does not work boundary_id == 0 on exterior dir boundary
+          if (face_n == 0) {side = 3;}
+          else if (face_n == 1) {side = 1;}
+          else if (face_n == 2) {side = 0;}
+          else if (face_n == 3) {side = 2;}
+          // std::cout << "face_n = " << face_n << "neighbor_type[" << side << "]" 
+          //           << neighbor_type[side] << std::endl;
+          side_prev = (side + n_faces_per_cell - 1) % n_faces_per_cell;
+          side_next = (side + 1) % n_faces_per_cell;
+          // std::cout << "side = " << side << " side_prev = " << side_prev << " side_next = " << side_next 
+          //           << std::endl;
+          
+          if (neighbor_type[side_prev] == 1 && subdomain_type == 1) // Stokes-Stokes interface
+          {
+            for (unsigned int i = 0; i < local_face_dof_indices.size(); ++i)
+            {
+              auto el = local_face_dof_indices[i];
+              // std::cout << "Hello-2!!!!!!" << std::endl;
+              // std::cout << "face_n = " << face_n << " side = " << side << " el = " << el << std::endl;
+              // if (side_prev == 0){face_n_prev = 2;}
+              // else if (side_prev == 1){face_n_prev = 1;}
+              // else if (side_prev == 2){face_n_prev = 3;}
+              // else if (side_prev == 3){face_n_prev = 0;}
+              if (el < n_velocity_interface && fe_mortar.has_support_on_face(i, face_n))
+              {
+                // check if it is a corner dof shared by two faces
+                // std::cout << "dirichlet dof " << el << std::endl;
+                if (std::find (interface_dofs[side_prev].begin(), interface_dofs[side_prev].end(), el) 
+                                                                  != interface_dofs[side_prev].end())
+                {
+                  // std::cout << "dirichlet dof " << el << std::endl;
+                  if (std::find (interface_dofs_dirichlet[side_prev].begin(), interface_dofs_dirichlet[side_prev].end(), el) 
+                                  == interface_dofs_dirichlet[side_prev].end())
+                  {
+                    interface_dofs_dirichlet[side_prev].push_back(el);
+                  }                                                
+                }
+              }
+            }
+          }
+          else if (neighbor_type[side_next] == 1 && subdomain_type == 1) // Stokes-Stokes interface
+          {
+            for (unsigned int i = 0; i < local_face_dof_indices.size(); ++i)
+            {
+              auto el = local_face_dof_indices[i];
+              // std::cout << "Hello-2!!!!!!" << std::endl;
+              // std::cout << "face_n = " << face_n << " side = " << side << " el = " << el << std::endl;
+              if (el < n_velocity_interface && fe_mortar.has_support_on_face(i, face_n))
+              {
+                // check if it is a corner dof shared by two faces
+                // std::cout << "dirichlet dof " << el << std::endl;
+                if (std::find (interface_dofs[side_next].begin(), interface_dofs[side_next].end(), el) 
+                                                                  != interface_dofs[side_next].end())
+                {
+                  // std::cout << "dirichlet dof " << el << std::endl;
+                  if (std::find (interface_dofs_dirichlet[side_next].begin(), interface_dofs_dirichlet[side_next].end(), el) 
+                                  == interface_dofs_dirichlet[side_next].end())
+                  {
+                    interface_dofs_dirichlet[side_next].push_back(el);
+                  }                                                
+                }
+              }
+            }
+          }
+        }
+    
+  }
+
 } // namespace dd_utilities
 
 #endif // STOKES_BIOT_DD_UTILITIES_H

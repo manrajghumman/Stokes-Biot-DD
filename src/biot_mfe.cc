@@ -140,7 +140,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/biot.prm");
+    param.read_parameters("../test function/dd realeg1/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -521,8 +521,8 @@ namespace mfe_biot
     rhs_scalar.parse_parameters(prm_fxn);
     prm_fxn.leave_subsection();
 
-    const LameParameters<dim> lame_function;
-    const KInverse<dim> k_inverse;
+    const LameParameters<dim> lame_function(lame_lambda, lame_mu);
+    const KInverse<dim> k_inverse(K_permeability);
 
     std::vector<Vector<double>> lame_parameters_values(n_q_points, Vector<double>(2));
     std::vector<Tensor<2,dim>>  k_inverse_values(n_q_points);
@@ -1045,8 +1045,25 @@ namespace mfe_biot
             // for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
             //   Ap[side][j] = (interface_data_send[side][j] +
             //                           interface_data_receive[side][j]);
-            Ap[side][i] = (interface_data_send[side][i] +
-                                      interface_data_receive[side][i]);                          
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                if (face == side)
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    Ap[face][j] = (interface_data_send[face][j] +
+                                    interface_data_receive[face][j]);
+                  }
+                }
+                else
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                    Ap[face][j] = interface_data_send[face][j];
+                }
+              }
+            // Ap[side][i] = (interface_data_send[side][i] +
+            //                           interface_data_receive[side][i]);                          
             // interface_fe_function[side].block(2) = 0;
             // assemble_rhs_star(interface_function,
             //                   fe_face_values,
@@ -1066,9 +1083,12 @@ namespace mfe_biot
             //   std::cout << std::endl;
             // }
             // if (this_mpi == 0 && side == 1)
-              jacobi_scaling[side][i] = abs(Ap[side][i]);
+              // jacobi_scaling[side][i] = abs(Ap[side][i]);
+              // jacobi_scaling[side][i] = inner_product_mortar(Ap,
+              //                                               interface_data,
+              //                                               fe_face_values_mortar);
             // else
-            //   jacobi_scaling[side][i] = Ap[side][i];                                          
+              jacobi_scaling[side][i] = Ap[side][i];                                          
 
             // multiscale_basis[side][i] = solution_star;
             ind += 1;
@@ -1080,12 +1100,40 @@ namespace mfe_biot
         }
       }
     }
-    // if (this_mpi == 1)
+    else if (preconditioner_type == 4)
+    {
+      jacobi_scaling.resize(n_faces_per_cell);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          jacobi_scaling[side].resize(interface_dofs[side].size());
+          for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            if (neighbor_type[side] == 1) // Stokes-Biot interface
+            {
+              if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
+                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+              else // pressure lagrange multiplier test space
+                jacobi_scaling[side][i] =  K_permeability[0][0];
+            }
+            else // Biot-Biot interface
+            {
+              if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
+                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+              else // pressure lagrange multiplier test space
+                jacobi_scaling[side][i] = K_permeability[0][0];
+            }
+        }
+    }
+    // if (this_mpi == 3)
     // {
-    //   std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
+    //   // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
     //   for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
     //     if (neighbors[side] >= 0)
-    //       std::cout << "Jacobi scaling for face " << side << " : " << jacobi_scaling[side] << std::endl;
+    //     {
+    //       std::cout << "side " << side << std::endl;
+    //       for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
+    //         std::cout << "Jacobi scaling for dof: " << interface_dofs[side][i] << " : " << jacobi_scaling[side][i] << std::endl;
+    //     }
     // }
   }
 
