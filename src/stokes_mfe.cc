@@ -166,7 +166,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd realeg1/stokes.prm");
+    param.read_parameters("../test function/dd test/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -1161,6 +1161,27 @@ namespace mfe_stokes
           }
           // if (neighbor_type[side] == 2)
           //   jacobi_scaling[side] /= std::pow(2, cycle);
+        }
+      double max_scaling = 1.0;
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+       if (neighbors[side] >= 0)
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          max_scaling = std::max(jacobi_scaling[side][i], max_scaling);
+        }
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          if (neighbor_type[side] == 2)
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            {
+              jacobi_scaling[side][i] = sqrt(max_scaling * std::pow(2, cycle_number));
+            }
+          else
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            {
+              jacobi_scaling[side][i] = 1/sqrt(max_scaling * std::pow(2, cycle_number));
+            }
         }
     }
     else if (preconditioner_type == 2) // implement jacobi preconditioner
@@ -4015,7 +4036,7 @@ namespace mfe_stokes
   {
     // tolerance = tol;
     // qdegree   = quad_degree;
-
+    cycle_number = cycle;
     Assert(initial_refinement.size() == 
               dim, ExcDimensionMismatch(initial_refinement.size(), dim));
     Assert(initial_refinement_mortar.size() == 

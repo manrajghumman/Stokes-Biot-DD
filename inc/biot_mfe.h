@@ -257,6 +257,7 @@ namespace mfe_biot
     std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
     std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
     unsigned int refinement;
+    unsigned int cycle_number;
     std::vector<unsigned int> faces_on_interface;
     std::vector<unsigned int> faces_on_interface_mortar;
     std::vector <std::vector<unsigned int>> interface_dofs;

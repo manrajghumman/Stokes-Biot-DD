@@ -140,7 +140,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd realeg1/biot.prm");
+    param.read_parameters("../test function/dd test/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -912,6 +912,19 @@ namespace mfe_biot
           // if (neighbor_type[side] == 1)
           //   jacobi_scaling[side] /= std::pow(2, cycle);
         }
+      double max_scaling = 1.0;
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+       if (neighbors[side] >= 0)
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          max_scaling = std::max(jacobi_scaling[side][i], max_scaling);
+        }
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+       if (neighbors[side] >= 0)
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          jacobi_scaling[side][i] = sqrt(max_scaling * std::pow(2, cycle_number));
+        }
     }
     else if (preconditioner_type == 2) // implement jacobi preconditioner
     {
@@ -1124,17 +1137,17 @@ namespace mfe_biot
             }
         }
     }
-    // if (this_mpi == 3)
-    // {
-    //   // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
-    //   for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
-    //     if (neighbors[side] >= 0)
-    //     {
-    //       std::cout << "side " << side << std::endl;
-    //       for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
-    //         std::cout << "Jacobi scaling for dof: " << interface_dofs[side][i] << " : " << jacobi_scaling[side][i] << std::endl;
-    //     }
-    // }
+    if (this_mpi == 3)
+    {
+      // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
+      for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
+        if (neighbors[side] >= 0)
+        {
+          std::cout << "side " << side << std::endl;
+          for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
+            std::cout << "Jacobi scaling for dof: " << interface_dofs[side][i] << " : " << jacobi_scaling[side][i] << std::endl;
+        }
+    }
   }
 
   template <int dim>
@@ -3336,6 +3349,7 @@ namespace mfe_biot
   template <int dim>
   void MixedBiotProblem<dim>::run (unsigned int cycle)
   {
+    cycle_number = cycle;
     Assert(initial_refinement.size() == 
               dim, ExcDimensionMismatch(initial_refinement.size(), dim));
     Assert(initial_refinement_mortar.size() == 

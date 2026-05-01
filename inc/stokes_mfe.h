@@ -148,6 +148,7 @@ namespace mfe_stokes
     std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
     std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
     unsigned int refinement;
+    unsigned int cycle_number;
     // std::vector<int> neighbors;
     // std::vector<unsigned int> neighbor_type;
 
