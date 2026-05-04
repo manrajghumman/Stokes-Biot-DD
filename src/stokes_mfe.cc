@@ -1431,13 +1431,653 @@ namespace mfe_stokes
             if (neighbor_type[side] == 2) // Stokes-Biot interface
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+                jacobi_scaling[side][i] = 2*lame_mu;
               else // pressure lagrange multiplier test space
               jacobi_scaling[side][i] = K_perm[0][0];
             }
             else // Stokes-Stokes interface
               jacobi_scaling[side][i] = 1.0;
         }
+    }
+    else if (preconditioner_type == 5)
+    {
+      //compute <Sv,v> on the interface where v is the
+      // vector (1, 1, ..., 1), on the interface and S 
+      // is the interface operator, and use ||Sv||/||v|| 
+      // use as a scaling on each interface in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      // to avoid jacobi scaling while 
+      // computing preconditioner action for each e_i
+      preconditioner_type = 0; 
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        jacobi_scaling[side].resize(interface_dofs[side].size());
+        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          if (neighbors[side] >= 0)
+          {
+            // interface_fe_function[side] = 0;
+            // multiscale_basis[side][i].reinit(solution_star);
+            // multiscale_basis[side][i] = 0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+            // interface_fe_function[side]                          = 0;
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              interface_fe_function[side][interface_dofs[side][j]] = 1.0;
+            
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  solution_star.sadd(
+                    1.0,
+                    interface_fe_function[face][interface_dofs[face][j]],
+                    multiscale_basis[face][j]);
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values,
+                                fe_face_values_mortar_biot);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(interface_function,
+                                    solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    fe_face_values_mortar_biot,
+                                    P_mortar);
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {                   
+                // Create vector of u\dot n to send
+                if (neighbor_type[face] == 1) //Stokes-Stokes interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                    interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                }
+                else if (neighbor_type[face] == 2) //Stokes-Biot interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    if (interface_dofs[face][j] < n_stress_mortar) // displacement lagrange multiplier test space
+                      interface_data_send[face][j] = solution_star_mortar[face][interface_dofs[face][j]];
+                    else // pressure lagrange multiplier test space
+                      interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                  }
+                }
+              }
+
+            MPI_Sendrecv(interface_data_send[side].data(),
+                      static_cast<int>(interface_dofs[side].size()),
+                      MPI_DOUBLE,
+                      neighbors[side],
+                      this_mpi,  // send tag
+
+                      interface_data_receive[side].data(),
+                      static_cast<int>(interface_dofs[side].size()),
+                      MPI_DOUBLE,
+                      neighbors[side],
+                      neighbors[side],  // recv tag
+
+                      mpi_communicator,
+                      &mpi_status);
+                               
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                if (face == side)
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    Ap[face][j] = ((interface_data_send[face][j] +
+                                    interface_data_receive[face][j]));
+                  }
+                }
+                // else
+                // {
+                //   for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                //     Ap[face][j] = interface_data_send[face][j];
+                // }
+              }
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+
+            
+            double scaling = 1.0;
+            scaling = inner_product_mortar(Ap,Ap,fe_face_values_mortar,
+                                            fe_face_values_mortar_biot)
+                                            / inner_product_mortar(interface_data,interface_data,fe_face_values_mortar,
+                                            fe_face_values_mortar_biot) ;
+            // scaling = std::exp(scaling);                                  
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              jacobi_scaling[side][j] = scaling;
+            // else
+              // jacobi_scaling[side][i] = abs(Ap[side][i]);
+            
+            ind += 1;
+            if (this_mpi == 0)
+            {
+              std::cout << "this_mpi = " << this_mpi << ", jacobi for [" << side << "] =" << scaling << std::endl;
+            }
+          }
+        }
+      }
+      preconditioner_type = 5;
+    }
+    else if (preconditioner_type == 6)
+    {
+      //compute <Sv,v> on the interface where v is the
+      // vector (1, 1, ..., 1), on the interface and S 
+      // is the interface operator, and use ||Sv||/||v|| 
+      // use as a scaling on each interface in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      // to avoid jacobi scaling while 
+      // computing preconditioner action for each e_i
+      preconditioner_type = 0; 
+      // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+          jacobi_scaling[side].resize(interface_dofs[side].size());
+        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          // if (neighbors[side] >= 0)
+          {
+            // interface_fe_function[side] = 0;
+            // multiscale_basis[side][i].reinit(solution_star);
+            // multiscale_basis[side][i] = 0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+            // // interface_fe_function[side]                          = 0;
+            // // interface_fe_function[side][interface_dofs[side][i]] = 1.0;
+            // interface_data[side][i] = 1.0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+            // interface_fe_function[side]                          = 0;
+          for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              interface_fe_function[side][interface_dofs[side][j]] = 1.0;
+            
+            // interface operator has to be done explitly ow wrong info sent and received
+            // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+            //   for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+            //     interface_fe_function[side][interface_dofs[side][i]] = 
+            //       interface_data[side][i];
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  solution_star.sadd(
+                    1.0,
+                    interface_fe_function[face][interface_dofs[face][j]],
+                    multiscale_basis[face][j]);
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values,
+                                fe_face_values_mortar_biot);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(interface_function,
+                                    solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    fe_face_values_mortar_biot,
+                                    P_mortar);
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {                   
+                // Create vector of u\dot n to send
+                if (neighbor_type[face] == 1) //Stokes-Stokes interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                    interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                }
+                else if (neighbor_type[face] == 2) //Stokes-Biot interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    if (interface_dofs[face][j] < n_stress_mortar) // displacement lagrange multiplier test space
+                      interface_data_send[face][j] = solution_star_mortar[face][interface_dofs[face][j]];
+                    else // pressure lagrange multiplier test space
+                      interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                  }
+                }
+              
+
+                MPI_Sendrecv(interface_data_send[face].data(),
+                          static_cast<int>(interface_dofs[face].size()),
+                          MPI_DOUBLE,
+                          neighbors[face],
+                          this_mpi,  // send tag
+
+                          interface_data_receive[face].data(),
+                          static_cast<int>(interface_dofs[face].size()),
+                          MPI_DOUBLE,
+                          neighbors[face],
+                          neighbors[face],  // recv tag
+
+                          mpi_communicator,
+                          &mpi_status);
+            
+
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  Ap[face][j] = ((interface_data_send[face][j] +
+                                  interface_data_receive[face][j]));
+                }
+              }
+            
+
+            std::vector<std::vector<double>> Ap_face(n_faces_per_cell);
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+                Ap_face[face].resize(interface_dofs[face].size());
+
+            std::vector<double> scaling (n_faces_per_cell, 1.0);
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {
+                for (unsigned int side = 0 ; side < n_faces_per_cell; ++side)
+                  for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+                  {
+                    Ap_face[side][j] = 0;
+                    interface_data[side][j] = 0;
+                  }
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  Ap_face[face][j] = Ap[face][j];
+                  interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+                }
+
+                scaling[face] = sqrt(inner_product_mortar(Ap_face,Ap_face,fe_face_values_mortar,
+                                                fe_face_values_mortar_biot)
+                                                / inner_product_mortar(interface_data,interface_data,fe_face_values_mortar,
+                                                fe_face_values_mortar_biot)); 
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  jacobi_scaling[face][j] = scaling[face];                                
+              }
+            
+
+            ind += 1;
+            if (this_mpi == 0)
+            {
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                std::cout << "this_mpi = " << this_mpi << ", jacobi for [" << face << "] =" << scaling[face] << std::endl;
+            }
+          }
+        }
+      }
+      preconditioner_type = 6;
+    }
+    else if (preconditioner_type == 7)
+    {
+      //compute <Sv,v> on the interface where v is the
+      // vector (1, 1, ..., 1), on the interface and S 
+      // is the interface operator, and use ||Sv||/||v|| 
+      // use as a scaling on each interface in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      // to avoid jacobi scaling while 
+      // computing preconditioner action for each e_i
+      preconditioner_type = 0; 
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        jacobi_scaling[side].resize(interface_dofs[side].size());
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          jacobi_scaling[side][i] = 1.0;
+        {
+          if (neighbors[side] >= 0)
+          {
+            // interface_fe_function[side] = 0;
+            // multiscale_basis[side][i].reinit(solution_star);
+            // multiscale_basis[side][i] = 0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+            // interface_fe_function[side]                          = 0;
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              interface_fe_function[side][interface_dofs[side][j]] = 1.0;
+            
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  solution_star.sadd(
+                    1.0,
+                    interface_fe_function[face][interface_dofs[face][j]],
+                    multiscale_basis[face][j]);
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values,
+                                fe_face_values_mortar_biot);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(interface_function,
+                                    solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    fe_face_values_mortar_biot,
+                                    P_mortar);
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {                   
+                // Create vector of u\dot n to send
+                if (neighbor_type[face] == 1) //Stokes-Stokes interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                    interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                }
+                else if (neighbor_type[face] == 2) //Stokes-Biot interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    if (interface_dofs[face][j] < n_stress_mortar) // displacement lagrange multiplier test space
+                      interface_data_send[face][j] = solution_star_mortar[face][interface_dofs[face][j]];
+                    else // pressure lagrange multiplier test space
+                      interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                  }
+                }
+              }
+
+            MPI_Sendrecv(interface_data_send[side].data(),
+                      static_cast<int>(interface_dofs[side].size()),
+                      MPI_DOUBLE,
+                      neighbors[side],
+                      this_mpi,  // send tag
+
+                      interface_data_receive[side].data(),
+                      static_cast<int>(interface_dofs[side].size()),
+                      MPI_DOUBLE,
+                      neighbors[side],
+                      neighbors[side],  // recv tag
+
+                      mpi_communicator,
+                      &mpi_status);
+                               
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                if (face == side)
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    Ap[face][j] = std::log10(abs((interface_data_send[face][j] +
+                                    interface_data_receive[face][j])));
+                  }
+                }
+                // else
+                // {
+                //   for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                //     Ap[face][j] = interface_data_send[face][j];
+                // }
+              }
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+
+            
+            // double scaling = 1.0;
+            // scaling = inner_product_mortar(Ap,Ap,fe_face_values_mortar,
+            //                                 fe_face_values_mortar_biot)
+            //                                 / inner_product_mortar(interface_data,interface_data,fe_face_values_mortar,
+            //                                 fe_face_values_mortar_biot);
+            // scaling = std::exp(scaling);                                  
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              jacobi_scaling[side][j] = std::pow(5.0, (Ap[side][j]));
+            // else
+              // jacobi_scaling[side][i] = abs(Ap[side][i]);
+            
+            ind += 1;
+            // if (this_mpi == 0)
+            // {
+            //   std::cout << "this_mpi = " << this_mpi << ", jacobi for [" << side << "] =" << scaling << std::endl;
+            // }
+          }
+        }
+      }
+      preconditioner_type = 7;
+    }
+    else if (preconditioner_type == 8)
+    {
+      //compute <Sv,v> on the interface where v is the
+      // vector (1, 1, ..., 1), on the interface and S 
+      // is the interface operator, and use ||Sv||/||v|| 
+      // use as a scaling on each interface in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      // to avoid jacobi scaling while 
+      // computing preconditioner action for each e_i
+      preconditioner_type = 0; 
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        jacobi_scaling[side].resize(interface_dofs[side].size());
+        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          if (neighbors[side] >= 0)
+          {
+            // interface_fe_function[side] = 0;
+            // multiscale_basis[side][i].reinit(solution_star);
+            // multiscale_basis[side][i] = 0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+            // interface_fe_function[side]                          = 0;
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              interface_fe_function[side][interface_dofs[side][j]] = 1.0;
+            
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  solution_star.sadd(
+                    1.0,
+                    interface_fe_function[face][interface_dofs[face][j]],
+                    multiscale_basis[face][j]);
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values,
+                                fe_face_values_mortar_biot);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(interface_function,
+                                    solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    fe_face_values_mortar_biot,
+                                    P_mortar);
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {                   
+                // Create vector of u\dot n to send
+                if (neighbor_type[face] == 1) //Stokes-Stokes interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                    interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                }
+                else if (neighbor_type[face] == 2) //Stokes-Biot interface
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    if (interface_dofs[face][j] < n_stress_mortar) // displacement lagrange multiplier test space
+                      interface_data_send[face][j] = solution_star_mortar[face][interface_dofs[face][j]];
+                    else // pressure lagrange multiplier test space
+                      interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                  }
+                }
+              }
+
+            MPI_Sendrecv(interface_data_send[side].data(),
+                      static_cast<int>(interface_dofs[side].size()),
+                      MPI_DOUBLE,
+                      neighbors[side],
+                      this_mpi,  // send tag
+
+                      interface_data_receive[side].data(),
+                      static_cast<int>(interface_dofs[side].size()),
+                      MPI_DOUBLE,
+                      neighbors[side],
+                      neighbors[side],  // recv tag
+
+                      mpi_communicator,
+                      &mpi_status);
+                               
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                if (face == side)
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    Ap[face][j] = ((interface_data_send[face][j] +
+                                    interface_data_receive[face][j]));
+                  }
+                }
+              }
+            
+            // for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+            //   for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+            //     interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+            double scaling = 1.0;
+            std::vector<std::vector<double>> Ap_face(n_faces_per_cell);
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+                Ap_face[face].resize(interface_dofs[face].size());    
+            if (neighbor_type[side] == 2) //Stokes-Biot interface
+            {
+             for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+               if (interface_dofs[side][j] < n_stress_mortar) // displacement lagrange multiplier test space
+              {
+                interface_data[side][j] = interface_fe_function[side][interface_dofs[side][j]];
+                Ap_face[side][j] = Ap[side][j];
+              }
+              
+              scaling = sqrt(inner_product_mortar(Ap_face,Ap_face,fe_face_values_mortar,
+                                              fe_face_values_mortar_biot)
+                                              / inner_product_mortar(interface_data,interface_data,fe_face_values_mortar,
+                                              fe_face_values_mortar_biot)) ;
+                                                
+              for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+                if (interface_dofs[side][j] < n_stress_mortar) // displacement lagrange multiplier test space                            
+                  jacobi_scaling[side][j] = scaling;
+            }
+            
+            ind += 1;
+            if (this_mpi == 0)
+            {
+              std::cout << "this_mpi = " << this_mpi << ", jacobi for [" << side << "] =" << scaling << std::endl;
+            }
+          }
+        }
+      }
+      preconditioner_type = 8;
     }
     // if (this_mpi == 0)
     // {

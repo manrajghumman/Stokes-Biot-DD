@@ -1124,30 +1124,461 @@ namespace mfe_biot
             if (neighbor_type[side] == 1) // Stokes-Biot interface
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+                jacobi_scaling[side][i] = 2*lame_mu;
               else // pressure lagrange multiplier test space
                 jacobi_scaling[side][i] =  K_permeability[0][0];
             }
             else // Biot-Biot interface
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+                jacobi_scaling[side][i] = 2*lame_mu;
               else // pressure lagrange multiplier test space
                 jacobi_scaling[side][i] = K_permeability[0][0];
             }
         }
     }
-    if (this_mpi == 3)
+    else if (preconditioner_type == 5)
     {
-      // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
-      for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
-        if (neighbors[side] >= 0)
+      //compute <Se_i,e_i> on the interface where e_i is the
+      // i-th interface basis function, and S is the interface
+      // operator, to use as a scaling in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        jacobi_scaling[side].resize(interface_dofs[side].size());
+        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
         {
-          std::cout << "side " << side << std::endl;
-          for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
-            std::cout << "Jacobi scaling for dof: " << interface_dofs[side][i] << " : " << jacobi_scaling[side][i] << std::endl;
+          if (neighbors[side] >= 0)
+          {
+            // interface_fe_function[side] = 0;
+            // multiscale_basis[side][i].reinit(solution_star);
+            // multiscale_basis[side][i] = 0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+            // // interface_fe_function[side]                          = 0;
+            // // interface_fe_function[side][interface_dofs[side][i]] = 1.0;
+            // interface_data[side][i] = 1.0;
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+            // interface_fe_function[side]                          = 0;
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              interface_fe_function[side][interface_dofs[side][j]] = 1.0;
+            
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  solution_star.sadd(
+                    1.0,
+                    interface_fe_function[face][interface_dofs[face][j]],
+                    multiscale_basis[face][j]);
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    P_mortar);
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {                   
+                // Create vector of u\dot n to send
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  if (interface_dofs[face][j] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+                    interface_data_send[face][j] = solution_star_mortar[face][interface_dofs[face][j]];
+                  else //monolithic-darcy part (coupled)
+                    interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                }    
+              }
+
+            MPI_Sendrecv(interface_data_send[side].data(),
+                          interface_data_send[side].size(),
+                          MPI_DOUBLE,
+                          neighbors[side],
+                          this_mpi,  // send tag
+
+                          interface_data_receive[side].data(),
+                          interface_data_receive[side].size(),
+                          MPI_DOUBLE,
+                          neighbors[side],
+                          neighbors[side],  // recv tag
+
+                          mpi_communicator,
+                          &mpi_status);
+
+          
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                if (face == side)
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    Ap[face][j] = ((interface_data_send[face][j] +
+                                    interface_data_receive[face][j]));
+                  }
+                }
+                // else
+                // {
+                //   for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                //     Ap[face][j] = interface_data_send[face][j];
+                // }
+              }
+            // Ap[side][i] = (interface_data_send[side][i] +
+            //                           interface_data_receive[side][i]);                          
+            // interface_fe_function[side].block(2) = 0;
+            // assemble_rhs_star(interface_function,
+            //                   fe_face_values,
+            //                   fe_face_values_mortar_biot);
+            // solve_star();
+            // pcout << "Computing jacobi, side = " << side << " , i = " << i 
+            //       << " Ap[side][i] = " << Ap[side][i] << std::endl;
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+
+            // if (side == 1 && this_mpi == 0)
+            // {
+            //   std::cout << "interface_data on side " << side << " for i = " << i << " is: ";
+            //   for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+            //     std::cout << interface_data[side][j] << " ";
+            //   std::cout << std::endl;
+            // }
+            // if (this_mpi == 0 && side == 1)
+              // jacobi_scaling[side][i] = abs(Ap[side][i]);
+              // jacobi_scaling[side][i] = inner_product_mortar(Ap,
+              //                                               interface_data,
+              //                                               fe_face_values_mortar);
+            // else
+              // jacobi_scaling[side][i] = Ap[side][i];                                          
+            double scaling = 1.0;
+            scaling = inner_product_mortar(Ap,Ap,fe_face_values_mortar)
+                                            / inner_product_mortar(interface_data,interface_data,fe_face_values_mortar);
+            // scaling = std::exp(scaling);
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              jacobi_scaling[side][j] = scaling;
+            // multiscale_basis[side][i] = solution_star;
+            ind += 1;
+            if (this_mpi == 3)
+            {
+              std::cout << "this_mpi = " << this_mpi << ", jacobi for [" << side << "] =" << scaling << std::endl;
+            }
+          }
         }
+      }
     }
+    else if (preconditioner_type == 6)
+    {
+      //compute <Se_i,e_i> on the interface where e_i is the
+      // i-th interface basis function, and S is the interface
+      // operator, to use as a scaling in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      // for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+          jacobi_scaling[side].resize(interface_dofs[side].size());
+        // for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+        {
+          // if (neighbors[side] >= 0)
+          {
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+
+            for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+              for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+                interface_fe_function[side][interface_dofs[side][j]] = 1.0;
+            
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  solution_star.sadd(
+                    1.0,
+                    interface_fe_function[face][interface_dofs[face][j]],
+                    multiscale_basis[face][j]);
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    P_mortar);
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {                   
+                // Create vector of u\dot n to send
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  if (interface_dofs[face][j] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+                    interface_data_send[face][j] = solution_star_mortar[face][interface_dofs[face][j]];
+                  else //monolithic-darcy part (coupled)
+                    interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                }    
+              
+
+                MPI_Sendrecv(interface_data_send[face].data(),
+                              interface_data_send[face].size(),
+                              MPI_DOUBLE,
+                              neighbors[face],
+                              this_mpi,  // send tag
+
+                              interface_data_receive[face].data(),
+                              interface_data_receive[face].size(),
+                              MPI_DOUBLE,
+                              neighbors[face],
+                              neighbors[face],  // recv tag
+
+                              mpi_communicator,
+                              &mpi_status);
+
+          
+                
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  Ap[face][j] = ((interface_data_send[face][j] +
+                                  interface_data_receive[face][j]));
+                }
+                    
+              }
+            
+            
+
+            std::vector<std::vector<double>> Ap_face(n_faces_per_cell);
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+                Ap_face[face].resize(interface_dofs[face].size());    
+
+            std::vector<double> scaling(n_faces_per_cell, 1.0);
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                // reset Ap_face and interface_data for the face of interest
+                for (unsigned int side = 0 ; side < n_faces_per_cell; ++side)
+                  for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+                  {
+                    Ap_face[side][j] = 0;
+                    interface_data[side][j] = 0;
+                  }
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  Ap_face[face][j] = Ap[face][j];
+                  interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+                }
+
+                scaling[face] = sqrt(inner_product_mortar(Ap_face,Ap_face,fe_face_values_mortar)
+                                            / inner_product_mortar(interface_data,interface_data,fe_face_values_mortar));
+                // scaling[face] = std::exp(scaling[face]);
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  jacobi_scaling[face][j] = scaling[face];
+              }
+            
+            ind += 1;
+            if (this_mpi == 3)
+            {
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                std::cout << "this_mpi = " << this_mpi << ", jacobi for [" << face << "] =" << scaling[face] << std::endl;
+            }
+          }
+        }
+      }
+    }
+    else if (preconditioner_type == 7)
+    {
+      //compute <Se_i,e_i> on the interface where e_i is the
+      // i-th interface basis function, and S is the interface
+      // operator, to use as a scaling in a jacobi preconditioner 
+      // for the interface problem. multiscale basis functions
+      // are used to compute the action of the interface operator on e_i
+      unsigned int ind = 0;
+      jacobi_scaling.resize(n_faces_per_cell);
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      {
+        jacobi_scaling[side].resize(interface_dofs[side].size());
+        for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+          jacobi_scaling[side][i] = 1.0;
+        {
+          if (neighbors[side] >= 0)
+          {
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+              {
+                Ap[face][j] = 0;
+                interface_data[face][j] = 0;
+              }
+
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              interface_fe_function[face] = 0;
+
+            // interface_fe_function[side]                          = 0;
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              interface_fe_function[side][interface_dofs[side][j]] = 1.0;
+            
+
+            if (multiscale_basis_flag)
+            {
+              // Instead of solving subdomain problems we compute the response using
+              // basis
+              solution_star = 0;
+              // unsigned int j = 0;
+              for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  solution_star.sadd(
+                    1.0,
+                    interface_fe_function[face][interface_dofs[face][j]],
+                    multiscale_basis[face][j]);
+                  // j += 1;
+                }
+            }
+            else
+            {
+              // interface_fe_function.block(1) = 0;
+              assemble_rhs_star(interface_function,
+                                fe_face_values);
+              solve_star();
+            }
+            
+            for (unsigned int i = 0; i < solution_star.size(); ++i)
+              AssertIsFinite(solution_star[i]);
+            interface_inner_product(solution_bar_function,
+                                    solution_star_function,
+                                    fe_face_values_mortar,
+                                    P_mortar);
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)     
+              {                   
+                // Create vector of u\dot n to send
+                for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                {
+                  if (interface_dofs[face][j] < n_stress_mortar) //monolithic-Elascitiy part (coupled)
+                    interface_data_send[face][j] = solution_star_mortar[face][interface_dofs[face][j]];
+                  else //monolithic-darcy part (coupled)
+                    interface_data_send[face][j] = - solution_star_mortar[face][interface_dofs[face][j]];
+                }    
+              }
+
+            MPI_Sendrecv(interface_data_send[side].data(),
+                          interface_data_send[side].size(),
+                          MPI_DOUBLE,
+                          neighbors[side],
+                          this_mpi,  // send tag
+
+                          interface_data_receive[side].data(),
+                          interface_data_receive[side].size(),
+                          MPI_DOUBLE,
+                          neighbors[side],
+                          neighbors[side],  // recv tag
+
+                          mpi_communicator,
+                          &mpi_status);
+
+          
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              if (neighbors[face] >= 0)
+              {
+                if (face == side)
+                {
+                  for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                  {
+                    Ap[face][j] = std::log10(abs((interface_data_send[face][j] +
+                                    interface_data_receive[face][j])));
+                  }
+                }
+              }
+            
+            for (unsigned int face = 0; face < n_faces_per_cell; ++face)
+              for (unsigned int j = 0; j < interface_dofs[face].size(); ++j)
+                interface_data[face][j] = interface_fe_function[face][interface_dofs[face][j]];
+
+                                                 
+            // double scaling = 1.0;
+            // scaling = inner_product_mortar(Ap,Ap,fe_face_values_mortar)
+            //                                 / inner_product_mortar(interface_data,interface_data,fe_face_values_mortar);
+            // scaling = std::exp(scaling);
+            for (unsigned int j = 0; j < interface_dofs[side].size(); ++j)
+              jacobi_scaling[side][j] = std::pow(5.0, (Ap[side][j]));
+            // multiscale_basis[side][i] = solution_star;
+            ind += 1;
+            // if (this_mpi == 3)
+            // {
+            //   std::cout << "this_mpi = " << this_mpi << ", jacobi for [" << side << "] =" << scaling << std::endl;
+            // }
+          }
+        }
+      }
+    }
+    // if (this_mpi == 3)
+    // {
+    //   // std::cout << "Average eigenvalue: " << avg_eigenvalue << std::endl;
+    //   for (unsigned int side = 0; side < jacobi_scaling.size(); ++side)
+    //     if (neighbors[side] >= 0)
+    //     {
+    //       std::cout << "side " << side << std::endl;
+    //       for (unsigned int i = 0; i < jacobi_scaling[side].size(); ++i)
+    //         std::cout << "Jacobi scaling for dof: " << interface_dofs[side][i] << " : " << jacobi_scaling[side][i] << std::endl;
+    //     }
+    // }
   }
 
   template <int dim>
@@ -2960,13 +3391,13 @@ namespace mfe_biot
     // convergence_table_darcy_l2_total.add_value("residual", residual);
 
     // convergence_table_elast_l2_total.add_value("cells", n_active_cells);
-    // convergence_table_elast_l2_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
-    // convergence_table_elast_l2_total.add_value("dofs", n_dofs);
+    convergence_table_elast_l2_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
+    convergence_table_elast_l2_total.add_value("dofs", n_dofs);
+    convergence_table_elast_l2_total.add_value("gmres_iter", gmres_iteration);
     convergence_table_elast_l2_total.add_value("||d-d_h||_L2", d_l2_error_total/d_l2_norm_total);
     convergence_table_elast_l2_total.add_value("||r-r_h||_L2", r_l2_error_total/r_l2_norm_total);
     // convergence_table_elast_l2_total.add_value("||s-s_h||_L2", s_l2_error_total/s_l2_norm_total);
-    // convergence_table_elast_l2_total.add_value("gmres_iter", gmres_iteration);
-    // convergence_table_elast_l2_total.add_value("residual", residual);
+    convergence_table_elast_l2_total.add_value("residual", residual);
     
     // convergence_table_hdiv_total.add_value("cells", n_active_cells);
     // convergence_table_hdiv_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
@@ -2975,6 +3406,7 @@ namespace mfe_biot
     // convergence_table_hdiv_total.add_value("||s-s_h||_Hdiv", s_hdiv_error_total/s_hdiv_norm_total);
     // convergence_table_hdiv_total.add_value("gmres_iter", gmres_iteration);
     // convergence_table_hdiv_total.add_value("residual", residual);
+    // std::cout << "the residual is " << residual << "\n";
   }
 
   template <int dim>
@@ -2992,12 +3424,12 @@ namespace mfe_biot
     // convergence_table_l2.set_scientific("||r-r_h||_L2", true);
     // convergence_table_l2.set_scientific("||s-s_h||_L2", true);
 
-    convergence_table_darcy_l2.set_tex_caption("cells", "\\ cells");
-    convergence_table_darcy_l2.set_tex_caption("dofs", "\\# dofs");
-    convergence_table_darcy_l2.set_tex_caption("residual", "residual");
+    // convergence_table_darcy_l2.set_tex_caption("cells", "\\ cells");
+    // convergence_table_darcy_l2.set_tex_caption("dofs", "\\# dofs");
+    // convergence_table_darcy_l2.set_tex_caption("gmres_iter", "iter");
     convergence_table_darcy_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
     convergence_table_darcy_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
-    convergence_table_darcy_l2.set_tex_caption("gmres_iter", "iter");
+    convergence_table_darcy_l2.set_tex_caption("residual", "residual");
     // convergence_table_l2.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{L^2}$");
     // convergence_table_l2.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{L^2}$");
     // convergence_table_l2.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{L^2}$");
@@ -3254,12 +3686,12 @@ namespace mfe_biot
   {
     if (this_mpi_biot == 0)
     {
-      // convergence_table_elast_l2.set_precision("residual", 3);
+      convergence_table_elast_l2_total.set_precision("residual", 3);
       convergence_table_elast_l2_total.set_precision("||d-d_h||_L2", 2);
       convergence_table_elast_l2_total.set_precision("||r-r_h||_L2", 2);
       // convergence_table_elast_l2_total.set_precision("||s-s_h||_L2", 2);
 
-      // convergence_table_elast_l2.set_scientific("residual", true);
+      convergence_table_elast_l2_total.set_scientific("residual", true);
       // convergence_table_l2.set_scientific("||u-u_h||_L2", true);
       // convergence_table_l2.set_scientific("||p-p_h||_L2", true);
       convergence_table_elast_l2_total.set_scientific("||d-d_h||_L2", true);
@@ -3267,14 +3699,14 @@ namespace mfe_biot
       // convergence_table_elast_l2_total.set_scientific("||s-s_h||_L2", true);
 
       // convergence_table_elast_l2_total.set_tex_caption("cells", "\\ cells");
-      // convergence_table_elast_l2_total.set_tex_caption("dofs", "\\# dofs");
-      // convergence_table_elast_l2.set_tex_caption("residual", "residual");
+      convergence_table_elast_l2_total.set_tex_caption("dofs", "\\# dofs");
+      convergence_table_elast_l2_total.set_tex_caption("residual", "residual");
       // convergence_table_l2.set_tex_caption("||u-u_h||_L2", "$||u_p-u_{ph}||_{L^2}$");
       // convergence_table_l2.set_tex_caption("||p-p_h||_L2", "$||p_p-p_{ph}||_{L^2}$");
       convergence_table_elast_l2_total.set_tex_caption("||d-d_h||_L2", "$||\\eta_p-\\eta_{ph}||_{\\Omega_p}$");
       convergence_table_elast_l2_total.set_tex_caption("||r-r_h||_L2", "$||\\gamma-\\gamma_{h}||_{\\Omega_p}$");
       // convergence_table_elast_l2_total.set_tex_caption("||s-s_h||_L2", "$||\\sigma_p-\\sigma_{ph}||_{\\Omega_p}$");
-      // convergence_table_elast_l2_total.set_tex_caption("gmres_iter", "iter");
+      convergence_table_elast_l2_total.set_tex_caption("gmres_iter", "iter");
 
       // convergence_table_l2.evaluate_convergence_rates("||u-u_h||_L2",
       //                                           ConvergenceTable::reduction_rate_log2);
@@ -3283,7 +3715,9 @@ namespace mfe_biot
       convergence_table_elast_l2_total.evaluate_convergence_rates("||d-d_h||_L2",
                                                 ConvergenceTable::reduction_rate_log2);
       convergence_table_elast_l2_total.evaluate_convergence_rates("||r-r_h||_L2",
-                                                ConvergenceTable::reduction_rate_log2);                                          
+                                                ConvergenceTable::reduction_rate_log2);   
+       convergence_table_elast_l2_total.evaluate_convergence_rates("gmres_iter",
+                                                ConvergenceTable::reduction_rate_log2);                                                                                   
       // convergence_table_elast_l2_total.evaluate_convergence_rates("||s-s_h||_L2",
       //                                           ConvergenceTable::reduction_rate_log2);
 
@@ -3326,7 +3760,7 @@ namespace mfe_biot
       convergence_table_hdiv_total.evaluate_convergence_rates("||u-u_h||_Hdiv",
                                                 ConvergenceTable::reduction_rate_log2);
       convergence_table_hdiv_total.evaluate_convergence_rates("||s-s_h||_Hdiv",
-                                                ConvergenceTable::reduction_rate_log2);
+                                                ConvergenceTable::reduction_rate_log2);                                        
 
       
       std::string conv_filename = "../output/convg_table_total/biot_table_total_hdiv" + std::string(".tex");
