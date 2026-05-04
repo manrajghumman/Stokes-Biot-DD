@@ -1433,7 +1433,7 @@ namespace mfe_stokes
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
                 jacobi_scaling[side][i] = 2*lame_mu;
               else // pressure lagrange multiplier test space
-              jacobi_scaling[side][i] = K_perm[0][0];
+              jacobi_scaling[side][i] = sqrt(K_perm[0][0]);
             }
             else // Stokes-Stokes interface
               jacobi_scaling[side][i] = 1.0;

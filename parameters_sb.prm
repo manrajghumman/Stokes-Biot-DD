@@ -19,7 +19,7 @@ set initial_refinement_mortar_2D = 1, 1 | 1, 1 ; 1, 1 | 1, 1
 # Enter which subdomain are for Stokes and Biot
 # 1 for Stokes and 2 for Biot
 # Note: Total subdomains should equal number of processes for mpirun
-set grid = 2, 2; 2, 2
+set grid = 1, 2; 1, 2
 
 
 #################################################################################
@@ -48,9 +48,9 @@ subsection Biot Parameters
 	set s_0                 = 1.0
 	set alpha               = 1.0
 	set alpha_BJS           = 1.0
-	set lame_mu             = 1.0
-	set lame_lambda         = 1e+6
-	set K                   = 1.0, 0; 0, 1.0
+	set lame_mu             = 1e+6
+	set lame_lambda         = 1.0
+	set K                   = 1.0, 0.0; 0.0, 1.0
 	set initial_val lambda  = 0.0
 	set multiscale_basis    = no
 end
@@ -69,7 +69,8 @@ end
 
 #################################################################################
 # Parameters for solver ('GMRES')
-# Preconditioner: 0 - none, 1 - penalize S-B interface jump in mass matrix M_i
+# Preconditioner: 0 - none, 
+#                 1 - penalize S-B interface jump in mass matrix M_i
 #                 2 - Jacobi
 #                 3 - Scales only dirichlet dofs in stokes
 #                 4 - scales disp dofs by 2*(lambda+mu) and press dofs by K at s-b and b-b interface
@@ -81,5 +82,5 @@ end
 subsection Solver
 	set max_iter             = 1000
 	set tol                  = 1e-8
-	set preconditioner_type  = 4
+	set preconditioner_type  = 0
 end

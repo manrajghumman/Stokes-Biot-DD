@@ -1126,7 +1126,7 @@ namespace mfe_biot
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
                 jacobi_scaling[side][i] = 2*lame_mu;
               else // pressure lagrange multiplier test space
-                jacobi_scaling[side][i] =  K_permeability[0][0];
+                jacobi_scaling[side][i] =  sqrt(K_permeability[0][0]);
             }
             else // Biot-Biot interface
             {
@@ -3394,10 +3394,10 @@ namespace mfe_biot
     convergence_table_elast_l2_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
     convergence_table_elast_l2_total.add_value("dofs", n_dofs);
     convergence_table_elast_l2_total.add_value("gmres_iter", gmres_iteration);
+    convergence_table_elast_l2_total.add_value("residual", residual);
     convergence_table_elast_l2_total.add_value("||d-d_h||_L2", d_l2_error_total/d_l2_norm_total);
     convergence_table_elast_l2_total.add_value("||r-r_h||_L2", r_l2_error_total/r_l2_norm_total);
     // convergence_table_elast_l2_total.add_value("||s-s_h||_L2", s_l2_error_total/s_l2_norm_total);
-    convergence_table_elast_l2_total.add_value("residual", residual);
     
     // convergence_table_hdiv_total.add_value("cells", n_active_cells);
     // convergence_table_hdiv_total.add_value("h", "1/"+Utilities::int_to_string(refinement));
