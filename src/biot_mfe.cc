@@ -140,7 +140,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd realeg1/biot.prm");
+    param.read_parameters("../test function/dd test/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -1111,14 +1111,14 @@ namespace mfe_biot
             if (neighbor_type[side] == 1) // Stokes-Biot interface
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+                jacobi_scaling[side][i] = 1.0;
               else // pressure lagrange multiplier test space
                 jacobi_scaling[side][i] =  K_permeability[0][0];
             }
             else // Biot-Biot interface
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+                jacobi_scaling[side][i] = 2*(lame_mu+lame_lambda);
               else // pressure lagrange multiplier test space
                 jacobi_scaling[side][i] = K_permeability[0][0];
             }
@@ -1643,6 +1643,8 @@ namespace mfe_biot
     std::vector<std::vector<std::vector<double>>> star_values_stress(dim, 
                                                     std::vector<std::vector<double>>(dim,
                                                     std::vector<double>(n_face_q_points, 0.0)));
+
+    Tensor<1, dim> tangent_vector;                                                
     
 
     if (mortar_type < 2)
@@ -1684,68 +1686,153 @@ namespace mfe_biot
               solution_star_function->value_list(fe_face_values_mortar.get_quadrature_points(),
                                                 star_values_stress[s/dim][s%dim], s);
             }
-            for (unsigned int q_point = 0; q_point < n_face_q_points;
-                  ++q_point)
+            
+            if (neighbor_type[side] == 1) // Biot-Stokes interface
             {
-              for (unsigned int k = 0; k < dofs_per_cell; ++k)
+              for (unsigned int q_point = 0; q_point < n_face_q_points;
+                  ++q_point)
               {
-                // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                //                 local_dof_indices[k]) != interface_dofs[side].end())
-                // {
-                  for (unsigned int s = 0; s < dim; ++s)
-                    phi_eta[k][s] = fe_face_values_mortar[stresses[s]].value (k, q_point)
-                                  * fe_face_values_mortar.normal_vector(q_point)
-                                  * get_normal_direction<dim>(side);
-                  phi_p[k] = fe_face_values_mortar[velocity].value (k, q_point)
-                              * fe_face_values_mortar.normal_vector(q_point)
-                              * get_normal_direction<dim>(side);
-                // }
-                // else
-                // {
-                //   for (unsigned int s = 0; s < dim; ++s)
-                //     phi_eta[k][s] = 0.0;
-                //   phi_p[k] = 0.0;
-                // }
-              }
-              for (unsigned int i = 0; i < dofs_per_cell; ++i)
-              {
-                if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
-                                local_dof_indices[i]) != interface_dofs[side].end())
+                if (dim == 2) 
                 {
-                  for (unsigned int s = 0; s < dim; ++s)
+                  tangent_vector[0] = - fe_face_values_mortar.normal_vector(q_point)[1];
+                  tangent_vector[1] = fe_face_values_mortar.normal_vector(q_point)[0];
+                }
+                else if (dim == 3)
+                {
+                  Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
+                }
+                for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                {
+                  // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                  //                 local_dof_indices[k]) != interface_dofs[side].end())
+                  // {
+                    for (unsigned int s = 0; s < dim; ++s)
+                      phi_eta[k][s] = fe_face_values_mortar[stresses[s]].value (k, q_point)
+                                    * fe_face_values_mortar.normal_vector(q_point)
+                                    * get_normal_direction<dim>(side);
+                    phi_p[k] = fe_face_values_mortar[velocity].value (k, q_point)
+                                * fe_face_values_mortar.normal_vector(q_point)
+                                * get_normal_direction<dim>(side);
+                  // }
+                  // else
+                  // {
+                  //   for (unsigned int s = 0; s < dim; ++s)
+                  //     phi_eta[k][s] = 0.0;
+                  //   phi_p[k] = 0.0;
+                  // }
+                }
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                  local_dof_indices[i]) != interface_dofs[side].end())
                   {
-                    for (unsigned int l = 0; l < dim; ++l)
+                    for (unsigned int s = 0; s < dim; ++s)
+                    {
+                      for (unsigned int l = 0; l < dim; ++l)
+                      {
+                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                          ((phi_eta[i][s] * fe_face_values_mortar.normal_vector(q_point)[s]
+                          * (bar_values_stress[s][l][q_point] * 
+                            fe_face_values_mortar.normal_vector(q_point)[l] * fe_face_values_mortar.normal_vector(q_point)[s]))/(2*(lame_mu+lame_lambda))
+                          + (phi_eta[i][s] * tangent_vector[s] *
+                            (bar_values_stress[s][l][q_point] * 
+                            fe_face_values_mortar.normal_vector(q_point)[l]))*tangent_vector[s]) //  (phi_eta(x_q) * sigma_bar * n) 
+                          * fe_face_values_mortar.JxW(q_point);    // dx
+
+                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                          ((phi_eta[i][s] * fe_face_values_mortar.normal_vector(q_point)[s] 
+                           * (star_values_stress[s][l][q_point] * 
+                            fe_face_values_mortar.normal_vector(q_point)[l] * fe_face_values_mortar.normal_vector(q_point)[s]))/(2*(lame_mu+lame_lambda)) // (phi_eta(x_q) * sigma_star * n) 
+                           + (phi_eta[i][s] * tangent_vector[s] *
+                            (star_values_stress[s][l][q_point] * 
+                            fe_face_values_mortar.normal_vector(q_point)[l] * tangent_vector[s])))
+                          * fe_face_values_mortar.JxW(q_point);    // dx
+                      }
+                    }
+                    for (unsigned int s = 0; s < dim; ++s)
                     {
                       solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                        (phi_eta[i][s] * 
-                          bar_values_stress[s][l][q_point] * 
-                          fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
+                        (phi_p[i] * 
+                          bar_values_flux[s][q_point] * 
+                          fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
                         * fe_face_values_mortar.JxW(q_point);    // dx
 
                       solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                        (phi_eta[i][s] * 
-                          star_values_stress[s][l][q_point] * 
-                          fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
-                        * fe_face_values_mortar.JxW(q_point);    // dx
+                        (phi_p[i] * 
+                          star_values_flux[s][q_point] * 
+                          fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
+                          * fe_face_values_mortar.JxW(q_point);    // dx
                     }
-                  }
-                  for (unsigned int s = 0; s < dim; ++s)
-                  {
-                    solution_bar_mortar_temp[side](local_dof_indices[i]) +=
-                      (phi_p[i] * 
-                        bar_values_flux[s][q_point] * 
-                        fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
-                      * fe_face_values_mortar.JxW(q_point);    // dx
-
-                    solution_star_mortar_temp[side](local_dof_indices[i]) +=
-                      (phi_p[i] * 
-                        star_values_flux[s][q_point] * 
-                        fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
-                        * fe_face_values_mortar.JxW(q_point);    // dx
                   }
                 }
               }
             }
+            else // Biot-Biot interface
+            {
+              for (unsigned int q_point = 0; q_point < n_face_q_points;
+                  ++q_point)
+              {
+                for (unsigned int k = 0; k < dofs_per_cell; ++k)
+                {
+                  // if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                  //                 local_dof_indices[k]) != interface_dofs[side].end())
+                  // {
+                    for (unsigned int s = 0; s < dim; ++s)
+                      phi_eta[k][s] = fe_face_values_mortar[stresses[s]].value (k, q_point)
+                                    * fe_face_values_mortar.normal_vector(q_point)
+                                    * get_normal_direction<dim>(side);
+                    phi_p[k] = fe_face_values_mortar[velocity].value (k, q_point)
+                                * fe_face_values_mortar.normal_vector(q_point)
+                                * get_normal_direction<dim>(side);
+                  // }
+                  // else
+                  // {
+                  //   for (unsigned int s = 0; s < dim; ++s)
+                  //     phi_eta[k][s] = 0.0;
+                  //   phi_p[k] = 0.0;
+                  // }
+                }
+                for (unsigned int i = 0; i < dofs_per_cell; ++i)
+                {
+                  if (std::find (interface_dofs[side].begin(), interface_dofs[side].end(),
+                                  local_dof_indices[i]) != interface_dofs[side].end())
+                  {
+                    for (unsigned int s = 0; s < dim; ++s)
+                    {
+                      for (unsigned int l = 0; l < dim; ++l)
+                      {
+                        solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                          (phi_eta[i][s] * 
+                            bar_values_stress[s][l][q_point] * 
+                            fe_face_values_mortar.normal_vector(q_point)[l]) //  (phi_eta(x_q) * sigma_bar * n) 
+                          * fe_face_values_mortar.JxW(q_point);    // dx
+
+                        solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                          (phi_eta[i][s] * 
+                            star_values_stress[s][l][q_point] * 
+                            fe_face_values_mortar.normal_vector(q_point)[l]) // (phi_eta(x_q) * sigma_star * n) 
+                          * fe_face_values_mortar.JxW(q_point);    // dx
+                      }
+                    }
+                    for (unsigned int s = 0; s < dim; ++s)
+                    {
+                      solution_bar_mortar_temp[side](local_dof_indices[i]) +=
+                        (phi_p[i] * 
+                          bar_values_flux[s][q_point] * 
+                          fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_bar * n 
+                        * fe_face_values_mortar.JxW(q_point);    // dx
+
+                      solution_star_mortar_temp[side](local_dof_indices[i]) +=
+                        (phi_p[i] * 
+                          star_values_flux[s][q_point] * 
+                          fe_face_values_mortar.normal_vector(q_point)[s])   // phi_p(x_q)* u_star * n 
+                          * fe_face_values_mortar.JxW(q_point);    // dx
+                    }
+                  }
+                }
+              }
+            }
+            
           }
       }
     }

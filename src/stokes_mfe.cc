@@ -166,7 +166,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd realeg1/stokes.prm");
+    param.read_parameters("../test function/dd test/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -1410,9 +1410,9 @@ namespace mfe_stokes
             if (neighbor_type[side] == 2) // Stokes-Biot interface
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*(lame_lambda + lame_mu);
+                jacobi_scaling[side][i] = 1;
               else // pressure lagrange multiplier test space
-              jacobi_scaling[side][i] = K_perm[0][0];
+                jacobi_scaling[side][i] = K_perm[0][0];
             }
             else // Stokes-Stokes interface
               jacobi_scaling[side][i] = 1.0;
@@ -2200,7 +2200,7 @@ namespace mfe_stokes
                       }
                       solution_star_mortar_temp[side][local_dof_indices[i]] +=
                         ((- phi_eta[i] * fe_face_values_mortar_biot.normal_vector(q_point) 
-                          * lambda_p) // <phi_eta(x_q) * n_p, lambda_p> the extra negative sign as n_p = -n_f
+                          * lambda_p)/(2*(lame_mu+lame_lambda)) // <phi_eta(x_q) * n_p, lambda_p> the extra negative sign as n_p = -n_f
                           + const_bjs * (lambda_d * tangent_vector) 
                           * (phi_eta[i] * tangent_vector)) // c_bjs<lambda_d * t_f,  phi_eta * t_f>
                         * fe_face_values_mortar_biot.JxW(q_point);    // dx
