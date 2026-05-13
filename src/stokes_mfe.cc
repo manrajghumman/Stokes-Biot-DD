@@ -1427,16 +1427,28 @@ namespace mfe_stokes
         if (neighbors[side] >= 0)
         {
           jacobi_scaling[side].resize(interface_dofs[side].size());
+          // reset scaling to 1.0
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            if (neighbor_type[side] == 2) // Stokes-Biot interface
+            jacobi_scaling[side][i] = 1.0;
+        }
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          if (neighbor_type[side] == 2) // Stokes-Biot interface
+          {
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
                 jacobi_scaling[side][i] = 2*lame_mu;
               else // pressure lagrange multiplier test space
-              jacobi_scaling[side][i] = sqrt(K_perm[0][0]);
-            }
-            else // Stokes-Stokes interface
               jacobi_scaling[side][i] = 1.0;
+            }
+          }
+          else // Stokes-Stokes interface
+          {
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
+              jacobi_scaling[side][i] = 1.0;
+          }
         }
     }
     else if (preconditioner_type == 5)
@@ -3731,17 +3743,17 @@ namespace mfe_stokes
       // Exit criterion
       if (residual < tol)
       {
-        pcout << "\n  GMRES converges in " << gmres_iteration << " iterations!\n";
+        // pcout << "\n  GMRES converges in " << gmres_iteration << " iterations!\n";
         break;
       }
       else if(k_counter>maxiter-2)
       {
-        pcout << "\n  GMRES doesn't converge after  " << k_counter + 1 << " iterations!\n";
+        // pcout << "\n  GMRES doesn't converge after  " << k_counter + 1 << " iterations!\n";
         break;
       }
       else if(k_counter == interface_dofs_size-1)
       {
-        pcout << "\n  GMRES doesn't converge after " << interface_dofs_size << " iterations!\n";
+        // pcout << "\n  GMRES doesn't converge after " << interface_dofs_size << " iterations!\n";
         break;
       }
 

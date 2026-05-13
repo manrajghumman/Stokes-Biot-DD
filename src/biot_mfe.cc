@@ -1120,21 +1120,33 @@ namespace mfe_biot
         if (neighbors[side] >= 0)
         {
           jacobi_scaling[side].resize(interface_dofs[side].size());
+          // reset scaling to 1.0
           for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
-            if (neighbor_type[side] == 1) // Stokes-Biot interface
+            jacobi_scaling[side][i] = 1.0;
+        }
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+        {
+          if (neighbor_type[side] == 1) // Stokes-Biot interface
+          {
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
                 jacobi_scaling[side][i] = 2*lame_mu;
               else // pressure lagrange multiplier test space
-                jacobi_scaling[side][i] =  sqrt(K_permeability[0][0]);
+                jacobi_scaling[side][i] =  1.0;
             }
-            else // Biot-Biot interface
+          }
+          else // Biot-Biot interface
+          {
+            for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
                 jacobi_scaling[side][i] = 2*lame_mu;
               else // pressure lagrange multiplier test space
-                jacobi_scaling[side][i] = K_permeability[0][0];
+                jacobi_scaling[side][i] = 1.0;
             }
+          }
         }
     }
     else if (preconditioner_type == 5)
