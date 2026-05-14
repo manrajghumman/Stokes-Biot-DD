@@ -13,7 +13,7 @@
  *         Manraj Ghumman, University of Pittsburgh, 2025
  * based on Eldar Khattatov's Elasticity DD implementation from 2017.
  */
-
+#include <cstdlib>
 // Utilities, data, etc..
 #include "../inc/sb_dd.h"
 #include "../inc/sb_parameter_reader.h"
@@ -29,6 +29,27 @@ main(int argc, char *argv[])
 
       // Initialize MPI via dealii wrapper with 1 thread per MPI process
       Utilities::MPI::MPI_InitFinalize mpi_initialization(argc, argv, 1);
+
+      // read the biot parameters from parameters.prm and update them in
+      // the test function biot.prm files
+
+      const MPI_Comm mpi_communicator = MPI_COMM_WORLD;
+      const unsigned int this_mpi_process =
+        Utilities::MPI::this_mpi_process(mpi_communicator);
+
+      if (this_mpi_process == 0)
+      {
+        const int status =
+          std::system("python3 \"../test function/update_biot_constants.py\" "
+                "\"../parameters_sb.prm\" "
+                "\"../test function/dd test/biot.prm\"");
+
+        AssertThrow(status == 0,
+                    ExcMessage("Failed to update Function constants in biot.prm."));
+      }
+
+      MPI_Barrier(mpi_communicator);
+
 
       // Ask for parameters from parameter reader
       ParameterHandler prm;
