@@ -65,7 +65,7 @@ namespace dd_utilities
     for (unsigned int row=0;row<dim;++row)
       for (unsigned int col=0;col<dim;++col)
         if (row == col)
-          res[row][col] = 1/(2*mu)*(vec[row][col] - lambda/(2*mu + dim*lambda)*trace);
+          res[row][col] = 1/(2*mu)*(vec[row][col] - (1/(2*mu/lambda + dim))*trace);
         else
           res[row][col] = 1/(2*mu)*(vec[row][col]);
   }
@@ -76,7 +76,7 @@ namespace dd_utilities
   void compliance_tensor_pressure(const double pres, const double mu, const double lambda, Tensor<2,dim> &res)
   {
     for(unsigned int i=0;i<dim;i++)
-      res[i][i] = ((2*mu+(dim-2)*lambda)*pres)/((2*mu+dim*lambda)*2*mu);
+      res[i][i] = 1/(2*mu)*(1 - 2/(2*mu/lambda + dim))*pres;//((2*mu+(dim-2)*lambda)*pres)/((2*mu+dim*lambda)*2*mu);
   }
 
   // Domain decomposition related utilities
@@ -115,8 +115,8 @@ namespace dd_utilities
     {
       if (fmod(double(n_proc), tmp) == 0)
       {
-        n_dom[0] = n_proc / tmp;
-        n_dom[1] = tmp;
+        n_dom[0] = n_proc / tmp; // x
+        n_dom[1] = tmp;          // y
         break;
       }
       else
@@ -217,28 +217,59 @@ namespace dd_utilities
     switch (dim)
       {
         case 2:
-          if (this_mpi % n_doms[0] == 0) // x = a line
+          if (n_doms[0] == 1 && n_doms[1] == 1) // only one domain
+          {
+            neighbors[0] = -1;
+            neighbors[1] = -1;
+            neighbors[2] = -1;
+            neighbors[3] = -1;
+          }
+          else if (n_doms[0] == 1) // 1 x n setup
+          {
+            if (this_mpi == 0) // only one line
             {
-              neighbors[0] = this_mpi - n_doms[0];
-              neighbors[1] = this_mpi + 1;
-              neighbors[2] = this_mpi + n_doms[0];
+              neighbors[0] = -1;
+              neighbors[1] = -1;
+              neighbors[2] = this_mpi + 1;
               neighbors[3] = -1;
             }
+            else if (this_mpi == n_doms[0] - 1) // only one line
+            {
+              neighbors[0] = 0;
+              neighbors[1] = -1;
+              neighbors[2] = -1;
+              neighbors[3] = - 1;
+            }
+            else
+            {
+              neighbors[0] = this_mpi - 1;
+              neighbors[1] = -1;
+              neighbors[2] = this_mpi + 1;
+              neighbors[3] = - 1;
+            }
+          }
+          else if (this_mpi % n_doms[0] == 0) // x = a line
+          {
+            neighbors[0] = this_mpi - n_doms[0];
+            neighbors[1] = this_mpi + 1;
+            neighbors[2] = this_mpi + n_doms[0];
+            neighbors[3] = -1;
+          }
           else if ((this_mpi + 1) % n_doms[0] ==
                    0 /*&& (this_mpi + 1) >= n_doms[0]*/) // x = b line
-            {
-              neighbors[0] = this_mpi - n_doms[0];
-              neighbors[1] = -1;
-              neighbors[2] = this_mpi + n_doms[0];
-              neighbors[3] = this_mpi - 1;
-            }
+          {
+            neighbors[0] = this_mpi - n_doms[0];
+            neighbors[1] = -1;
+            neighbors[2] = this_mpi + n_doms[0];
+            neighbors[3] = this_mpi - 1;
+          }
           else
-            {
-              neighbors[0] = this_mpi - n_doms[0];
-              neighbors[1] = this_mpi + 1;
-              neighbors[2] = this_mpi + n_doms[0];
-              neighbors[3] = this_mpi - 1;
-            }
+          {
+            neighbors[0] = this_mpi - n_doms[0];
+            neighbors[1] = this_mpi + 1;
+            neighbors[2] = this_mpi + n_doms[0];
+            neighbors[3] = this_mpi - 1;
+          }
           break;
 
         case 3:
@@ -476,7 +507,9 @@ namespace dd_utilities
                  AffineConstraints<double> &constraints,
                  const std::vector<int>    &neighbors,
                  const DoFHandler<dim>     &dof2,
-                 BlockVector<double>       &out_vec)
+                 BlockVector<double>       &out_vec,
+                 const std::vector<unsigned int> &interface_dofs,
+                 const unsigned int &side)
   {
     out_vec = 0;
 
@@ -488,13 +521,19 @@ namespace dd_utilities
 
     constraints.clear();
 
-    for (unsigned int side = 0; side < GeometryInfo<dim>::faces_per_cell;
-         ++side)
-      if (neighbors[side] >= 0)
-        boundary_functions_velocity[side + 1] = &fe_interface_data;
+    for (unsigned int face = 0; face < GeometryInfo<dim>::faces_per_cell;
+         ++face)
+      if (face == side)
+        boundary_functions_velocity[face + 1] = &fe_interface_data;
     
-    proj.project_boundary_values(dof2,
+    // std::cout << "n_boundary_dofs = "
+    //       << dof2.n_boundary_dofs(boundary_functions_velocity)
+    //       << std::endl;
+    proj.project_boundary_values(in_vec,
+                                 dof2,
                                  boundary_functions_velocity,
+                                 interface_dofs,
+                                 side,
                                  quad,
                                  constraints);
 
@@ -504,9 +543,11 @@ namespace dd_utilities
 
   template <int dim>
   void
-  compute_interface_dofs_size(std::vector<double> &interface_dofs_total,
+  compute_interface_dofs_size(std::vector<unsigned int> &interface_dofs_total,
                               const MPI_Comm      &mpi_communicator,
                               const unsigned int  &this_mpi,
+                              const unsigned int  &n_processes,
+                              std::vector<unsigned int>   &n_domains,
                               int                 &interface_dofs_size)
   {
     interface_dofs_size = 0;
@@ -516,10 +557,26 @@ namespace dd_utilities
     // If dim == 3, this is not implemented yet
     if (dim == 2)
     {
-      if (this_mpi % 2 == 0)
-        tmp = 0;
+      unsigned int count = 0;
+      unsigned int x, y;
+      x = this_mpi % n_domains[0];
+      y = this_mpi / n_domains[0];
+      if (y == 0)
+      {
+        if (this_mpi % 2 == 0)
+          tmp = 0;
+        else
+          tmp = interface_dofs_total.size();
+      }
       else
-        tmp = interface_dofs_total.size();
+      {
+        if (this_mpi % 2 == 1)
+          tmp = 0;
+        else
+          tmp = interface_dofs_total.size();
+      }
+
+      // std::cout << "this_mpi = " << this_mpi << " tmp = " << tmp << std::endl;
       MPI_Allreduce(&tmp, //sending this data
                     &interface_dofs_size, //receiving the result here
                     1, //number of elements in alpha and alpha_buffer = 1+1
@@ -529,6 +586,102 @@ namespace dd_utilities
     }
     else
       throw std::runtime_error("dim = 3 not yet implemented!");
+  }
+
+  // Extracting the dirichlet dofs on the outside bdry shared between subdomains 
+  template <int dim, int spacedim = dim>
+  void 
+  find_interface_dofs_dirichlet (DoFHandler<dim, spacedim>                &dof_handler_mortar,
+                                FESystem<dim>                             &fe_mortar,
+                                std::vector<std::vector<unsigned int>>    &interface_dofs,
+                                unsigned long                             &n_velocity_interface,
+                                const unsigned int                        &subdomain_type,
+                                std::vector<unsigned int>                 &neighbor_type,
+                                std::vector<std::vector<unsigned int>>    &interface_dofs_dirichlet)
+  { 
+    const unsigned int n_faces_per_cell = GeometryInfo<dim>::faces_per_cell;
+    interface_dofs_dirichlet.clear();
+    interface_dofs_dirichlet.resize(n_faces_per_cell);
+    std::vector<types::global_dof_index> local_face_dof_indices;
+    unsigned int side = 0;
+    unsigned int side_prev, side_next;
+
+    local_face_dof_indices.resize(fe_mortar.dofs_per_cell);
+
+    for (const auto &cell : dof_handler_mortar.active_cell_iterators())
+      for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
+        if (cell->at_boundary(face_n) &&
+              (cell->face(face_n)->boundary_id() == 0)) // check if it is on dirichlet exterior boundary
+        {
+          // std::cout << "Hello-0!!!!!!" << std::endl;
+          // cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
+          cell->get_dof_indices(local_face_dof_indices);
+          // side = cell->face(face_n)->boundary_id() - 1; does not work boundary_id == 0 on exterior dir boundary
+          if (face_n == 0) {side = 3;}
+          else if (face_n == 1) {side = 1;}
+          else if (face_n == 2) {side = 0;}
+          else if (face_n == 3) {side = 2;}
+          // std::cout << "face_n = " << face_n << "neighbor_type[" << side << "]" 
+          //           << neighbor_type[side] << std::endl;
+          side_prev = (side + n_faces_per_cell - 1) % n_faces_per_cell;
+          side_next = (side + 1) % n_faces_per_cell;
+          // std::cout << "side = " << side << " side_prev = " << side_prev << " side_next = " << side_next 
+          //           << std::endl;
+          
+          if (neighbor_type[side_prev] == 1 && subdomain_type == 1) // Stokes-Stokes interface
+          {
+            for (unsigned int i = 0; i < local_face_dof_indices.size(); ++i)
+            {
+              auto el = local_face_dof_indices[i];
+              // std::cout << "Hello-2!!!!!!" << std::endl;
+              // std::cout << "face_n = " << face_n << " side = " << side << " el = " << el << std::endl;
+              // if (side_prev == 0){face_n_prev = 2;}
+              // else if (side_prev == 1){face_n_prev = 1;}
+              // else if (side_prev == 2){face_n_prev = 3;}
+              // else if (side_prev == 3){face_n_prev = 0;}
+              if (el < n_velocity_interface && fe_mortar.has_support_on_face(i, face_n))
+              {
+                // check if it is a corner dof shared by two faces
+                // std::cout << "dirichlet dof " << el << std::endl;
+                if (std::find (interface_dofs[side_prev].begin(), interface_dofs[side_prev].end(), el) 
+                                                                  != interface_dofs[side_prev].end())
+                {
+                  // std::cout << "dirichlet dof " << el << std::endl;
+                  if (std::find (interface_dofs_dirichlet[side_prev].begin(), interface_dofs_dirichlet[side_prev].end(), el) 
+                                  == interface_dofs_dirichlet[side_prev].end())
+                  {
+                    interface_dofs_dirichlet[side_prev].push_back(el);
+                  }                                                
+                }
+              }
+            }
+          }
+          else if (neighbor_type[side_next] == 1 && subdomain_type == 1) // Stokes-Stokes interface
+          {
+            for (unsigned int i = 0; i < local_face_dof_indices.size(); ++i)
+            {
+              auto el = local_face_dof_indices[i];
+              // std::cout << "Hello-2!!!!!!" << std::endl;
+              // std::cout << "face_n = " << face_n << " side = " << side << " el = " << el << std::endl;
+              if (el < n_velocity_interface && fe_mortar.has_support_on_face(i, face_n))
+              {
+                // check if it is a corner dof shared by two faces
+                // std::cout << "dirichlet dof " << el << std::endl;
+                if (std::find (interface_dofs[side_next].begin(), interface_dofs[side_next].end(), el) 
+                                                                  != interface_dofs[side_next].end())
+                {
+                  // std::cout << "dirichlet dof " << el << std::endl;
+                  if (std::find (interface_dofs_dirichlet[side_next].begin(), interface_dofs_dirichlet[side_next].end(), el) 
+                                  == interface_dofs_dirichlet[side_next].end())
+                  {
+                    interface_dofs_dirichlet[side_next].push_back(el);
+                  }                                                
+                }
+              }
+            }
+          }
+        }
+    
   }
 
 } // namespace dd_utilities

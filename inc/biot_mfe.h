@@ -32,6 +32,7 @@ namespace mfe_biot
   template<int dim>
   class MixedBiotProblem
   {
+    using FEFunction = Functions::FEFieldFunction<dim, BlockVector<double>>;
     public:
     MixedBiotProblem(ParameterHandler &prm,
                       unsigned int &degree,
@@ -39,17 +40,24 @@ namespace mfe_biot
                       const unsigned int &subdomain_type,
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
+                      std::vector<unsigned int> &initial_refinement,
+                      std::vector<unsigned int> &initial_refinement_mortar,
                       MPI_Comm mpi_communicator_biot,
-                      const bool mortar_flag,
+                      const unsigned int preconditioner_type,
+                      const unsigned int mortar_type,
                       const unsigned int mortar_degree);
 
     void run(unsigned int cycle);
+
+    void solve_bar();
+
+    void solve_star();
 
     void
     output_dof_results(const unsigned int cycle) const;
 
     void
-    output_results(const unsigned int cycle) const;
+    output_results(const unsigned int cycle);
 
     void 
     compute_errors(const unsigned int &cycle); 
@@ -83,9 +91,14 @@ namespace mfe_biot
     const unsigned int n_processes;
     const unsigned int this_mpi_biot;
     const unsigned int n_processes_biot;
+    double       avg_eigenvalue;
+    std::vector<double> nbr_avg_eigenvalue;
+    std::vector<std::vector<double>> jacobi_scaling;
+    unsigned int preconditioner_type;
 
-    Projector::Projector <dim> P_coarse2fine;
-    Projector::Projector <dim> P_fine2coarse;
+    // Projector::Projector <dim> P_coarse2fine;
+    // Projector::Projector <dim> P_fine2coarse;
+    // Projector::Projector <dim> P_mortar;
 
     void interpret_parameters();
 
@@ -95,12 +108,21 @@ namespace mfe_biot
 
     void get_interface_dofs();
 
-    void solve_bar();
-
-    void solve_star();
+    void 
+    preconditioner(std::unique_ptr<FEFunction> &solution_bar_function,
+                    std::unique_ptr<FEFunction> &solution_star_function,
+                    std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                    std::vector<std::vector<double>> &interface_data,
+                    std::vector<std::vector<double>> &interface_data_send,
+                    std::vector<std::vector<double>> &interface_data_receive,
+                    FEFaceValues<dim>                &fe_face_values,
+                    FEFaceValues<dim>                &fe_face_values_mortar,
+                    std::vector<Projector::Projector<dim>> &P_mortar,
+                    std::vector<std::vector<double>> &Ap);
 
     void 
-    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
+    assemble_rhs_star(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                      FEFaceValues<dim> &fe_face_values);
 
     double
     vect_norm(std::vector<double> v);
@@ -115,38 +137,66 @@ namespace mfe_biot
     							        unsigned int k_iteration);
 
    void
-	  back_solve(const std::vector<std::vector<double>> &H, 
-               const std::vector<double>              &beta, 
-               std::vector<double>                    &y,
-               const unsigned int                     &k);
+	 back_solve(const std::vector<std::vector<double>> &H, 
+              const std::vector<double>              &beta, 
+              std::vector<double>                    &y,
+              const unsigned int                     &k);
 
     void
-    compute_residual(FEFaceValues<dim>                &fe_face_values,
+    interface_inner_product(std::unique_ptr<FEFunction> &solution_bar_function,
+                            std::unique_ptr<FEFunction> &solution_star_function,
+                            FEFaceValues<dim> &fe_face_values_mortar,
+                            std::vector<Projector::Projector<dim>> &P_mortar);
+
+    double
+    inner_product_mortar(std::vector<std::vector<double>> &v_1,
+                         std::vector<std::vector<double>> &v_2,
+                         FEFaceValues<dim> &fe_face_values_mortar);
+    void
+    compute_residual(std::unique_ptr<FEFunction> &solution_bar_function,
+                    std::unique_ptr<FEFunction> &solution_star_function,
+                    std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                    FEFaceValues<dim>                &fe_face_values,
+                    FEFaceValues<dim>                &fe_face_values_mortar,
                     std::vector<std::vector<double>> &interface_data,
+                    std::vector<Projector::Projector<dim>> &P_mortar,
                     std::vector<std::vector<double>>  &r,
                     double                            &r_norm,
                     std::vector<std::vector<double>>  &r_b,
                     double                            &b_norm);
 
     void 
-    interface_operator(std::vector<std::vector<double>> &interface_data,
+    interface_operator(std::unique_ptr<FEFunction> &solution_bar_function,
+                       std::unique_ptr<FEFunction> &solution_star_function,
+                       std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                       std::vector<std::vector<double>> &interface_data,
                        std::vector<std::vector<double>> &interface_data_send,
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
+                       FEFaceValues<dim>                &fe_face_values_mortar,
+                       std::vector<Projector::Projector<dim>> &P_mortar,
                        std::vector<std::vector<double>> &Ap);
 
     void
-    arnoldi(unsigned int                      &k_counter, 
+    arnoldi(std::unique_ptr<FEFunction> &solution_bar_function,
+            std::unique_ptr<FEFunction> &solution_star_function,
+            std::vector<std::unique_ptr<FEFunction>> &interface_function,
+            unsigned int                      &k_counter, 
             std::vector<std::vector<double>> &interface_data,
             std::vector<std::vector<double>> &interface_data_send,
             std::vector<std::vector<double>> &interface_data_receive,
             FEFaceValues<dim>                &fe_face_values,
+            FEFaceValues<dim>                &fe_face_values_mortar,
+            std::vector<Projector::Projector<dim>> &P_mortar,
             std::vector<std::vector<double>> &Ap,
             std::vector<std::vector<double>> &q,
             std::vector<std::vector<std::vector<double>>>	&Q_side,
             std::vector<std::vector<double>>	            &H);
 
-    void compute_multiscale_basis();
+    void
+    compute_multiscale_basis(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                            FEFaceValues<dim>                &fe_face_values,
+                            std::vector<Projector::Projector<dim>> &P_mortar);
 
     void reset_mortars();
     // //For implementing GMRES
@@ -189,9 +239,12 @@ namespace mfe_biot
     // FE degree and DD parameters
     const unsigned int degree;
     const unsigned int mortar_degree;
-    const unsigned int mortar_flag;
+    const unsigned int mortar_type;
     double tol;
+    double initial_val;
     unsigned int qdegree;
+    double lame_lambda, lame_mu;
+    std::vector<std::vector<double>> K_permeability;
 
 
     // Neighbors and interface information
@@ -201,11 +254,14 @@ namespace mfe_biot
     bool stokes_neighbor;
     bool biot_neighbor;
     std::vector<unsigned int> external_bdry_ids;
-    std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
+    std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
+    std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
+    unsigned int refinement;
+    unsigned int cycle_number;
     std::vector<unsigned int> faces_on_interface;
     std::vector<unsigned int> faces_on_interface_mortar;
     std::vector <std::vector<unsigned int>> interface_dofs;
-    std::vector <double> interface_dofs_total;
+    std::vector <unsigned int> interface_dofs_total;
 
 
     unsigned long n_stress;
@@ -221,8 +277,6 @@ namespace mfe_biot
     unsigned long n_rot_mortar;
     unsigned long n_flux_mortar;
     unsigned long n_pressure_mortar;
-    unsigned long n_Elast_mortar;
-    unsigned int n_mortar_dofs;
 
     // Subdomain coordinates (assuming logically rectangular blocks)
     Point <dim> p1;
@@ -234,13 +288,15 @@ namespace mfe_biot
     DoFHandler <dim> dof_handler;
 
     // Mortar triangulation
-    // Triangulation <dim> triangulation_mortar;
-    // FESystem <dim> fe_mortar;
-    // DoFHandler <dim> dof_handler_mortar;
+    Triangulation <dim> triangulation_mortar;
+    FESystem <dim> fe_mortar;
+    DoFHandler <dim> dof_handler_mortar;
 
     // Star and bar problem data structures
     BlockSparsityPattern sparsity_pattern;
     BlockSparseMatrix<double> system_matrix;
+    double s0 = 1.0;
+    double alpha = 1.0; // Biot-Willis constant    
 
     SparseDirectUMFPACK A_direct;
     SparseDirectUMFPACK A_direct_non_diff; //for solving non-differentiated elasticity form for monolithic BIot
@@ -266,10 +322,15 @@ namespace mfe_biot
     std::vector<std::vector<double>> Alambda_guess;
 
     // Mortar data structures
-    BlockVector<double> interface_fe_function_mortar;
-    BlockVector<double> solution_bar_mortar;
-    BlockVector<double> solution_star_mortar;
-    std::vector <BlockVector<double>> multiscale_basis;
+    // BlockVector<double> interface_fe_function_mortar;
+    BlockVector<double> mortar_vec;
+    std::vector<BlockVector<double>> solution_bar_mortar;
+    std::vector<BlockVector<double>> solution_star_mortar;
+    std::vector<BlockVector<double>> solution_bar_mortar_temp;
+    std::vector<BlockVector<double>> solution_star_mortar_temp;
+    AffineConstraints<double> constraints_mortar;
+    bool multiscale_basis_flag;
+    std::vector<std::vector<BlockVector<double>>>   multiscale_basis;
 
     // Output extra
     ConditionalOStream pcout;

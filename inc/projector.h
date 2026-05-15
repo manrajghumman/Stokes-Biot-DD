@@ -109,7 +109,7 @@ namespace Projector
     const bool fe_is_system    = (n_components != 1);
     const bool fe_is_primitive = fe.is_primitive();
 
-    const unsigned int dofs_per_face = fe.dofs_per_face;
+    // const unsigned int dofs_per_face = fe.dofs_per_face;
 
     copy_data.cell          = cell;
     copy_data.dofs_per_cell = fe.dofs_per_cell;
@@ -134,7 +134,7 @@ namespace Projector
     copy_data.dofs.resize(copy_data.dofs_per_cell);
     cell->get_dof_indices(copy_data.dofs);
 
-    std::vector<types::global_dof_index> dofs_on_face_vector(dofs_per_face);
+    // std::vector<types::global_dof_index> dofs_on_face_vector(dofs_per_face);
 
     // Because CopyData objects are reused and emplace_back is
     // used, dof_is_on_face, cell_matrix, and cell_vector must be
@@ -378,7 +378,7 @@ namespace Projector
             }
 
 
-          cell->face(face)->get_dof_indices(dofs_on_face_vector);
+          // cell->face(face)->get_dof_indices(dofs_on_face_vector);
           // for each dof on the cell, have a flag whether it is on
           // the face
           copy_data.dof_is_on_face.emplace_back(copy_data.dofs_per_cell);
@@ -387,10 +387,10 @@ namespace Projector
           for (unsigned int i = 0; i < copy_data.dofs_per_cell; ++i)
             copy_data.dof_is_on_face.
 
-              back()[i] =
-              (std::find(dofs_on_face_vector.begin(),
-                         dofs_on_face_vector.end(),
-                         copy_data.dofs[i]) != dofs_on_face_vector.end());
+              back()[i] = fe.has_support_on_face(i, face); 
+              // (std::find(dofs_on_face_vector.begin(),
+              //            dofs_on_face_vector.end(),
+              //            copy_data.dofs[i]) != dofs_on_face_vector.end());
         }
   }
 
@@ -480,6 +480,7 @@ namespace Projector
   create_boundary_mass_matrix(
     const Mapping<dim, spacedim> &   mapping,
     const DoFHandler<dim, spacedim> &dof,
+    const unsigned int               n_bdofs,
     const Quadrature<dim - 1> &      q,
     SparseMatrix<number> &           matrix,
     const std::map<types::boundary_id, const Function<spacedim, number> *>
@@ -502,7 +503,7 @@ namespace Projector
     const FiniteElement<dim, spacedim> &fe           = dof.get_fe();
     const unsigned int                  n_components = fe.n_components();
 
-    Assert(matrix.n() == dof.n_boundary_dofs(boundary_functions),
+    Assert(matrix.n() == n_bdofs,
            ExcInternalError());
     Assert(matrix.n() == matrix.m(), ExcInternalError());
     Assert(matrix.n() == rhs_vector.size(), ExcInternalError());
@@ -566,9 +567,12 @@ namespace Projector
     template <int spacedim, typename number>
     void
     project_boundary_values(
+      BlockVector<double>       &in_vec,
       const DoFHandler<dim, spacedim> &dof,
       const std::map<types::boundary_id, const Function<spacedim, number> *>
         &                        boundary_functions,
+      const std::vector<unsigned int> &interface_dofs,
+      const unsigned int &side,
       const Quadrature<dim - 1> &q,
       dealii::AffineConstraints<double>  &         constraints,
       std::vector<unsigned int>  component_mapping =
@@ -588,6 +592,9 @@ namespace Projector
   private:
     unsigned int                         state;
     SparseDirectUMFPACK                  factorization;
+    std::vector<unsigned int>            interface_dofs;
+    unsigned int                         side;
+    unsigned int                         n_bdofs;
     std::vector<types::global_dof_index> dof_to_boundary_mapping;
     std::set<types::boundary_id>         selected_boundary_components;
     SparsityPattern                      sparsity;
@@ -602,6 +609,7 @@ namespace Projector
     template <int spacedim, typename number>
     void
     do_project_boundary_values(
+      BlockVector<double>       &in_vec,
       const DoFHandler<dim, spacedim> &dof,
       const std::map<types::boundary_id, const Function<spacedim, number> *>
         &                                        boundary_functions,
@@ -633,6 +641,7 @@ namespace Projector
       {
         factorization.initialize(mass_matrix);
         factorization.vmult(solution, rhs);
+        state = true;
       }
   }
 
@@ -640,6 +649,7 @@ namespace Projector
   template <int spacedim, typename number>
   void
   Projector<dim>::do_project_boundary_values(
+    BlockVector<double>       &in_vec,
     const DoFHandler<dim, spacedim> &dof,
     const std::map<types::boundary_id, const Function<spacedim, number> *>
       &                                        boundary_functions,
@@ -668,31 +678,39 @@ namespace Projector
 
     if (state == false)
       {
-        for (typename std::map<types::boundary_id,
-                               const Function<dim, double> *>::const_iterator
-               i = boundary_functions.begin();
-             i != boundary_functions.end();
-             ++i)
-          selected_boundary_components.insert(i->first);
+        // for (typename std::map<types::boundary_id,
+        //                        const Function<dim, double> *>::const_iterator
+        //        i = boundary_functions.begin();
+        //      i != boundary_functions.end();
+        //      ++i)
+        //   selected_boundary_components.insert(i->first);
 
-        DoFTools::map_dof_to_boundary_indices(dof,
-                                              selected_boundary_components,
-                                              dof_to_boundary_mapping);
+        // DoFTools::map_dof_to_boundary_indices(dof,
+        //                                       selected_boundary_components,
+        //                                       dof_to_boundary_mapping);
+        dof_to_boundary_mapping.resize(dof.n_dofs(), numbers::invalid_dof_index);
+        for (types::global_dof_index k = 0; k < interface_dofs.size(); ++k)
+          dof_to_boundary_mapping[ interface_dofs[k] ] = k;                                      
       }
 
     // Done if no degrees of freedom on the boundary
-    if (dof.n_boundary_dofs(boundary_functions) == 0)
+    n_bdofs = interface_dofs.size();
+    if (n_bdofs == 0)
       return;
 
     // set up sparsity structure
     if (state == false)
       {
-        DynamicSparsityPattern dsp(dof.n_boundary_dofs(boundary_functions),
-                                   dof.n_boundary_dofs(boundary_functions));
-        DoFTools::make_boundary_sparsity_pattern(dof,
-                                                 boundary_functions,
-                                                 dof_to_boundary_mapping,
-                                                 dsp);
+        DynamicSparsityPattern dsp(n_bdofs, n_bdofs);
+                                   
+        // DoFTools::make_boundary_sparsity_pattern(dof,
+        //                                          boundary_functions,
+        //                                          dof_to_boundary_mapping,
+        //                                          dsp);
+
+        for (unsigned int i=0; i<n_bdofs; ++i)
+          for (unsigned int j=0; j<n_bdofs; ++j)
+            dsp.add(i,j);
 
         sparsity.copy_from(dsp);
         sparsity.compress();
@@ -704,6 +722,7 @@ namespace Projector
 
     create_boundary_mass_matrix(mapping,
                                 dof,
+                                n_bdofs,
                                 q,
                                 mass_matrix,
                                 boundary_functions,
@@ -714,6 +733,30 @@ namespace Projector
                                 state);
 
     Vector<double> boundary_projection(rhs.size());
+
+    // unsigned int zero_rows = 0;
+    // for (unsigned int i=0; i<n_bdofs; ++i)
+    // {
+    //   double rowsum = 0.0;
+    //   for (SparseMatrix<double>::const_iterator it = mass_matrix.begin(i);
+    //       it != mass_matrix.end(i); ++it)
+    //     rowsum += std::abs(it->value());
+
+    //   if (rowsum < 1e-30)
+    //     ++zero_rows;
+    // }
+
+    // std::cout << "zero_rows in boundary mass matrix = " << zero_rows
+    //       << " out of " << n_bdofs << std::endl;
+
+    // rhs currently contains the projection RHS assembled from the dummy boundary function.
+    // Overwrite rhs with the *true* dual vector restricted to boundary dofs:
+    //    rhs[boundary_index] = b_global[global_dof]
+    rhs = 0.0;
+
+    for (types::global_dof_index i = 0; i < dof_to_boundary_mapping.size(); ++i)
+      if (dof_to_boundary_mapping[i] != numbers::invalid_dof_index)
+        rhs(dof_to_boundary_mapping[i]) = in_vec(i);
 
     if (rhs.norm_sqr() < 1e28 * std::numeric_limits<double>::min())
       boundary_projection = 0;
@@ -736,17 +779,25 @@ namespace Projector
   template <int spacedim, typename number>
   void
   Projector<dim>::project_boundary_values(
+    BlockVector<double>       &in_vec,
     const DoFHandler<dim, spacedim>                                             &dof,
     const std::map<types::boundary_id, const Function<spacedim, number> *>      &boundary_functions,
+    const std::vector<unsigned int>                                             &interface_dofs,
+    const unsigned int                                                          &side,
     const Quadrature<dim - 1>                                                   &q,
     dealii::AffineConstraints<double>                                           &constraints,
     std::vector<unsigned int>                                                    component_mapping)
   {
     std::map<types::global_dof_index, number> boundary_values;
 
+    if (state == false)
+    {
+      this->side = side;
+      this->interface_dofs = interface_dofs;
+    }
 
     do_project_boundary_values(
-      dof, boundary_functions, q, boundary_values, component_mapping);
+      in_vec, dof, boundary_functions, q, boundary_values, component_mapping);
 
     typename std::map<types::global_dof_index, number>::const_iterator
       boundary_value = boundary_values.begin();

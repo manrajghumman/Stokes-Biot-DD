@@ -98,7 +98,9 @@ namespace dd_stokes_biot
       if (cycle == 0)
       {
         // Partitioning into subdomains (simple bricks)
-        find_divisors<dim>(n_processes, n_domains);
+        // find_divisors<dim>(n_processes, n_domains);
+        for (unsigned int i = 0; i < dim; ++i)
+          std::cout << "n_domains[" << i << "] = " << n_domains[i] << std::endl;
 
         switch (dim)
         {
@@ -155,6 +157,13 @@ namespace dd_stokes_biot
             else {y = n_domains[1] - this_mpi / n_domains[0] - 1;}
 
             subdomain_type = dd_info_matrix[y][x]; // for 2D
+            initial_refinement.resize(dim);
+            initial_refinement_mortar.resize(dim);
+            for (int i = 0; i < dim; ++i)
+            {
+              initial_refinement[i] = dd_refine_info_matrix[y][x][i];
+              initial_refinement_mortar[i] = dd_refine_info_matrix_mortar[y][x][i];
+            }
             break;
           }     
           case 3:
@@ -166,6 +175,24 @@ namespace dd_stokes_biot
                                               + " not supported"));
         }
         pcout << "--------------------------------------------------------" << std::endl;
+        MPI_Barrier(mpi_communicator);
+        for (unsigned int proc = 0; proc < n_processes; ++proc)
+        {
+          if (this_mpi == proc)
+          {
+            std::cout << "Process " << this_mpi 
+                      << ", initial refinement: " ;
+            for (int i = 0; i < dim; ++i)
+              std::cout << initial_refinement[i] << " ";
+            std::cout << std::endl;
+            for (int i = 0; i < dim; ++i)
+              std::cout << ", initial refinement mortar: " ;
+            for (int i = 0; i < dim; ++i)
+              std::cout << initial_refinement_mortar[i] << " ";
+            std::cout << std::endl;
+          }
+          MPI_Barrier(mpi_communicator);
+        }
         MPI_Barrier(mpi_communicator);
 
         
@@ -202,34 +229,39 @@ namespace dd_stokes_biot
         }
         MPI_Barrier(mpi_communicator);
 
+        // unsigned int preconditioner_type = 1;
+
         // initialize the respective stokes and biot problem objects
         // based on subdomain_type
         if (subdomain_type == 1) // Stokes
         {
           // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
           MPI_Comm_split(mpi_communicator, 1, this_mpi, &mpi_communicator_stokes);
-          unsigned int degree, mortar_degree;
-          bool mortar_flag, cont_mortar_flag;
+          unsigned int degree, mortar_degree, mortar_type, mortar_degree_biot;
+          bool cont_mortar_flag;
           prm.enter_subsection("Stokes Parameters");
           {
-              degree   = prm.get_integer("degree");
-              mortar_flag = prm.get("mortar") == "yes" ? 1 : 0;
-              if (mortar_flag)
-              {
-                  cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
-                  mortar_degree = prm.get_integer("mortar_degree");
-              }
-              else
-              {
-                  cont_mortar_flag = 1; // if no mortar, continuous mortar is default
-                  mortar_degree = 0; // if no mortar, mortar degree is 0
-              }
+            degree   = prm.get_integer("degree");
+            cont_mortar_flag = prm.get("continuous_mortar") == "yes" ? 1 : 0;
+            mortar_degree = prm.get_integer("stokes_mortar_degree");
+            // std::cout << "before calling stokes, "
+            //           << "cont_mortar_flag: " << cont_mortar_flag
+            //           << ", mortar_degree: " << mortar_degree 
+            //           << ", degree: " << degree << std::endl;
           }
           prm.leave_subsection();
           unsigned int degree_biot;
           prm.enter_subsection("Biot Parameters");
           {
-              degree_biot = prm.get_integer("degree");
+            degree_biot = prm.get_integer("degree");
+            mortar_type = prm.get_integer("mortar_type");
+            mortar_degree_biot = prm.get_integer("mortar_degree");
+            std::cout << "before calling stokes, "
+                      << "cont_mortar_flag: " << cont_mortar_flag
+                      << ", mortar_degree: " << mortar_degree
+                      << ", mortar_degree_biot: " << mortar_degree_biot
+                      << ", degree: " << degree
+                      << ", degree_biot: " << degree_biot << std::endl;
           }
           prm.leave_subsection();
           stokes = new MixedStokesProblem<dim>(prm,
@@ -239,10 +271,14 @@ namespace dd_stokes_biot
                                               subdomain_type,
                                               neighbors,
                                               neighbor_type,
+                                              initial_refinement,
+                                              initial_refinement_mortar,
                                               mpi_communicator_stokes,
-                                              mortar_flag,
-                                              cont_mortar_flag,
-                                              mortar_degree);
+                                              preconditioner_type,
+                                              mortar_degree,
+                                              mortar_type,
+                                              mortar_degree_biot,
+                                              cont_mortar_flag);
           stokes->run(cycle);
         
         }
@@ -250,16 +286,12 @@ namespace dd_stokes_biot
         {
           // pcout << "Initializing Stokes subdomain on process " << this_mpi << "\n";
           MPI_Comm_split(mpi_communicator, 2, this_mpi, &mpi_communicator_biot);
-          unsigned int degree, mortar_degree;
-          bool mortar_flag;
+          unsigned int degree, mortar_type, mortar_degree;
           prm.enter_subsection("Biot Parameters");
           {
               degree   = prm.get_integer("degree");
-              mortar_flag = prm.get("mortar") == "yes" ? 1 : 0;
-              if (mortar_flag)
-                  mortar_degree = prm.get_integer("mortar_degree");
-              else
-                  mortar_degree = 0; // if no mortar, mortar degree is 0
+              mortar_type = prm.get_integer("mortar_type");
+              mortar_degree = prm.get_integer("mortar_degree");
           }
           prm.leave_subsection();
 
@@ -269,8 +301,11 @@ namespace dd_stokes_biot
                                           subdomain_type,
                                           neighbors,
                                           neighbor_type,
+                                          initial_refinement,
+                                          initial_refinement_mortar,
                                           mpi_communicator_biot,
-                                          mortar_flag,
+                                          preconditioner_type,
+                                          mortar_type,
                                           mortar_degree);
           biot->run(cycle);
         }
@@ -296,6 +331,7 @@ namespace dd_stokes_biot
       {
         if (subdomain_type == 1)
         {
+          // stokes->solve_bar();
           stokes->output_results(cycle);
           stokes->output_dof_results(cycle);
           stokes->compute_errors(cycle);
@@ -304,6 +340,7 @@ namespace dd_stokes_biot
         }
         else if (subdomain_type == 2)
         {
+          // biot->solve_bar();
           biot->output_results(cycle);
           biot->output_dof_results(cycle);
           biot->compute_errors(cycle);
@@ -317,13 +354,14 @@ namespace dd_stokes_biot
         if (subdomain_type == 1)
         {
           stokes->local_gmres(cycle);
+          // stokes->local_cg();
           stokes->output_results(cycle);
           stokes->output_dof_results(cycle);
           stokes->compute_errors(cycle);
-          stokes->print_individual_convg_table_l2();
-          stokes->print_individual_convg_table_h1();
+          // stokes->print_individual_convg_table_l2();
+          // stokes->print_individual_convg_table_h1();
           stokes->print_total_convg_table_l2();
-          stokes->print_total_convg_table_h1();
+          // stokes->print_total_convg_table_h1();
         }
         else if (subdomain_type == 2)
         {
@@ -331,12 +369,12 @@ namespace dd_stokes_biot
           biot->output_results(cycle);
           biot->output_dof_results(cycle);
           biot->compute_errors(cycle);
-          biot->print_individual_convg_table_darcy_l2();
-          biot->print_individual_convg_table_elast_l2();
-          biot->print_individual_convg_table_hdiv();
+          // biot->print_individual_convg_table_darcy_l2();
+          // biot->print_individual_convg_table_elast_l2();
+          // biot->print_individual_convg_table_hdiv();
           biot->print_total_convg_table_darcy_l2();
           biot->print_total_convg_table_elast_l2();
-          biot->print_total_convg_table_hdiv();
+          // biot->print_total_convg_table_hdiv();
         }
       }
 

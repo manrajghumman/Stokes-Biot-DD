@@ -92,14 +92,19 @@ namespace dd_stokes_biot
 
     ParameterHandler &prm;
     std::vector<std::vector<unsigned int>> dd_info_matrix;
+    std::vector<std::vector<std::vector<int>>> dd_refine_info_matrix, dd_refine_info_matrix_mortar;
     unsigned int subdomain_type;
     std::vector<int> neighbors;
     std::vector<unsigned int> neighbor_type;
     std::vector<unsigned int> external_bdry_ids;
     bool stokes_mortar_flag, stokes_cont_mortar_flag;
     unsigned int stokes_mortar_degree;
-    unsigned int                           gmres_iteration;
-    double                                 residual;
+    std::vector<unsigned int> initial_refinement;
+    std::vector<unsigned int> initial_refinement_mortar;
+
+    unsigned int              gmres_iteration;
+    double                    residual;
+    unsigned int              preconditioner_type;
 
     // Subdomain coordinates (assuming logically rectangular blocks)
     Point<dim> p1;

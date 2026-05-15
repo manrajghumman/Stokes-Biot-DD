@@ -18,6 +18,9 @@
 #include <deal.II/lac/precondition.h>
 #include <deal.II/base/smartpointer.h>
 
+#include <deal.II/numerics/fe_field_function.h>
+#include <deal.II/numerics/data_postprocessor.h>
+
 #include <deal.II/fe/fe_system.h>
 #include <deal.II/fe/fe_values.h>
 
@@ -35,36 +38,59 @@ namespace mfe_stokes
   template <int dim>
   class MixedStokesProblem
   {
+  using FEFunction = Functions::FEFieldFunction<dim, BlockVector<double>>;
   public:
   MixedStokesProblem (ParameterHandler &prm,
                       unsigned int &degree,
                       unsigned int &degree_biot,
-                      std::vector<unsigned int> n_domains,
+                      std::vector<unsigned int> &n_domains,
                       const unsigned int &subdomain_type,
                       std::vector<int> &neighbors,
                       std::vector<unsigned int> &neighbor_type,
+                      std::vector<unsigned int> &initial_refinement,
+                      std::vector<unsigned int> &initial_refinement_mortar,
                       MPI_Comm mpi_communicator_stokes,
-                      const bool mortar_flag = 0,
-                      const unsigned int mortar_degree = 0,
-                      const bool cont_mortar_flag = 0);
+                      const unsigned int preconditioner_type,
+                      const unsigned int mortar_degree = 2,
+                      const unsigned int mortar_type = 0,
+                      const unsigned int mortar_degree_biot = 1,
+                      const bool cont_mortar_flag = 1);
 
     void
     run(unsigned int cycle);
 
     void
-    assemble_rhs_star(FEFaceValues<dim> &fe_face_values);
+    assemble_rhs_star(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                      FEFaceValues<dim> &fe_face_values,
+                      FEFaceValues<dim> &fe_face_values_mortar_biot);
+
+    void 
+    preconditioner(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                  std::unique_ptr<FEFunction>       &solution_bar_function,
+                  std::unique_ptr<FEFunction>       &solution_star_function,
+                  std::vector<std::vector<double>> &interface_data,
+                  std::vector<std::vector<double>> &interface_data_send,
+                  std::vector<std::vector<double>> &interface_data_receive,
+                  FEFaceValues<dim>                &fe_face_values,
+                  FEFaceValues<dim>                &fe_face_values_mortar,
+                  FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                  std::vector<Projector::Projector<dim>> &P_mortar,
+                  std::vector<std::vector<double>> &Ap);
 
     void
     solve_bar();
-
+                  
     void
     solve_star();
+
+    void 
+    write_dof_locations(const std::string &  filename) const;
 
     void
     output_dof_results(const unsigned int cycle) const;
 
     void
-    output_results(const unsigned int cycle) const;
+    output_results(const unsigned int cycle);
 
     void 
     compute_errors(const unsigned int &cycle);
@@ -80,6 +106,9 @@ namespace mfe_stokes
 
     void
     print_total_convg_table_h1();
+
+    void
+    local_cg();
 
     void
     local_gmres(unsigned int &cycle);
@@ -102,17 +131,26 @@ namespace mfe_stokes
     bool stokes_neighbor;
     bool biot_neighbor;
     std::vector<unsigned int> external_bdry_ids;
-    bool mortar_flag, cont_mortar_flag;
-    unsigned int mortar_degree;
+    bool cont_mortar_flag;
+    const unsigned int mortar_degree;
+    const unsigned int mortar_type;
+    const unsigned int mortar_degree_biot;
     double       tol;
-    std::vector<std::vector<unsigned int>> reps; // initial refinement for this subdomain
+    double       initial_val;
+    double       avg_eigenvalue;
+    std::vector<double> nbr_avg_eigenvalue;
+    std::vector<std::vector<double>> jacobi_scaling;
+    bool multiscale_basis_flag;
+    unsigned int preconditioner_type;
+    double mesh_diameter;
+    double lame_lambda, lame_mu;
+    std::vector<std::vector<double>> K_perm;
+    std::vector<unsigned int> initial_refinement; // initial refinement for this subdomain mesh
+    std::vector<unsigned int> initial_refinement_mortar; // initial refinement for the mortar mesh
+    unsigned int refinement;
+    unsigned int cycle_number;
     // std::vector<int> neighbors;
     // std::vector<unsigned int> neighbor_type;
-
-    Projector::Projector<dim> P_stokes2biot;
-    Projector::Projector<dim> P_biot2stokes;
-    Projector::Projector<dim> P_coarse2fine;
-    Projector::Projector<dim> P_fine2coarse;
 
     void
     interpret_parameters();
@@ -148,30 +186,68 @@ namespace mfe_stokes
                const unsigned int                     &k);
 
     void
-    compute_residual(FEFaceValues<dim>               &fe_face_values,
+    interface_inner_product(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                            std::unique_ptr<FEFunction>      &solution_bar_function,
+                            std::unique_ptr<FEFunction>      &solution_star_function,
+                            FEFaceValues<dim>                &fe_face_values_mortar,
+                            FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                            std::vector<Projector::Projector<dim>> &P_mortar);
+
+    double
+    inner_product_mortar(std::vector<std::vector<double>> &v_1,
+                         std::vector<std::vector<double>> &v_2,
+                         FEFaceValues<dim> &fe_face_values_mortar,
+                         FEFaceValues<dim> &fe_face_values_mortar_biot);
+
+    void
+    compute_residual(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                    std::unique_ptr<FEFunction>      &solution_bar_function,
+                    std::unique_ptr<FEFunction>      &solution_star_function,
+                    FEFaceValues<dim>               &fe_face_values,
+                    FEFaceValues<dim>               &fe_face_values_mortar,
+                    FEFaceValues<dim>                &fe_face_values_mortar_biot,
                     std::vector<std::vector<double>> &interface_data,
+                    std::vector<Projector::Projector<dim>> &P_mortar,
                     std::vector<std::vector<double>> &r,
                     double                           &r_norm,
                     std::vector<std::vector<double>> &r_b,
                     double                           &b_norm);
 
     void 
-    interface_operator(std::vector<std::vector<double>> &Ax,
+    interface_operator(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                       std::unique_ptr<FEFunction>       &solution_bar_function,
+                       std::unique_ptr<FEFunction>       &solution_star_function,
+                       std::vector<std::vector<double>> &interface_data,
                        std::vector<std::vector<double>> &interface_data_send,
                        std::vector<std::vector<double>> &interface_data_receive,
                        FEFaceValues<dim>                &fe_face_values,
+                       FEFaceValues<dim>                &fe_face_values_mortar,
+                       FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                       std::vector<Projector::Projector<dim>> &P_mortar,
                        std::vector<std::vector<double>> &Ap);
               
     void
-    arnoldi(unsigned int                      &k_counter, 
+    arnoldi(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+            std::unique_ptr<FEFunction>       &solution_bar_function,
+            std::unique_ptr<FEFunction>       &solution_star_function,
+            unsigned int                      &k_counter, 
             std::vector<std::vector<double>> &interface_data,
             std::vector<std::vector<double>> &interface_data_send,
             std::vector<std::vector<double>> &interface_data_receive,
             FEFaceValues<dim>                &fe_face_values,
+            FEFaceValues<dim>                &fe_face_values_mortar,
+            FEFaceValues<dim>                &fe_face_values_mortar_biot,
+            std::vector<Projector::Projector<dim>> &P_mortar,
             std::vector<std::vector<double>> &Ap,
             std::vector<std::vector<double>> &q,
             std::vector<std::vector<std::vector<double>>>	&Q_side,
             std::vector<std::vector<double>>	            &H);
+
+    void
+    compute_multiscale_basis(std::vector<std::unique_ptr<FEFunction>> &interface_function,
+                            FEFaceValues<dim>                &fe_face_values,
+                            FEFaceValues<dim>                &fe_face_values_mortar_biot,
+                            std::vector<Projector::Projector<dim>> &P_mortar);
 
     unsigned int       gmres_iteration;
     unsigned int       maxiter;
@@ -208,17 +284,21 @@ namespace mfe_stokes
     std::vector<unsigned int>              faces_on_interface;
     std::vector<unsigned int>              faces_on_interface_mortar;
     std::vector<std::vector<unsigned int>> interface_dofs;
-    std::vector<std::vector<unsigned int>> interface_dofs_fe;
-    std::vector<double>                    interface_dofs_total;
-    std::vector<std::vector<unsigned int>> interface_dofs_find_neumann;
-    std::vector<unsigned int>              repeated_dofs;
-    std::vector<unsigned int>              repeated_dofs_neumann;
-    std::vector<unsigned int>              repeated_dofs_neumann_corner;
+    std::vector<std::vector<unsigned int>> interface_dofs_dirichlet;
+    // std::vector<std::vector<unsigned int>> interface_dofs_fe;
+    std::vector<unsigned int>              interface_dofs_total;
+    // std::vector<std::vector<unsigned int>> interface_dofs_find_neumann;
+    // std::vector<unsigned int>              repeated_dofs;
+    // std::vector<unsigned int>              repeated_dofs_neumann;
+    // std::vector<unsigned int>              repeated_dofs_neumann_corner;
 
     unsigned long n_velocity_interface;
     unsigned long n_velocity_interface_fe;
-    unsigned long n_biot_stress;
-    unsigned long n_darcy_vel;
+    unsigned long n_stress_mortar;
+    unsigned long n_disp_mortar;
+    unsigned long n_rot_mortar;
+    unsigned long n_flux_mortar;
+    unsigned long n_pressure_mortar;
     int           interface_dofs_size;
 
     // Subdomain coordinates (assuming logically rectangular blocks)
@@ -230,18 +310,21 @@ namespace mfe_stokes
     FESystem<dim>      fe;
     DoFHandler<dim>    dof_handler;
 
-    // The fe space of Biot stress in the meaning of displacement
-    FESystem<dim>      fe_biot_stress;
-    DoFHandler<dim>    dof_handler_biot_stress;
-
-    // The fe space of Biot velocity in the meaning of pressure
-    FESystem<dim>      fe_darcy_vel;
-    DoFHandler<dim>    dof_handler_darcy_vel;
-
     // Mortar triangulation
-    // Triangulation<dim> triangulation_mortar;
-    // FESystem<dim>      fe_mortar;
-    // DoFHandler<dim>    dof_handler_mortar;
+    Triangulation<dim> triangulation_mortar;
+    FESystem<dim>      fe_mortar;
+    DoFHandler<dim>    dof_handler_mortar;
+
+    // The fe space of Biot stress and velocity 
+    // in the meaning of displacement and pressure, respectively
+    // FESystem<dim>      fe_biot_stress;
+    // DoFHandler<dim>    dof_handler_biot_stress;
+    FESystem<dim>      fe_biot_mortar;
+    DoFHandler<dim>    dof_handler_biot_mortar;   
+
+    // // The fe space of Biot velocity in the meaning of pressure
+    // FESystem<dim>      fe_darcy_vel;
+    // DoFHandler<dim>    dof_handler_darcy_vel;
 
     // Star and bar problem data structures
     BlockSparsityPattern      sparsity_pattern;
@@ -276,9 +359,13 @@ namespace mfe_stokes
     // Mortar data structures
     std::vector<BlockVector<double>>   interface_fe_function_mortar;
     std::vector<BlockVector<double>>   interface_fe_function_mortar_fe;
-    BlockVector<double>                solution_bar_mortar;
-    BlockVector<double>                solution_star_mortar;
-    std::vector<BlockVector<double>>   multiscale_basis;
+    std::vector<BlockVector<double>>   solution_bar_mortar;
+    std::vector<BlockVector<double>>   solution_star_mortar;
+    std::vector<BlockVector<double>>   solution_bar_mortar_temp;
+    std::vector<BlockVector<double>>   solution_star_mortar_temp;
+    BlockVector<double>                mortar_vec;
+    BlockVector<double>                mortar_vec_biot;
+    std::vector<std::vector<BlockVector<double>>>   multiscale_basis;
 
 
     // Output extra
@@ -288,7 +375,22 @@ namespace mfe_stokes
     ConvergenceTable   convergence_table_l2_total;
     ConvergenceTable   convergence_table_h1_total;
     // TimerOutput        computing_timer;
+
+    // Postprocessor for computing the normal fluid stress in the domain \Omega_f
+    // at quadrature points and will be outputted using output_results() function.
+    class StressPostprocessor : public DataPostprocessorTensor<dim>
+    {
+      public:
+        StressPostprocessor();
+
+        virtual void
+        evaluate_vector_field(
+          const DataPostprocessorInputs::Vector<dim> &inputs,
+          std::vector<Vector<double>> &computed_quantities) const override;
+    };
   };
 } // namespace mfe_stokes
+
+#include "stokes_datapostprocess.templates.h"
 
 #endif // STOKES_MFE_STOKES_MFE_H

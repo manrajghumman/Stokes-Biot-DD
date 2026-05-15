@@ -8,21 +8,23 @@
 # to change them is hard will need to change at various
 # different places in this and biot.prm file
 subsection RHS vector
-    set Function constants = mu=1.0, lambda=1.0
-    set Function expression = -(pi*pi*pi-pi)*cos(pi*x)*cos(2*pi*y)-(7*pi*pi*pi/6)*cos(pi*x/2)*cos(pi*y)+pi*pi*cos(pi*y);-3*pi*pi*pi*sin(pi*y)+4*pi*pi*sin(2*pi*x)+8*pi*pi*pi*cos(2*pi*x)+(22*pi*pi*pi-2*pi)*sin(pi*x)*sin(2*pi*y)+(2*pi*pi*pi/3)*sin(pi*x/2)*sin(pi*y)
+    set Function constants = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+    set Function expression = -(mu/mu_p-1)*pi*(pi*(2*mu_p+lambda_p)+alpha*mu/(k*pi))*cos(pi*x)*cos(pi*y)+(pi*pi*k*(2*mu_p-3*lambda_p)/mu+alpha)*pi*cos(pi*x)*cos(2*pi*y)-(pi*pi*pi*sqrt(k)*lambda_p/(2*alpha_BJS))*cos(pi*x/2)*cos(pi*y)+pi*pi*mu_p*cos(pi*y)-pi*pi*(mu-mu_p)*cos(pi*x)*cos(pi*y)-(2*pi*pi*pi*sqrt(k)*lambda_p*mu_p/(alpha_BJS*(2*mu_p+lambda_p)))*cos(pi*x/2)*cos(pi*y);4*pi*pi*mu*sin(2*pi*x)+(8*pi*pi*pi*mu_p*sqrt(k)/alpha_BJS)*cos(2*pi*x)+(2*pi*((pi*pi*k/mu)*(8*mu_p+3*lambda_p)-alpha))*sin(pi*x)*sin(2*pi*y)-(sqrt(k)*pi*pi*pi/alpha_BJS)*(2*mu_p+lambda_p)*sin(pi*y)+(pi*pi*pi*sqrt(k)*lambda_p*(mu_p+lambda_p)/(alpha_BJS*(2*mu_p+lambda_p)))*sin(pi*x/2)*sin(pi*y)+pi*(mu/mu_p-1)*(pi*(lambda_p+mu_p)+mu*alpha/(k*pi))*sin(pi*x)*sin(pi*y)
     set Variable names = x, y
 end
 subsection RHS scalar 
-    set Function constants  = s0=1.0, alpha_BJS=1.0
-    set Function expression = (2/3) + 6 + (8*pi*pi+1)*sin(pi*x)*cos(2*pi*y)-pi*pi*cos(pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)
+    set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+    set Function expression = s0*(sin(pi*x)*cos(2*pi*y)-(mu*(mu/mu_p-1)/(k*pi))*sin(pi*x)*cos(pi*y)+6*mu)+alpha*(((6*mu*(alpha-1)-lambda_p)/(2*mu_p+lambda_p))+(mu/mu_p-1)*pi*sin(pi*x)*cos(pi*y)-(k*pi*pi/mu)*sin(pi*x)*cos(2*pi*y)+(pi*pi*sqrt(k)*lambda_p/(alpha_BJS*(2*mu_p+lambda_p)))*sin(pi*x/2)*cos(pi*y)+1+(4*pi*pi*k/mu)*sin(pi*x)*cos(2*pi*y)-(sqrt(k)*pi*pi/alpha_BJS)*cos(pi*y))-2*(mu/mu_p-1)*pi*sin(pi*x)*cos(pi*y)+(5*k*pi*pi/mu)*sin(pi*x)*cos(2*pi*y)
     set Variable names      = x, y
 end
 subsection BC Dirichlet Displacement
-    set Function expression = -(x/3)-(8/3)+cos(pi*y)+pi*cos(pi*x)*cos(2*pi*y)-(2*pi/3)*cos(pi*x/2)*cos(pi*y);y+sin(2*pi*x)+2*pi*sin(pi*x)*sin(2*pi*y)+pi*(2*cos(2*pi*x)-sin(pi*y))
+    set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+    set Function expression = ((6*mu*(alpha-1)-lambda_p)/(2*mu_p+lambda_p))*x-3-((6*mu*(alpha-1)-lambda_p)/(2*mu_p+lambda_p))+cos(pi*y)-(mu/mu_p-1)*cos(pi*x)*cos(pi*y)+(k*pi/mu)*cos(pi*x)*cos(2*pi*y)-((2*pi*sqrt(k)*lambda_p)/(alpha_BJS*(2*mu_p+lambda_p)))*cos(pi*x/2)*cos(pi*y);y+(mu/mu_p)*sin(2*pi*x)+(2*pi*k/mu)*sin(pi*x)*sin(2*pi*y)+(sqrt(k)*pi/alpha_BJS)*(2*cos(2*pi*x)-sin(pi*y))
     set Variable names      = x, y
 end
 subsection BC Dirichlet Pressure
-    set Function expression = sin(pi*x)*cos(2*pi*y)+6
+    set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+    set Function expression = sin(pi*x)*cos(2*pi*y)-(mu*(mu/mu_p-1)/(k*pi))*sin(pi*x)*cos(pi*y)+6*mu
     set Variable names      = x, y
 end
 # Entering Neumann Boundary Conditions
@@ -41,35 +43,41 @@ end
 # Exact solution values Darcy
 # Functions: velocity, pressure
 subsection Exact solution Darcy
-  set Function expression = -pi*cos(pi*x)*cos(2*pi*y);2*pi*sin(pi*x)*sin(2*pi*y);sin(pi*x)*cos(2*pi*y)+6
+  set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+  set Function expression = (mu/mu_p-1)*cos(pi*x)*cos(pi*y)-(k*pi/mu)*cos(pi*x)*cos(2*pi*y);-(mu/mu_p-1)*sin(pi*x)*sin(pi*y)+2*(k*pi/mu)*sin(pi*x)*sin(2*pi*y);sin(pi*x)*cos(2*pi*y)-(mu*(mu/mu_p-1)/(k*pi))*sin(pi*x)*cos(pi*y)+6*mu
   set Variable names      = x, y
 end
 #################################################################################
 # Exact solution, gradient values Darcy Velocity
 # Functions: velocity, pressure
 subsection Exact gradient Darcy Velocity
-  set Function expression = pi*pi*sin(pi*x)*cos(2*pi*y);2*pi*pi*cos(pi*x)*sin(2*pi*y);2*pi*pi*cos(pi*x)*sin(2*pi*y);4*pi*pi*sin(pi*x)*cos(2*pi*y)
+  set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+  set Function expression = -pi*(mu/mu_p-1)*sin(pi*x)*cos(pi*y)+(k*pi*pi/mu)*sin(pi*x)*cos(2*pi*y);-pi*(mu/mu_p-1)*cos(pi*x)*sin(pi*y)+(2*k*pi*pi/mu)*cos(pi*x)*sin(2*pi*y);-pi*(mu/mu_p-1)*cos(pi*x)*sin(pi*y)+(2*k*pi*pi/mu)*cos(pi*x)*sin(2*pi*y);-pi*(mu/mu_p-1)*sin(pi*x)*cos(pi*y)+(4*k*pi*pi/mu)*sin(pi*x)*cos(2*pi*y)
   set Variable names      = x,y
 end
 #################################################################################
 # Exact solution values Elast 
 # Functions: stress, displacement, rotation
 subsection Exact solution stress
-  set Function expression = (pi*pi-1)*sin(pi*x)*cos(2*pi*y)+pi*pi*sin(pi*x/2)*cos(pi*y)-pi*pi*cos(pi*y)-6;-pi*sin(pi*y)+(2*pi*pi/3)*cos(pi*x/2)*sin(pi*y)+2*pi*cos(2*pi*x)-4*pi*pi*sin(2*pi*x);(8/3) -6 +(11*pi*pi-1)*sin(pi*x)*cos(2*pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)-3*pi*pi*cos(pi*y)
+  set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+  set Function expression = -6*mu+(mu/mu_p-1)*((2*mu_p+lambda_p)*pi+alpha*mu/(k*pi))*sin(pi*x)*cos(pi*y)-((pi*pi*k/mu)*(2*mu_p-3*lambda_p)+alpha)*sin(pi*x)*cos(2*pi*y)+(pi*pi*sqrt(k)*lambda_p/alpha_BJS)*(-cos(pi*y)+sin(pi*x/2)*cos(pi*y));mu_p*(-pi*sin(pi*y)+pi*(mu/mu_p-1)*cos(pi*x)*sin(pi*y)+(2*pi*mu/mu_p)*cos(2*pi*x)-(4*sqrt(k)*pi*pi/alpha_BJS)*sin(2*pi*x)+(2*pi*pi*sqrt(k)*lambda_p/(alpha_BJS*(2*mu_p+lambda_p)))*cos(pi*x/2)*sin(pi*y));2*mu_p+lambda_p*(1+((6*mu*(alpha-1)-lambda_p)/(2*mu_p+lambda_p)))-6*mu*alpha+((pi*pi*k/mu)*(8*mu_p+3*lambda_p)-alpha)*sin(pi*x)*cos(2*pi*y)-(sqrt(k)*pi*pi/alpha_BJS)*(2*mu_p+lambda_p)*cos(pi*y)+(pi*pi*sqrt(k)*lambda_p*lambda_p/(alpha_BJS*(2*mu_p+lambda_p)))*sin(pi*x/2)*cos(pi*y)+(mu/mu_p-1)*(pi*lambda_p+mu*alpha/(k*pi))*sin(pi*x)*cos(pi*y)
   set Variable names      = x, y
 end
 subsection Exact solution displacement
-  set Function expression = -x/3-8/3+cos(pi*y)+pi*cos(pi*x)*cos(2*pi*y)-(2*pi/3)*cos(pi*x/2)*cos(pi*y);y+sin(2*pi*x)+2*pi*sin(pi*x)*sin(2*pi*y)+pi*(2*cos(2*pi*x)-sin(pi*y))
+  set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+  set Function expression = ((6*mu*(alpha-1)-lambda_p)/(2*mu_p+lambda_p))*x-3-((6*mu*(alpha-1)-lambda_p)/(2*mu_p+lambda_p))+cos(pi*y)-(mu/mu_p-1)*cos(pi*x)*cos(pi*y)+(k*pi/mu)*cos(pi*x)*cos(2*pi*y)-((2*pi*sqrt(k)*lambda_p)/(alpha_BJS*(2*mu_p+lambda_p)))*cos(pi*x/2)*cos(pi*y);y+(mu/mu_p)*sin(2*pi*x)+(2*pi*k/mu)*sin(pi*x)*sin(2*pi*y)+(sqrt(k)*pi/alpha_BJS)*(2*cos(2*pi*x)-sin(pi*y))
   set Variable names      = x, y
 end
 subsection Exact solution rotation
-  set Function expression = 0.5 * (-pi*sin(pi*y)-2*pi*cos(2*pi*x)+4*pi*pi*sin(2*pi*x)-4*pi*pi*cos(pi*x)*sin(2*pi*y)+(2*pi*pi/3)*cos(pi*x/2)*sin(pi*y)) 
+  set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+  set Function expression = -(pi/2)*sin(pi*y)+(pi*(mu/mu_p-1)/2)*cos(pi*x)*sin(pi*y)-(2*pi*pi*k/mu)*cos(pi*x)*sin(2*pi*y)+(pi*pi*sqrt(k)*lambda_p/(alpha_BJS*(2*mu_p+lambda_p)))*cos(pi*x/2)*sin(pi*y)-(pi*mu/mu_p)*cos(2*pi*x)+(2*pi*pi*sqrt(k)/alpha_BJS)*sin(2*pi*x)
   set Variable names      = x, y
 end
 #################################################################################
 # Exact solution, gradient values  Elast
 # Functions: stress
 subsection Exact gradient stress
-  set Function expression = pi*(pi*pi-1)*cos(pi*x)*cos(2*pi*y)+(pi*pi*pi/2)*cos(pi*x/2)*cos(pi*y);-2*pi*(pi*pi-1)*sin(pi*x)*sin(2*pi*y)-pi*pi*pi*sin(pi*x/2)*sin(pi*y)+pi*pi*pi*sin(pi*y);4*pi*pi*sin(2*pi*x)-8*pi*pi*cos(2*pi*x)-(pi*pi*pi/3)*sin(pi*x/2)*sin(pi*y);-pi*pi*cos(pi*y)+(2*pi*pi*pi/3)*cos(pi*x/2)*cos(pi*y);pi*(11*pi*pi-1)*cos(pi*x)*cos(2*pi*y)+(pi*pi*pi/6)*cos(pi*x/2)*cos(pi*y);-2*pi*(11*pi*pi-1)*sin(pi*x)*sin(2*pi*y)-(pi*pi/3)*sin(pi*x/2)*sin(pi*y)+3*pi*pi*pi*sin(pi*y)
+  set Function constants  = mu=1.0, k=1e-4, s0=1e-3, alpha=1.0, alpha_BJS=1.0, mu_p=1.0, lambda_p=1e+3
+  set Function expression = pi*(mu/mu_p-1)*((2*mu_p+lambda_p)*pi+alpha*mu/(k*pi))*cos(pi*x)*cos(pi*y)-pi*((pi*pi*k/mu)*(2*mu_p-3*lambda_p)+alpha)*cos(pi*x)*cos(2*pi*y)+(pi*pi*pi*sqrt(k)*lambda_p/(2*alpha_BJS))*cos(pi*x/2)*cos(pi*y);-pi*(mu/mu_p-1)*((2*mu_p+lambda_p)*pi+alpha*mu/(k*pi))*sin(pi*x)*sin(pi*y)+2*pi*((pi*pi*k/mu)*(2*mu_p-3*lambda_p)+alpha)*sin(pi*x)*sin(2*pi*y)+(pi*pi*pi*sqrt(k)*lambda_p/alpha_BJS)*(1-sin(pi*x/2))*sin(pi*y);mu_p*(-pi*pi*(mu/mu_p-1)*sin(pi*x)*sin(pi*y)-(4*pi*pi*mu/mu_p)*sin(2*pi*x)-(8*pi*pi*pi*sqrt(k)/alpha_BJS)*cos(2*pi*x)-(pi*pi*pi*sqrt(k)*lambda_p/(alpha_BJS*(2*mu_p+lambda_p)))*sin(pi*x/2)*sin(pi*y));mu_p*(-pi*pi*cos(pi*y)+pi*pi*(mu/mu_p-1)*cos(pi*x)*cos(pi*y)+(2*pi*pi*pi*sqrt(k)*lambda_p/(alpha_BJS*(2*mu_p+lambda_p)))*cos(pi*x/2)*cos(pi*y));pi*((pi*pi*k/mu)*(8*mu_p+3*lambda_p)-alpha)*cos(pi*x)*cos(2*pi*y)+(pi*pi*pi*sqrt(k)*lambda_p*lambda_p/(2*alpha_BJS*(2*mu_p+lambda_p)))*cos(pi*x/2)*cos(pi*y)+pi*(mu/mu_p-1)*(pi*lambda_p+mu*alpha/(k*pi))*cos(pi*x)*cos(pi*y);-2*pi*((pi*pi*k/mu)*(8*mu_p+3*lambda_p)-alpha)*sin(pi*x)*sin(2*pi*y)+(sqrt(k)*pi*pi*pi/alpha_BJS)*(2*mu_p+lambda_p)*sin(pi*y)-(pi*pi*pi*sqrt(k)*lambda_p*lambda_p/(alpha_BJS*(2*mu_p+lambda_p)))*sin(pi*x/2)*sin(pi*y)-pi*(mu/mu_p-1)*(pi*lambda_p+mu*alpha/(k*pi))*sin(pi*x)*sin(pi*y)
   set Variable names      = x,y
 end
