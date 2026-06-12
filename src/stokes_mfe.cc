@@ -443,8 +443,8 @@ namespace mfe_stokes
     for (const auto &cell : dof_handler_mortar.active_cell_iterators())
       for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
         if (cell->at_boundary(face_n) &&
-              (cell->face(face_n)->boundary_id() != 0 && 
-                cell->face(face_n)->boundary_id() !=7))
+              (cell->face(face_n)->boundary_id() > 0 && 
+                cell->face(face_n)->boundary_id() < 7))
         {
           // cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
           cell->get_dof_indices(local_face_dof_indices);
@@ -482,8 +482,8 @@ namespace mfe_stokes
                 ++face_n)
           {
             if (cell_biot->at_boundary(face_n) &&
-                  (cell_biot->face(face_n)->boundary_id() != 0 && 
-                    cell_biot->face(face_n)->boundary_id() !=7))
+                  (cell_biot->face(face_n)->boundary_id() > 0 && 
+                    cell_biot->face(face_n)->boundary_id() < 7))
             {
               cell_biot->face(face_n)->get_dof_indices(local_face_dof_indices_biot, 0);
               side = cell_biot->face(face_n)->boundary_id() - 1;
@@ -504,8 +504,8 @@ namespace mfe_stokes
         for (auto &cell_biot : dof_handler_biot_mortar.active_cell_iterators())
           for (unsigned int face = 0; face < n_faces_per_cell; ++face)
             if (cell_biot->at_boundary(face) &&
-                  (cell_biot->face(face)->boundary_id() != 0 && 
-                    cell_biot->face(face)->boundary_id() !=7))
+                  (cell_biot->face(face)->boundary_id() > 0 && 
+                    cell_biot->face(face)->boundary_id() < 7))
             {
               cell_biot->get_dof_indices(local_face_dof_indices_biot);
               side = cell_biot->face(face)->boundary_id() - 1;
@@ -787,7 +787,7 @@ namespace mfe_stokes
               }
             }
           }//Ending Dirichlet Condition
-          if (face->boundary_id() != 0 && face->boundary_id() != 7) //Entering Stokes-Biot interface BJS term
+          if (face->boundary_id() > 0 && face->boundary_id() < 7) //Entering Stokes-Biot interface BJS term
           {
             side = face->boundary_id() - 1;
             if (neighbor_type[side] == 2) // Stokes-Biot interface
@@ -963,7 +963,7 @@ namespace mfe_stokes
           local_rhs = 0;
           for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
             if (cell->at_boundary(face_n) && 
-              (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7))
+              (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() <7))
             {
               side = cell->face(face_n)->boundary_id() - 1;
               if (neighbor_type[side] == 2) // Stokes-Biot interface
@@ -1039,7 +1039,7 @@ namespace mfe_stokes
           local_rhs = 0;
           for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
             if (cell->at_boundary(face_n) && 
-              (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7))
+              (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() < 7))
             {
               side = cell->face(face_n)->boundary_id() - 1;
               if (neighbor_type[side] == 2) // Stokes-Biot interface
@@ -2776,7 +2776,7 @@ namespace mfe_stokes
           cell->get_dof_indices(local_dof_indices);
           for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
             if (cell->at_boundary(face_n) &&
-              (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
+              (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() <7)  )
             {
               //Need to reorder faces deal.ii iterators 
               //use a different ordering from freefem, 
@@ -2916,7 +2916,7 @@ namespace mfe_stokes
           cell->get_dof_indices(local_dof_indices);
           for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
             if (cell->at_boundary(face_n) &&
-              (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
+              (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() <7)  )
             {              
               //Need to reorder faces deal.ii iterators 
               //use a different ordering from freefem, 

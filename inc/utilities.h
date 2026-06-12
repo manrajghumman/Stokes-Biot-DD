@@ -65,7 +65,7 @@ namespace dd_utilities
     for (unsigned int row=0;row<dim;++row)
       for (unsigned int col=0;col<dim;++col)
         if (row == col)
-          res[row][col] = 1/(2*mu)*(vec[row][col] - (1/(2*mu/lambda + dim))*trace);
+          res[row][col] = 1/(2*mu)*(vec[row][col] - (lambda/(2*mu + dim)*lambda)*trace);
         else
           res[row][col] = 1/(2*mu)*(vec[row][col]);
   }
@@ -76,7 +76,7 @@ namespace dd_utilities
   void compliance_tensor_pressure(const double pres, const double mu, const double lambda, Tensor<2,dim> &res)
   {
     for(unsigned int i=0;i<dim;i++)
-      res[i][i] = 1/(2*mu)*(1 - 2/(2*mu/lambda + dim))*pres;//((2*mu+(dim-2)*lambda)*pres)/((2*mu+dim*lambda)*2*mu);
+      res[i][i] = ((2*mu+(dim-2)*lambda)*pres)/((2*mu+dim*lambda)*2*mu);
   }
 
   // Domain decomposition related utilities

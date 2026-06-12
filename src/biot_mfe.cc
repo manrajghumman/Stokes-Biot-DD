@@ -512,8 +512,8 @@ namespace mfe_biot
       for (const auto &cell : dof_handler_mortar.active_cell_iterators())
         for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
           if (cell->at_boundary(face_n) &&
-                (cell->face(face_n)->boundary_id() != 0 && 
-                  cell->face(face_n)->boundary_id() !=7))
+                (cell->face(face_n)->boundary_id() > 0 && 
+                  cell->face(face_n)->boundary_id() < 7))
           {
             // cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
             cell->get_dof_indices(local_face_dof_indices);
@@ -551,8 +551,8 @@ namespace mfe_biot
       for (const auto &cell : dof_handler_mortar.active_cell_iterators())
         for (unsigned int face_n = 0; face_n < n_faces_per_cell; ++face_n)
           if (cell->at_boundary(face_n) &&
-                (cell->face(face_n)->boundary_id() != 0 && 
-                  cell->face(face_n)->boundary_id() !=7))
+                (cell->face(face_n)->boundary_id() > 0 && 
+                  cell->face(face_n)->boundary_id() < 7))
           {
             cell->face(face_n)->get_dof_indices(local_face_dof_indices, 0);
             side = cell->face(face_n)->boundary_id() - 1;
@@ -939,7 +939,7 @@ namespace mfe_biot
         local_rhs = 0;
         for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
           if (cell->at_boundary(face_n) && 
-            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7))
+            (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() < 7))
           {
             fe_face_values.reinit (cell, face_n);
             side = cell->face(face_n)->boundary_id() - 1;
@@ -2252,7 +2252,7 @@ namespace mfe_biot
         cell->get_dof_indices(local_dof_indices);
         for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
           if (cell->at_boundary(face_n) &&
-            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
+            (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() < 7)  )
           {
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem, 
@@ -2348,7 +2348,7 @@ namespace mfe_biot
         cell->get_dof_indices(local_dof_indices);
         for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
           if (cell->at_boundary(face_n) &&
-            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7)  )
+            (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() < 7)  )
           {
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem, 
@@ -2524,7 +2524,7 @@ namespace mfe_biot
         cell->get_dof_indices(local_dof_indices);
         for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
           if (cell->at_boundary(face_n) &&
-            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7) )
+            (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() < 7) )
           {
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem, 
@@ -2582,7 +2582,7 @@ namespace mfe_biot
         cell->get_dof_indices(local_dof_indices);
         for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
           if (cell->at_boundary(face_n) &&
-            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7) )
+            (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() < 7) )
           {
             //Need to reorder faces deal.ii iterators 
             //use a different ordering from freefem, 
