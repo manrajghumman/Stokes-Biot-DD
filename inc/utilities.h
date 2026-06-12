@@ -65,7 +65,7 @@ namespace dd_utilities
     for (unsigned int row=0;row<dim;++row)
       for (unsigned int col=0;col<dim;++col)
         if (row == col)
-          res[row][col] = 1/(2*mu)*(vec[row][col] - (lambda/(2*mu + dim)*lambda)*trace);
+          res[row][col] = 1/(2*mu)*(vec[row][col] - (lambda/(2*mu + dim*lambda))*trace);
         else
           res[row][col] = 1/(2*mu)*(vec[row][col]);
   }
