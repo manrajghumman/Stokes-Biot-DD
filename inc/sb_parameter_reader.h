@@ -122,12 +122,15 @@ class StokesBiotParameterReader : public Subscriptor
 
     prm.enter_subsection("External Boundary Conditions");
     {
-      prm.declare_entry("boundary_2D", "N, D, D, D",
+      prm.declare_entry("boundary_2D", "D, D, D, D",
                     Patterns::Anything(),
                   "Boundary types (N=Neumann, D=Dirichlet)");
       prm.declare_entry("boundary_3D", "N, D, D, D, D, D",
                     Patterns::Anything(),
-                  "Boundary types (N=Neumann, D=Dirichlet)");
+                  "Boundary types (N=Neumann, D=Dirichlet)"
+                  "for Biot we have three types of N: S, V, N"
+                  "for stress + pressure, velocity + displacement "
+                  "and stress + velocity respectively.");
     }
     prm.leave_subsection();
 

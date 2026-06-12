@@ -104,6 +104,10 @@ namespace mfe_biot
 
     void setup_system();
 
+    void make_neumann_stress_data();
+    
+    void make_neumann_velocity_data();
+
     void assemble_system();
 
     void get_interface_dofs();
@@ -286,6 +290,8 @@ namespace mfe_biot
     Triangulation <dim> triangulation;
     FESystem <dim> fe;
     DoFHandler <dim> dof_handler;
+    AffineConstraints<double> constraints_external_bar;
+    AffineConstraints<double> constraints_external_star;
 
     // Mortar triangulation
     Triangulation <dim> triangulation_mortar;

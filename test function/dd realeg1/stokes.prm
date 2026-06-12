@@ -20,7 +20,7 @@ subsection RHS scalar
     set Variable names      = x, y
 end
 subsection BC Dirichlet 
-    set Function expression = if(x>0, 0, -40*(y-1)*(y-2));0
+    set Function expression = if(x>0, 0, -40*y*(y-1));0
     set Variable names      = x, y
 end
 # Give values of Stress, normal stress will be calculated from it

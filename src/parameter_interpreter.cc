@@ -221,14 +221,23 @@ namespace mfe_stokes
                     std::vector<std::string> bvec 
                                 = Utilities::split_string_list(prm.get("boundary_2D")); 
                     // Convert each string to a char
+                    unsigned int i = 0;
                     for (const std::string &s : bvec)
+                    {
                         if (s[0] == 'N')
-                            external_bdry_ids.push_back(7); // Neumann boundary
+                            external_bdry_ids.push_back(7); // Neumann boundary (for Biot, it's both Neumann stress and Neumann Darcy velocity)
+                        else if (s[0] == 'S')
+                            external_bdry_ids.push_back(8); // Neumann stress + pressure dirichlet
+                        else if (s[0] == 'V')
+                            external_bdry_ids.push_back(9); // Neumann Darcy velocity + displacement
                         else if (s[0] == 'D')
                             external_bdry_ids.push_back(0); // Dirichlet boundary
                         else
                             AssertThrow(false, ExcMessage("Invalid boundary condition type." 
-                                " Use 'N' for Neumann or 'D' for Dirichlet."));
+                                " Use 'N' for Neumann or 'D' for Dirichlet. You entered: side[" + std::to_string(i) 
+                                + "] = " + std::string(1, s[0])));
+                        i = i+1;
+                    }
                     // Ensure the boundary vector has exactly 4 elements
                     AssertThrow(external_bdry_ids.size() == 4, 
                             ExcMessage("Boundary vector must have exactly 4 elements/edges for 2D."));
@@ -358,14 +367,23 @@ namespace mfe_biot
                     std::vector<std::string> bvec 
                                 = Utilities::split_string_list(prm.get("boundary_2D")); 
                     // Convert each string to a char
+                    unsigned int i = 0;
                     for (const std::string &s : bvec)
+                    {
                         if (s[0] == 'N')
-                            external_bdry_ids.push_back(7); // Neumann boundary
+                            external_bdry_ids.push_back(7); // Neumann boundary (for Biot, it's both Neumann stress and Neumann Darcy velocity)
+                        else if (s[0] == 'S')
+                            external_bdry_ids.push_back(8); // Neumann stress + pressure dirichlet
+                        else if (s[0] == 'V')
+                            external_bdry_ids.push_back(9); // Neumann Darcy velocity + displacement
                         else if (s[0] == 'D')
                             external_bdry_ids.push_back(0); // Dirichlet boundary
                         else
                             AssertThrow(false, ExcMessage("Invalid boundary condition type." 
-                                " Use 'N' for Neumann or 'D' for Dirichlet."));
+                                " Use 'N' for Neumann or 'D' for Dirichlet. You entered: side[" + std::to_string(i) 
+                                + "] = " + std::string(1, s[0])));
+                        i = i+1;
+                    }
                     // Ensure the boundary vector has exactly 4 elements
                     AssertThrow(external_bdry_ids.size() == 4, 
                             ExcMessage("Boundary vector must have exactly 4 elements/edges for 2D."));

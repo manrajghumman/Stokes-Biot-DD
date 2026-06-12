@@ -66,8 +66,8 @@ namespace mfe_biot
     
     prm.enter_subsection("BC Neumann Stress");
     {
-      Functions::ParsedFunction<2>::declare_parameters(prm,3);
-      prm.set("Function expression", "0; 0; 0");
+      Functions::ParsedFunction<2>::declare_parameters(prm,4);
+      prm.set("Function expression", "0; 0; 0; 0");
     }
     prm.leave_subsection();
 

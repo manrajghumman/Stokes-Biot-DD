@@ -166,7 +166,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/stokes.prm");
+    param.read_parameters("../test function/dd realeg1/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -199,7 +199,7 @@ namespace mfe_stokes
       if (external_bdry_ids[i] == 0)
         external_bdry_ids[i] = 0;
       else 
-        external_bdry_ids[i] = 7;
+        external_bdry_ids[i] = 0;
       if (external_bdry_ids[i] == 7)
         pcout << " N";
       else if (external_bdry_ids[i] == 0)
@@ -213,7 +213,7 @@ namespace mfe_stokes
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 2)
+        if (face->center()[dim - 2] == 1)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
         if (face->center()[dim - 1] == 1)
@@ -4403,7 +4403,7 @@ namespace mfe_stokes
     unsigned int h_local = 0;
 
     if (it != initial_refinement.end()) // check if the vector is not empty
-      h_local = (*it) * std::pow(2, cycle); // get the value of the minimum element, scale according to domain size
+      h_local = (*it) * std::pow(2, cycle+1); // get the value of the minimum element, scale according to domain size
     else
       AssertThrow(false, ExcMessage("Error: initial_refinement vector is empty."));
     
@@ -4582,7 +4582,7 @@ namespace mfe_stokes
     }
   }
 
-    template <int dim>
+  template <int dim>
   void MixedStokesProblem<dim>::print_total_convg_table_l2()
   {
     if (this_mpi_stokes == 0)
@@ -4707,9 +4707,9 @@ namespace mfe_stokes
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
-      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
+      subdomain_dimensions[0] = 1.0 / double(n_domains[0]);
 
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);

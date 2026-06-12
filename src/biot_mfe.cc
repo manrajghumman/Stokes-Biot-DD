@@ -140,7 +140,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/biot.prm");
+    param.read_parameters("../test function/dd realeg1/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -164,12 +164,20 @@ namespace mfe_biot
     pcout << "Biot Part:\n boundary condition:";
     for (unsigned int i = 0; i < external_bdry_ids.size(); ++i)
     {
-      if (external_bdry_ids[i] == 0)
-        external_bdry_ids[i] = 0;
-      else 
-        external_bdry_ids[i] = 7;
+      // if (external_bdry_ids[i] == 0)
+      //   external_bdry_ids[i] = 0;
+      // else if (external_bdry_ids[i] == 7)
+      //   external_bdry_ids[i] = 7;
+      // else if (external_bdry_ids[i] == 8)
+      //   external_bdry_ids[i] = 8;
+      // else if (external_bdry_ids[i] == 9)
+      //   external_bdry_ids[i] = 9;
       if (external_bdry_ids[i] == 7)
         pcout << " N";
+      else if (external_bdry_ids[i] == 8)
+        pcout << " S";
+      else if (external_bdry_ids[i] == 9)
+        pcout << " V";
       else if (external_bdry_ids[i] == 0)
         pcout << " D";
       else
@@ -181,7 +189,7 @@ namespace mfe_biot
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 2)
+        if (face->center()[dim - 2] == 1)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
         if (face->center()[dim - 1] == 1)
@@ -228,6 +236,9 @@ namespace mfe_biot
           << "\n N rotation dofs: " << n_g
           << "\n N flux dofs: " << n_z
           << "\n N pressure dofs: " << n_p << std::endl;
+
+    make_neumann_stress_data();
+    make_neumann_velocity_data();                                
 
     BlockDynamicSparsityPattern dsp(5, 5);
     dsp.block(0, 0).reinit (n_s, n_s);
@@ -353,6 +364,133 @@ namespace mfe_biot
     mortar_vec.block(3).reinit (n_z_mortar);
     mortar_vec.block(4).reinit (n_p_mortar);
     mortar_vec.collect_sizes ();
+  }
+
+  // MixedBiotProblem::make_neumann_stress_data
+  template <int dim>
+  void MixedBiotProblem<dim>::make_neumann_stress_data ()
+  {
+    // clear the constraints objects in case you are
+    // refining this, they will be closed after filling
+    // the velocity data in the following method, since
+    // we could have Neumann BCs on both stress and flux 
+    // for Biot
+    constraints_external_bar.clear();
+    constraints_external_star.clear();
+
+    // neumann stress boundary conditions 
+    Functions::ParsedFunction<dim> neumann_stress(dim*dim);
+    prm_fxn.enter_subsection("BC Neumann Stress");
+    neumann_stress.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();
+
+    const QGauss<dim - 1> face_quadrature(degree + 2);
+
+    // Neumann boundary ids for Biot 
+    // 7 for Neumann stress + Neumann Darcy velocity, 
+    // 8 for Neumann stress + pressure dirichlet, 
+    // 9 for Neumann Darcy velocity + displacement
+    std::map<types::boundary_id, const Function<dim> *> boundary_functions;
+    boundary_functions[7] = &neumann_stress;
+    boundary_functions[8] = &neumann_stress;
+    // none for velocity, those are in the next method
+
+    std::map<types::global_dof_index, double> projected_boundary_values;
+    std::vector<unsigned int> component_mapping(dim*dim + dim + 0.5*dim*(dim-1) + dim + 1);
+
+    for (unsigned int d = 0; d < dim*dim; ++d)
+      component_mapping[d] = d;
+
+    // Dummy mapping. We filter out these DoFs below.
+    // The project boundary values method needs a mapping for all 
+    // components. We just need to put something there to satisfy 
+    // the api of the function project_boundary_values().
+    for (unsigned int d = dim*dim; d < dim*dim + dim + 0.5*dim*(dim-1) + dim + 1; ++d)
+      component_mapping[d] = 0;
+
+    VectorTools::project_boundary_values(dof_handler,
+                                        boundary_functions,
+                                        face_quadrature,
+                                        projected_boundary_values,
+                                        component_mapping);
+
+    // we do this to make sure that the pressure dofs are not 
+    // constrained by the projected boundary values, since we 
+    // only have Neumann BCs on flux in this example.
+    // also, we set the inhomogeneity for the star constraints to 0
+    for (const auto &[dof_index, value] : projected_boundary_values)
+    {
+      if (dof_index < n_stress)
+      {
+        constraints_external_bar.add_line(dof_index);
+        constraints_external_bar.set_inhomogeneity(dof_index, value);
+
+        constraints_external_star.add_line(dof_index);
+        constraints_external_star.set_inhomogeneity(dof_index, 0.0);
+      }
+    }
+  }
+
+  // MixedBiotProblem::make_neumann_velocity_data
+  template <int dim>
+  void MixedBiotProblem<dim>::make_neumann_velocity_data ()
+  {
+    // neumann darcy boundary conditions 
+    Functions::ParsedFunction<dim> neumann_velocity(dim);
+    prm_fxn.enter_subsection("BC Neumann Velocity");
+    neumann_velocity.parse_parameters(prm_fxn);
+    prm_fxn.leave_subsection();  
+    
+    const QGauss<dim - 1> face_quadrature(degree + 2);
+    
+    // Neumann boundary ids for Biot 
+    // 7 for Neumann stress + Neumann Darcy velocity, 
+    // 8 for Neumann stress + pressure dirichlet, 
+    // 9 for Neumann Darcy velocity + displacement
+    std::map<types::boundary_id, const Function<dim> *> boundary_functions;
+    boundary_functions[7] = &neumann_velocity;
+    boundary_functions[9] = &neumann_velocity;
+    // neumann_ids = 8 and other stress related data was 
+    // filled earlier with the neumann_stress function
+
+    std::map<types::global_dof_index, double> projected_boundary_values;
+    std::vector<unsigned int> component_mapping(dim*dim + dim + 0.5*dim*(dim-1) + dim + 1);
+
+    for (unsigned int d = dim*dim + dim + 0.5*dim*(dim-1); d < dim*dim + dim + 0.5*dim*(dim-1)+dim; ++d)
+      component_mapping[d] = d-(dim*dim + dim + 0.5*dim*(dim-1));
+
+    // Dummy pressure mapping. We filter pressure DoFs out below.
+    // The project boundary values method needs a mapping for all 
+    // components. We just need to put something there to satisfy 
+    // the api of the function project_boundary_values().
+    for (unsigned int d = 0; d < dim*dim + dim + 0.5*dim*(dim-1); ++d)
+      component_mapping[d] = 0; // elasticity components
+    component_mapping[dim*dim + dim + 0.5*dim*(dim-1) + dim] = 0; // pressure component
+
+    VectorTools::project_boundary_values(dof_handler,
+                                        boundary_functions,
+                                        face_quadrature,
+                                        projected_boundary_values,
+                                        component_mapping);
+
+    // we do this to make sure that the pressure dofs are not 
+    // constrained by the projected boundary values, since we 
+    // only have Neumann BCs on flux in this example.
+    // also, we set the inhomogeneity for the star constraints to 0
+    for (const auto &[dof_index, value] : projected_boundary_values)
+    {
+      if (n_stress+n_disp+n_rot <= dof_index && dof_index < n_stress+n_disp+n_rot+n_flux)
+      {
+        constraints_external_bar.add_line(dof_index);
+        constraints_external_bar.set_inhomogeneity(dof_index, value);
+
+        constraints_external_star.add_line(dof_index);
+        constraints_external_star.set_inhomogeneity(dof_index, 0.0);
+      }
+    }
+    
+    constraints_external_bar.close();
+    constraints_external_star.close();
   }
 
   // MixedBiotProblemDD - initialize the interface data structure for coupled monolithic sheme
@@ -642,7 +780,23 @@ namespace mfe_biot
         if (face->at_boundary())
         { 
           fe_face_values.reinit(cell, face);
-          if (face->boundary_id() == 0)//Entering Dirichlet Condition
+          if (face->boundary_id() == 0 || face->boundary_id() == 8)//Entering pressure related Dirichlet Condition
+          {
+            for (unsigned int q = 0; q < n_face_q_points; ++q)
+            { 
+              // Evaluate test functions  
+              for (unsigned int k=0; k<dofs_per_cell; ++k)
+                phi_u[k] = fe_face_values[velocity].value (k, q);
+          
+              for (unsigned int i = 0; i < dofs_per_cell; ++i)
+              {
+                local_rhs(i) += -(phi_u[i] * fe_face_values.normal_vector(q) // - <v.n, g_p^D_p>
+                                  * boundary_values_dir_press.value(fe_face_values.quadrature_point(q))
+                                  * fe_face_values.JxW(q));                               
+              }
+            }
+          }
+          if (face->boundary_id() == 0 || face->boundary_id() == 9) //Entering displacement related Dirichlet Condition
           {
             for (unsigned int q = 0; q < n_face_q_points; ++q)
             {
@@ -652,62 +806,38 @@ namespace mfe_biot
               
               // Evaluate test functions  
               for (unsigned int k=0; k<dofs_per_cell; ++k)
-              {
-                phi_u[k] = fe_face_values[velocity].value (k, q);
                 for (unsigned int s_i=0; s_i<dim; ++s_i)
                 {
                   tau_n_i[k][s_i] = fe_face_values[stresses[s_i]].value (k, q)
                                     * fe_face_values.normal_vector(q);
                 }
-              }
           
               for (unsigned int i = 0; i < dofs_per_cell; ++i)
               {
-                local_rhs(i) += (- (phi_u[i] * fe_face_values.normal_vector(q)) // - <v.n, g_p^D_p>
-                                  * boundary_values_dir_press.value(fe_face_values.quadrature_point(q))
-                                  + tau_n_i[i] * gd_disp )     // <tau.n, g_p^D_d>
-                                  * fe_face_values.JxW(q);                               
+                local_rhs(i) += ( tau_n_i[i] * gd_disp     // <tau.n, g_p^D_d>
+                                  * fe_face_values.JxW(q));                               
               }
             }
           }
-          // else if (face->boundary_id() == 7) //Entering Neumann Condition
-          // {
-          //   for (unsigned int q = 0; q < n_face_q_points; ++q)
-          //   {
-          //     // Evaluate test functions
-          //     for (unsigned int k=0; k<dofs_per_cell; ++k)
-          //     {
-          //       phi_u[k] = fe_values[velocity].value (k, q);
-          //       for (unsigned int s_i=0; s_i<dim; ++s_i)
-          //       {
-          //         phi_s[k][s_i] = fe_values[stresses[s_i]].value (k, q);  
-          //         sigma_n_i[k][s_i] = fe_values[stresses[s_i]].value (k, q)
-          //                           * fe_face_values.normal_vector(q);
-          //         tau_n_i[k][s_i] = fe_values[stresses[s_i]].value (k, q)
-          //                           * fe_face_values.normal_vector(q);
-          //       }
-          //     }
-
-          //     for (unsigned int i = 0; i < dofs_per_cell; ++i)
-          //     {
-
-          //     }
-          //   }
-          // }
         }
       }
 
       cell->get_dof_indices (local_dof_indices);
       // Add local contributions to global system
-      for (unsigned int i=0; i<dofs_per_cell; ++i)
-      {
-        system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
+      constraints_external_bar.distribute_local_to_global(local_matrix, 
+                                                        local_rhs, 
+                                                        local_dof_indices, 
+                                                        system_matrix, 
+                                                        system_rhs_bar);
+      // for (unsigned int i=0; i<dofs_per_cell; ++i)
+      // {
+      //   system_rhs_bar(local_dof_indices[i]) += local_rhs(i);
 
-        for (unsigned int j=0; j<dofs_per_cell; ++j)
-          system_matrix.add (local_dof_indices[i],
-                            local_dof_indices[j],
-                            local_matrix(i,j));
-      }
+      //   for (unsigned int j=0; j<dofs_per_cell; ++j)
+      //     system_matrix.add (local_dof_indices[i],
+      //                       local_dof_indices[j],
+      //                       local_matrix(i,j));
+      // }
     }
     pcout << "System assembly complete." << std::endl;
   }
@@ -755,7 +885,7 @@ namespace mfe_biot
         local_rhs = 0;
         for (unsigned int face_n = 0;face_n < n_faces_per_cell;++face_n)
           if (cell->at_boundary(face_n) && 
-            (cell->face(face_n)->boundary_id() != 0) && (cell->face(face_n)->boundary_id() !=7))
+            (cell->face(face_n)->boundary_id() > 0) && (cell->face(face_n)->boundary_id() < 7))
             {
               fe_face_values.reinit (cell, face_n);
               side = cell->face(face_n)->boundary_id() - 1;
@@ -1659,6 +1789,7 @@ namespace mfe_biot
     // TimerOutput::Scope t(computing_timer, "Solve bar");
     A_direct.initialize (system_matrix);
     A_direct.vmult(solution_bar, system_rhs_bar);
+    constraints_external_bar.distribute(solution_bar);
     pcout << "Solve bar completed." << std::endl;
 
     if (std::isnan(solution_bar.l2_norm()))
@@ -1672,7 +1803,9 @@ namespace mfe_biot
   void MixedBiotProblem<dim>::solve_star ()
   {
     // TimerOutput::Scope t(computing_timer, "Solve star");
+    constraints_external_star.condense(system_rhs_star);
     A_direct.vmult (solution_star, system_rhs_star);
+    constraints_external_star.distribute(solution_star);
     // solution_star *= avg_eigenvalue; 
     if (std::isnan(solution_star.l2_norm()))
       std::cout << "Warning: NaN values in solution_star!" << std::endl;
@@ -3353,7 +3486,7 @@ namespace mfe_biot
     unsigned int h_local = 0;
 
     if (it != initial_refinement.end()) // check if the vector is not empty
-      h_local = (*it) * std::pow(2, cycle); // get the value of the minimum element, scale according to domain size
+      h_local = (*it) * std::pow(2, cycle+1); // get the value of the minimum element, scale according to domain size
     else
       AssertThrow(false, ExcMessage("Error: initial_refinement vector is empty."));
     
@@ -3814,9 +3947,9 @@ namespace mfe_biot
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
 
-      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
+      subdomain_dimensions[0] = 1.0 / double(n_domains[0]);
       
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
