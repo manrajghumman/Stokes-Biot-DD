@@ -8,7 +8,7 @@
 # to change them is hard will need to change at various
 # different places in this and biot.prm file
 subsection RHS vector
-    set Function constants = mu=3e-1
+    set Function constants = mu=1.81e-8
     set Function expression = pi*cos(pi*x)*cos(2*pi*y)+mu*pi*pi*cos(pi*y);4*mu*pi*pi*sin(2*pi*x)-2*pi*sin(pi*x)*sin(2*pi*y)
     set Variable names = x, y
 end
@@ -22,7 +22,7 @@ subsection BC Dirichlet
 end
 # Give values of Stress, normal stress will be calculated from it
 subsection BC Neumann
-    set Function constants = mu=3e-1
+    set Function constants = mu=1.81e-8
     set Function expression = -sin(pi*x)*cos(2*pi*y)-6*mu; mu*pi*(2*cos(2*pi*x)-sin(pi*y));mu*pi*(2*cos(2*pi*x)-sin(pi*y));-sin(pi*x)*cos(2*pi*y)+2*mu
     set Variable names      = x, y
 end

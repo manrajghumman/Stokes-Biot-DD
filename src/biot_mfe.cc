@@ -140,7 +140,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/biot.prm");
+    param.read_parameters("../test function/dd realeg2/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -164,8 +164,8 @@ namespace mfe_biot
     pcout << "Biot Part:\n boundary condition:";
     for (unsigned int i = 0; i < external_bdry_ids.size(); ++i)
     {
-      // if (this_mpi == 1)
-      //   external_bdry_ids[0] = 9; // Velocity Neumann on bottom boundary for Biot domain 1
+      if (this_mpi == 1)
+        external_bdry_ids[0] = 9; // Velocity Neumann on bottom boundary for Biot domain 1
       if (external_bdry_ids[i] == 7)
         pcout << " N";
       else if (external_bdry_ids[i] == 8)
@@ -183,10 +183,10 @@ namespace mfe_biot
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 2)
+        if (face->center()[dim - 2] == 0.75)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 2)
+        if (face->center()[dim - 1] == 0.25)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -3941,9 +3941,9 @@ namespace mfe_biot
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 0.4 / double(n_domains[d]);
 
-      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
+      subdomain_dimensions[0] = 0.75 / double(n_domains[0]);
       
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);

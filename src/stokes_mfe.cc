@@ -166,7 +166,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/stokes.prm");
+    param.read_parameters("../test function/dd realeg2/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -200,10 +200,10 @@ namespace mfe_stokes
       //   external_bdry_ids[i] = 0;
       // else 
       //   external_bdry_ids[i] = 0;
-      // if (this_mpi == 0 || this_mpi == 3)
-      //   external_bdry_ids[3] = 7; // Neumann on left boundary for Stokes domain 0 and 3
-      // if (this_mpi == 2 || this_mpi == 5)
-      //   external_bdry_ids[1] = 7; // Neumann on right boundary for Stokes domain 2 and 5
+      if (this_mpi == 0 || this_mpi == 3)
+        external_bdry_ids[3] = 7; // Neumann on left boundary for Stokes domain 0 and 3
+      if (this_mpi == 2 || this_mpi == 5)
+        external_bdry_ids[1] = 7; // Neumann on right boundary for Stokes domain 2 and 5
       if (external_bdry_ids[i] == 7)
         pcout << " N";
       else if (external_bdry_ids[i] == 0)
@@ -217,10 +217,10 @@ namespace mfe_stokes
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 2)
+        if (face->center()[dim - 2] == 0.75)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 2)
+        if (face->center()[dim - 1] == 0.25)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -4711,17 +4711,17 @@ namespace mfe_stokes
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 0.4 / double(n_domains[d]);
 
-      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
+      subdomain_dimensions[0] = 0.75 / double(n_domains[0]);
 
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
 
-      // if (this_mpi >= 3)
-      // {
-      //   p2[1] = p1[1] + 0.05;
-      // }
+      if (this_mpi >= 3)
+      {
+        p2[1] = p1[1] + 0.05;
+      }
       // if (mortar_flag)
       //   GridGenerator::subdivided_hyper_rectangle(triangulation,
       //                                             reps[this_mpi],
