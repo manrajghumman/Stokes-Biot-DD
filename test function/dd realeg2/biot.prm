@@ -1,0 +1,77 @@
+# Listing of Manufactured solution for Biot subdomain (only 2D)
+# Assumes Stokes-Biot partition along y = 1 for domain (0, 2) x (0, 4)
+# The Biot region is (0, 2) x (0, 2)
+# example is for modeling coupling of surface and subsurface
+# hydrological flow taken from paper with Tongtong, Yotov ESAIM.
+# ---------------------
+#################################################################################
+# Right hand side and Boundary Conditions Right hand side and Boundary Conditions
+# function constant to indicate assumptions
+# to change them is hard will need to change at various
+# different places in this and biot.prm file
+subsection RHS vector
+    set Function constants = mu=1.0, lambda=1.0
+    set Function expression = 0;0
+    set Variable names = x, y
+end
+subsection RHS scalar 
+    set Function constants  = s0=1, alpha_BJS=1.0
+    set Function expression = 0
+    set Variable names      = x, y
+end
+subsection BC Dirichlet Displacement
+    set Function expression = 0;0
+    set Variable names      = x, y
+end
+subsection BC Dirichlet Pressure
+    set Function expression = 0
+    set Variable names      = x, y
+end
+# Entering Neumann Boundary Conditions
+# Enter Stress and Velocity function
+# Will compute the normal stress and normal velocity
+# inside the code
+subsection BC Neumann Velocity
+    set Function expression = 0;0
+    set Variable names      = x, y
+end
+subsection BC Neumann Stress
+    set Function expression = 0;0;0;0
+    set Variable names      = x, y
+end
+#################################################################################
+# Exact solution values Darcy
+# Functions: velocity, pressure
+subsection Exact solution Darcy
+  set Function expression = -pi*cos(pi*x)*cos(2*pi*y);2*pi*sin(pi*x)*sin(2*pi*y);sin(pi*x)*cos(2*pi*y)+6
+  set Variable names      = x, y
+end
+#################################################################################
+# Exact solution, gradient values Darcy Velocity
+# Functions: velocity, pressure
+subsection Exact gradient Darcy Velocity
+  set Function expression = pi*pi*sin(pi*x)*cos(2*pi*y);2*pi*pi*cos(pi*x)*sin(2*pi*y);2*pi*pi*cos(pi*x)*sin(2*pi*y);4*pi*pi*sin(pi*x)*cos(2*pi*y)
+  set Variable names      = x,y
+end
+#################################################################################
+# Exact solution values Elast 
+# Functions: stress, displacement, rotation
+subsection Exact solution stress
+  set Function expression = (pi*pi-1)*sin(pi*x)*cos(2*pi*y)+pi*pi*sin(pi*x/2)*cos(pi*y)-pi*pi*cos(pi*y)-6;-pi*sin(pi*y)+(2*pi*pi/3)*cos(pi*x/2)*sin(pi*y)+2*pi*cos(2*pi*x)-4*pi*pi*sin(2*pi*x);(8/3) -6 +(11*pi*pi-1)*sin(pi*x)*cos(2*pi*y)+(pi*pi/3)*sin(pi*x/2)*cos(pi*y)-3*pi*pi*cos(pi*y)
+  set Variable names      = x, y
+end
+subsection Exact solution displacement
+  set Function expression = -x/3-8/3+cos(pi*y)+pi*cos(pi*x)*cos(2*pi*y)-(2*pi/3)*cos(pi*x/2)*cos(pi*y);y+sin(2*pi*x)+2*pi*sin(pi*x)*sin(2*pi*y)+pi*(2*cos(2*pi*x)-sin(pi*y))
+  set Variable names      = x, y
+end
+subsection Exact solution rotation
+  set Function expression = 0.5 * (-pi*sin(pi*y)-2*pi*cos(2*pi*x)+4*pi*pi*sin(2*pi*x)-4*pi*pi*cos(pi*x)*sin(2*pi*y)+(2*pi*pi/3)*cos(pi*x/2)*sin(pi*y)) 
+  set Variable names      = x, y
+end
+#################################################################################
+# Exact solution, gradient values  Elast
+# Functions: stress
+subsection Exact gradient stress
+  set Function expression = pi*(pi*pi-1)*cos(pi*x)*cos(2*pi*y)+(pi*pi*pi/2)*cos(pi*x/2)*cos(pi*y);-2*pi*(pi*pi-1)*sin(pi*x)*sin(2*pi*y)-pi*pi*pi*sin(pi*x/2)*sin(pi*y)+pi*pi*pi*sin(pi*y);4*pi*pi*sin(2*pi*x)-8*pi*pi*cos(2*pi*x)-(pi*pi*pi/3)*sin(pi*x/2)*sin(pi*y);-pi*pi*cos(pi*y)+(2*pi*pi*pi/3)*cos(pi*x/2)*cos(pi*y);pi*(11*pi*pi-1)*cos(pi*x)*cos(2*pi*y)+(pi*pi*pi/6)*cos(pi*x/2)*cos(pi*y);-2*pi*(11*pi*pi-1)*sin(pi*x)*sin(2*pi*y)-(pi*pi/3)*sin(pi*x/2)*sin(pi*y)+3*pi*pi*pi*sin(pi*y)
+  set Variable names      = x,y
+end

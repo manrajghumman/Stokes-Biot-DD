@@ -124,6 +124,7 @@ namespace mfe_stokes
     const unsigned int n_processes_stokes;
     ParameterHandler &prm;
     ParameterHandler prm_fxn;
+    double viscosity;
     unsigned int degree;
     unsigned int qdegree;
     double gamma;

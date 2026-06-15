@@ -55,8 +55,8 @@ namespace mfe_stokes
       {
         case 2:
           values[p][0][0] = K_perm[0][0];
-          values[p][0][1] = 0.0;
-          values[p][1][0] = 0.0;
+          values[p][0][1] = K_perm[0][1];
+          values[p][1][0] = K_perm[1][0];
           values[p][1][1] = K_perm[1][1];
           break;
         default:

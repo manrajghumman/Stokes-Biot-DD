@@ -71,6 +71,9 @@ class StokesBiotParameterReader : public Subscriptor
       prm.declare_entry("stokes_mortar_degree", "2",
                         Patterns::Integer(),
                         "Mortar degree for Stokes-Stokes interface");
+      prm.declare_entry("viscosity", "1.0",
+                        Patterns::Double(),
+                        "Dynamic viscosity of the fluid");
       prm.declare_entry("gamma", "100.0",
                         Patterns::Double(),
                         "Nitsche's penalty parameter for Stokes");
@@ -94,6 +97,9 @@ class StokesBiotParameterReader : public Subscriptor
                     Patterns::Integer(), "1");
       prm.declare_entry("mortar_degree", "2",
                     Patterns::Integer());
+      prm.declare_entry("viscosity", "1.0",
+                        Patterns::Double(),
+                        "Dynamic viscosity of the fluid");              
       prm.declare_entry("s_0", "1.0",
                     Patterns::Double(),
                     "Storativity coefficient");

@@ -40,12 +40,13 @@ main(int argc, char *argv[])
       if (this_mpi_process == 0)
       {
         const int status =
-          std::system("python3 \"../test function/update_biot_constants.py\" "
-                "\"../parameters_sb.prm\" "
-                "\"../test function/dd test/biot.prm\"");
+          std::system("python3 \"../test function/update_test_function_constants.py\" "
+              "\"../parameters_sb.prm\" "
+              "\"../test function/dd test/biot.prm\" "
+              "\"../test function/dd test/stokes.prm\"");
 
         AssertThrow(status == 0,
-                    ExcMessage("Failed to update Function constants in biot.prm."));
+                    ExcMessage("Failed to update Function constants in biot.prm/stokes.prm."));
       }
 
       MPI_Barrier(mpi_communicator);

@@ -233,6 +233,7 @@ namespace mfe_biot
     // Physical parameters
     ParameterHandler &prm;
     ParameterHandler prm_fxn;
+    double viscosity;
 
 
     double grid_diameter;

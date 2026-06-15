@@ -117,11 +117,15 @@ namespace mfe_biot
       switch (dim)
       {
         case 2:
-          values[p][0][0] = 1.0/K_permeability[0][0];
-          values[p][0][1] = 0.0;
-          values[p][1][0] = 0.0;
-          values[p][1][1] = 1.0/K_permeability[1][1];
+        {
+          // compute the determinant of the permeability tensor to compute its inverse
+          double det = K_permeability[0][0]*K_permeability[1][1] - K_permeability[0][1]*K_permeability[1][0];
+          values[p][0][0] = K_permeability[1][1]/det;
+          values[p][0][1] = -K_permeability[0][1]/det;
+          values[p][1][0] = -K_permeability[1][0]/det;
+          values[p][1][1] = K_permeability[0][0]/det;
           break;
+        }
         default:
         Assert(false, ExcMessage("The inverse of permeability tensor for dim != 2 is not provided"));
       }

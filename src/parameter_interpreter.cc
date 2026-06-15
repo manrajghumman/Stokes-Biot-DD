@@ -149,6 +149,7 @@ namespace mfe_stokes
         prm.enter_subsection("Stokes Parameters");
         {
             qdegree  = prm.get_integer("quad_degree");  
+            viscosity = prm.get_double("viscosity");
             gamma    = prm.get_double("gamma");
             initial_val = prm.get_double("initial_val lambda");
             multiscale_basis_flag = prm.get("multiscale_basis") == "yes" ? true : false;
@@ -299,6 +300,7 @@ namespace mfe_biot
         {
             qdegree  = prm.get_integer("quad_degree"); 
             initial_val = prm.get_double("initial_val lambda"); 
+            viscosity = prm.get_double("viscosity");
             s0 = prm.get_double("s_0");
             alpha = prm.get_double("alpha");
             lame_lambda = prm.get_double("lame_lambda");

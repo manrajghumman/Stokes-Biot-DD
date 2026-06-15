@@ -166,7 +166,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd realeg1/stokes.prm");
+    param.read_parameters("../test function/dd test/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -196,10 +196,14 @@ namespace mfe_stokes
     pcout << "Stokes Part:\n boundary condition:";
     for (unsigned int i = 0; i < external_bdry_ids.size(); ++i)
     {
-      if (external_bdry_ids[i] == 0)
-        external_bdry_ids[i] = 0;
-      else 
-        external_bdry_ids[i] = 0;
+      // if (external_bdry_ids[i] == 0)
+      //   external_bdry_ids[i] = 0;
+      // else 
+      //   external_bdry_ids[i] = 0;
+      // if (this_mpi == 0 || this_mpi == 3)
+      //   external_bdry_ids[3] = 7; // Neumann on left boundary for Stokes domain 0 and 3
+      // if (this_mpi == 2 || this_mpi == 5)
+      //   external_bdry_ids[1] = 7; // Neumann on right boundary for Stokes domain 2 and 5
       if (external_bdry_ids[i] == 7)
         pcout << " N";
       else if (external_bdry_ids[i] == 0)
@@ -213,10 +217,10 @@ namespace mfe_stokes
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 1)
+        if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 1)
+        if (face->center()[dim - 1] == 2)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -248,7 +252,7 @@ namespace mfe_stokes
         if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 1)
+        if (face->center()[dim - 1] == 2)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -698,7 +702,7 @@ namespace mfe_stokes
             for (unsigned int j = 0; j <= i; ++j)
               {
                 local_matrix(i, j) +=
-                  (2 * (symgrad_phi_u[j] * symgrad_phi_u[i]) // 2* (D(u):D(v))
+                  (2 * viscosity * (symgrad_phi_u[j] * symgrad_phi_u[i]) // 2* mu(D(u):D(v))
                   - phi_p[j] * div_phi_u[i]                 // - (p, div(v))
                   - div_phi_u[j] * phi_p[i])                // - (div(u), w)
                   * fe_values.JxW(q);                        // dx
@@ -762,12 +766,12 @@ namespace mfe_stokes
               {
                 for (unsigned int j = 0; j <= i; ++j)
                 {
-                  local_matrix(i,j) += (-2 * (symgrad_phi_u[j] 
+                  local_matrix(i,j) += (-2 * viscosity * (symgrad_phi_u[j] 
                                       * fe_face_values.normal_vector(q))
-                                      * phi_u[i] // -2 <D(u).n, v>
-                                      -2 * phi_u[j]
+                                      * phi_u[i] // -2 mu <D(u).n, v>
+                                      -2 * viscosity * phi_u[j]
                                       * (symgrad_phi_u[i] 
-                                        * fe_face_values.normal_vector(q)) // -2 <u, D(v).n>
+                                        * fe_face_values.normal_vector(q)) // -2 mu <u, D(v).n>
                                         + gamma * phi_u[j]
                                         * phi_u[i] / h_K // + gamma <u,v> / h_k
                                         + phi_p[j]
@@ -778,8 +782,8 @@ namespace mfe_stokes
                                         * phi_p[i]) // <u.n, w>
                                         * fe_face_values.JxW(q);
                 }
-                local_rhs(i) += (-2 * gd * (symgrad_phi_u[i] 
-                              * fe_face_values.normal_vector(q)) // -2 <gd, D(v).n>
+                local_rhs(i) += (-2 * viscosity * gd * (symgrad_phi_u[i] 
+                              * fe_face_values.normal_vector(q)) // -2 mu <gd, D(v).n>
                               + gamma * gd * phi_u [i] / h_K // gamma * <gd, v>/h
                               + gd * fe_face_values.normal_vector(q)
                               * phi_p[i]) // <gd.n, w>
@@ -811,7 +815,7 @@ namespace mfe_stokes
                   Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
                 }
                 // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
-                const_bjs = alpha * 
+                const_bjs = viscosity * alpha * 
                             std::sqrt(1/((k_permeability_values[q]*tangent_vector)
                                                       *tangent_vector));
                                                       
@@ -992,7 +996,7 @@ namespace mfe_stokes
                     Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
                   }
                   // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
-                  const_bjs = alpha * 
+                  const_bjs = viscosity * alpha * 
                               std::sqrt(1/((k_permeability_values[q]*tangent_vector)
                                                         *tangent_vector));
                   // compute lambda_p and lambda_d at the quad point  
@@ -1066,7 +1070,7 @@ namespace mfe_stokes
                     Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
                   }
                   // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
-                  const_bjs = alpha * 
+                  const_bjs = viscosity * alpha * 
                               std::sqrt(1/((k_permeability_values[q]*tangent_vector)
                                                         *tangent_vector));
                   // compute lambda_d at the quad point   
@@ -2815,7 +2819,7 @@ namespace mfe_stokes
                     Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
                   }
                   // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
-                  const_bjs = alpha * 
+                  const_bjs = viscosity * alpha * 
                               std::sqrt(1/((k_permeability_values[q_point] * tangent_vector)
                                                         * tangent_vector));
                   // compute lambda_p and lambda_d at the quad point
@@ -2953,7 +2957,7 @@ namespace mfe_stokes
                     Assert(false, ExcMessage("Tangent vector not implemented for 3D yet"));
                   }
                   // compute the constant in the BJS condition, from mu*alpha_BJS*sqrt(K_j^-1)
-                  const_bjs = alpha * 
+                  const_bjs = viscosity * alpha * 
                               std::sqrt(1/((k_permeability_values[q_point]*tangent_vector)
                                                         *tangent_vector));
                   // compute lambda_d at the quad point
@@ -4707,13 +4711,17 @@ namespace mfe_stokes
       // Dimensions of the domain (unit hypercube)
       std::vector<double> subdomain_dimensions(dim);
       for (unsigned int d = 1; d < dim; ++d)
-        subdomain_dimensions[d] = 1.0 / double(n_domains[d]);
+        subdomain_dimensions[d] = 2.0 / double(n_domains[d]);
 
-      subdomain_dimensions[0] = 1.0 / double(n_domains[0]);
+      subdomain_dimensions[0] = 2.0 / double(n_domains[0]);
 
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
 
+      // if (this_mpi >= 3)
+      // {
+      //   p2[1] = p1[1] + 0.05;
+      // }
       // if (mortar_flag)
       //   GridGenerator::subdivided_hyper_rectangle(triangulation,
       //                                             reps[this_mpi],
