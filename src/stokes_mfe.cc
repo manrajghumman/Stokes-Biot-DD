@@ -166,7 +166,7 @@ namespace mfe_stokes
   {
     interpret_parameters();
     StokesParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/stokes.prm");
+    param.read_parameters("../test function/dd realeg1/stokes.prm");
     pcout << "inside stokes call, cont_mortar_flag: " << cont_mortar_flag
           << ", mortar_degree: " << mortar_degree 
           << ", degree: " << degree <<
@@ -196,8 +196,8 @@ namespace mfe_stokes
     pcout << "Stokes Part:\n boundary condition:";
     for (unsigned int i = 0; i < external_bdry_ids.size(); ++i)
     {
-      // if (external_bdry_ids[i] == 0)
-      //   external_bdry_ids[i] = 0;
+      if (external_bdry_ids[i] >= 7)
+        external_bdry_ids[i] = 0;
       // else 
       //   external_bdry_ids[i] = 0;
       // if (this_mpi == 0 || this_mpi == 3)
@@ -214,13 +214,13 @@ namespace mfe_stokes
     pcout << "" << std::endl;
     for (const auto &cell : triangulation.active_cell_iterators()){
       for (const auto &face : cell->face_iterators()){
-        if (face->center()[dim - 1] == 0)
+        if (face->center()[dim - 1] == -1)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
         if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 2)
+        if (face->center()[dim - 1] == 1)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -249,10 +249,10 @@ namespace mfe_stokes
         if (face->center()[dim - 1] == 0)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
-        if (face->center()[dim - 2] == 2)
+        if (face->center()[dim - 2] == 1)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 2)
+        if (face->center()[dim - 1] == 1)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -1443,7 +1443,7 @@ namespace mfe_stokes
             for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*lame_mu;
+                jacobi_scaling[side][i] = 2*(lame_mu+lame_lambda);
               else // pressure lagrange multiplier test space
               jacobi_scaling[side][i] = 1.0;
             }
@@ -4191,7 +4191,7 @@ namespace mfe_stokes
                             DataOut<dim>::type_dof_data,
                             data_component_interpretation);
 
-    StressPostprocessor stress_postprocessor;
+    StressPostprocessor stress_postprocessor(viscosity);
     data_out.add_data_vector(solution, stress_postprocessor);
 
     data_out.build_patches();
@@ -4717,6 +4717,21 @@ namespace mfe_stokes
 
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
+
+      p1[1] -= 1.0;
+      p2[1] -= 1.0;
+
+      for (unsigned int i = 0; i < n_processes; ++i)
+      {
+        if (this_mpi == i)
+        {
+          std::cout << "MPI process " << this_mpi << " of " << n_processes
+                    << " has subdomain coordinates: ";
+          std::cout << "p1 = " << p1[0] << ", " << p1[1];
+          std::cout << ", p2 = " << p2[0] << ", " << p2[1] << std::endl;
+        }
+        MPI_Barrier(mpi_communicator);
+      }
 
       // if (this_mpi >= 3)
       // {

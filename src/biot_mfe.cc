@@ -140,7 +140,7 @@ namespace mfe_biot
   {
     interpret_parameters();
     BiotParameterReader param(prm_fxn);
-    param.read_parameters("../test function/dd test/biot.prm");
+    param.read_parameters("../test function/dd realeg1/biot.prm");
   }
 
   // MixedBiotProblem::setup_system
@@ -180,13 +180,13 @@ namespace mfe_biot
     pcout << "" << std::endl;
     for (const auto &cell : triangulation.active_cell_iterators()){
       for (const auto &face : cell->face_iterators()){
-        if (face->center()[dim - 1] == 0)
+        if (face->center()[dim - 1] == -1)
           if (external_bdry_ids[0] != 0)
             face->set_all_boundary_ids(external_bdry_ids[0]);
         if (face->center()[dim - 2] == 2)
           if (external_bdry_ids[1] != 0)
             face->set_all_boundary_ids(external_bdry_ids[1]);
-        if (face->center()[dim - 1] == 2)
+        if (face->center()[dim - 1] == 1)
           if (external_bdry_ids[2] != 0)
             face->set_all_boundary_ids(external_bdry_ids[2]);
         if (face->center()[dim - 2] == 0)
@@ -759,6 +759,7 @@ namespace mfe_biot
                                     + scalar_product(phi_d[j], div_phi_s[i])              // (eta_p, div tau)
                                     + scalar_product<1, rotation_dim>(phi_r[j], asym_i)   // (gamma, tau)
                                     + scalar_product(phi_d[i], div_phi_s[j])              // (v_s, div sigma)
+                                    // + lambda * scalar_product(phi_d[i], phi_d[j])           // (v_s, u_s)
                                     + scalar_product<1, rotation_dim>(phi_r[i], asym_j) ) // (chi, sigma)
                                   * fe_values.JxW(q);
           }
@@ -1256,7 +1257,7 @@ namespace mfe_biot
             for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*lame_mu;
+                jacobi_scaling[side][i] = 2*(lame_mu+lame_lambda);
               else // pressure lagrange multiplier test space
                 jacobi_scaling[side][i] =  1.0;
             }
@@ -1266,7 +1267,7 @@ namespace mfe_biot
             for (unsigned int i = 0; i < interface_dofs[side].size(); ++i)
             {
               if (interface_dofs[side][i] < n_stress_mortar) // displacement lagrange multiplier test space
-                jacobi_scaling[side][i] = 2*lame_mu;
+                jacobi_scaling[side][i] = 2*(lame_mu+lame_lambda);
               else // pressure lagrange multiplier test space
                 jacobi_scaling[side][i] = 1.0;
             }
@@ -3947,6 +3948,21 @@ namespace mfe_biot
       
       get_subdomain_coordinates<dim>(
         this_mpi, n_domains, subdomain_dimensions, p1, p2);
+
+      p1[1] -= 1.0;
+      p2[1] -= 1.0;
+
+      for (unsigned int i = 0; i < n_processes; ++i)
+      {
+        if (this_mpi == i)
+        {
+          std::cout << "MPI process " << this_mpi << " of " << n_processes
+                    << " has subdomain coordinates: ";
+          std::cout << "p1 = " << p1[0] << ", " << p1[1];
+          std::cout << ", p2 = " << p2[0] << ", " << p2[1] << std::endl;
+        }
+        MPI_Barrier(mpi_communicator);
+      }
 
       // if (mortar_flag)
       //   GridGenerator::subdivided_hyper_rectangle(triangulation,

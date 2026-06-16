@@ -382,12 +382,14 @@ namespace mfe_stokes
     class StressPostprocessor : public DataPostprocessorTensor<dim>
     {
       public:
-        StressPostprocessor();
+        StressPostprocessor(const double viscosity);
 
         virtual void
         evaluate_vector_field(
           const DataPostprocessorInputs::Vector<dim> &inputs,
           std::vector<Vector<double>> &computed_quantities) const override;
+      private:
+        const double viscosity;
     };
   };
 } // namespace mfe_stokes

@@ -9,9 +9,10 @@ namespace mfe_stokes
 	using namespace dealii;
 	
 	template <int dim>
-	MixedStokesProblem<dim>::StressPostprocessor::StressPostprocessor()
+	MixedStokesProblem<dim>::StressPostprocessor::StressPostprocessor(const double viscosity)
 		: DataPostprocessorTensor<dim>("fluid_stress",
 										update_values | update_gradients)
+		, viscosity(viscosity)								
 	{}
 
 	template <int dim>
@@ -36,7 +37,7 @@ namespace mfe_stokes
 			Tensor<2, dim> sigma;
 			for (unsigned int i = 0; i < dim; ++i)
 				for (unsigned int j = 0; j < dim; ++j)
-				sigma[i][j] = grad_u[i][j] + grad_u[j][i];
+				sigma[i][j] = viscosity * (grad_u[i][j] + grad_u[j][i]);
 
 			for (unsigned int d = 0; d < dim; ++d)
 				sigma[d][d] -= p;
