@@ -150,7 +150,7 @@ namespace mfe_stokes
         {
             qdegree  = prm.get_integer("quad_degree");  
             viscosity = prm.get_double("viscosity");
-            gamma    = prm.get_double("gamma");
+            gamma    = prm.get_double("gamma") * viscosity; // gamma >= 2 * viscosity * C_I^2 so i needs to scale with viscosity
             initial_val = prm.get_double("initial_val lambda");
             multiscale_basis_flag = prm.get("multiscale_basis") == "yes" ? true : false;
         }

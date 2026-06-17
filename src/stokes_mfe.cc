@@ -4191,7 +4191,7 @@ namespace mfe_stokes
                             DataOut<dim>::type_dof_data,
                             data_component_interpretation);
 
-    StressPostprocessor stress_postprocessor;
+    StressPostprocessor stress_postprocessor(viscosity);
     data_out.add_data_vector(solution, stress_postprocessor);
 
     data_out.build_patches();
