@@ -4407,7 +4407,7 @@ namespace mfe_stokes
     unsigned int h_local = 0;
 
     if (it != initial_refinement.end()) // check if the vector is not empty
-      h_local = (*it) * std::pow(2, cycle+1); // get the value of the minimum element, scale according to domain size
+      h_local = (*it) * std::pow(2, cycle); // get the value of the minimum element, scale according to domain size
     else
       AssertThrow(false, ExcMessage("Error: initial_refinement vector is empty."));
     
