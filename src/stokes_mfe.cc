@@ -3434,6 +3434,52 @@ namespace mfe_stokes
           for(unsigned int j=0; j<q[side].size();++j){
             q[side][j]-=h[i]*Q_side[side][i][j];
           }//end first loop for arnoldi algorithm
+
+    // -------------------------------------------------------------
+    // Second CGS pass: reorthogonalization
+    // -------------------------------------------------------------
+    std::vector<double> h2(k_counter + 2, 0.0);
+
+    for (unsigned int i = 0; i <= k_counter; ++i)
+    {
+      for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+        if (neighbors[side] >= 0)
+          for (unsigned int k = 0; k < q[side].size(); ++k)
+            Q_tmp[side][k] = Q_side[side][i][k];
+
+      // q here is already the result of the FIRST projection
+      h2[i] = inner_product_mortar(Q_tmp,
+                                  q,
+                                  fe_face_values_mortar,
+                                  fe_face_values_mortar_biot);
+    }
+
+    // Sum second-pass projection coefficients over MPI ranks
+    std::vector<double> h2_buffer(k_counter + 2, 0.0);
+
+    MPI_Allreduce(&h2[0],
+                  &h2_buffer[0],
+                  k_counter + 2,
+                  MPI_DOUBLE,
+                  MPI_SUM,
+                  mpi_communicator);
+
+    h2 = h2_buffer;
+
+
+    // Remove the remaining components in the existing Krylov basis
+    for (unsigned int side = 0; side < n_faces_per_cell; ++side)
+      if (neighbors[side] >= 0)
+        for (unsigned int i = 0; i <= k_counter; ++i)
+          for (unsigned int j = 0; j < q[side].size(); ++j)
+            q[side][j] -= h2[i] * Q_side[side][i][j];
+
+    // The Hessenberg coefficient is the sum of both projections
+    for (unsigned int i = 0; i <= k_counter; ++i)
+      h[i] += h2[i];
+    // -----------------------------------------------------------
+
+    
     double h_dummy = 0;
 
     //calculating h(k+1)=norm(q) as summation over side,subdomains norm_squared(q[side])
