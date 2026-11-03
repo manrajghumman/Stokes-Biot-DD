@@ -6,7 +6,3 @@ portion using Quasistatic Biot equations.
 Problem can be scaled to multiple cores. 
 
 Uses GMRES for solving the problem. 
-
-
-
-""" CODE IS STILL UNDER DEVELOPMENT  """"
